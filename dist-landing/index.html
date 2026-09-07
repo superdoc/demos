@@ -18,15 +18,16 @@
       font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-synthesis: none;
       -webkit-font-smoothing: antialiased;
+      cursor: url("/butterfly-cursor.svg") 4 3, auto;
       background:
         radial-gradient(circle at 9% 88%, rgba(202, 218, 255, .72) 0, rgba(202, 218, 255, 0) 34%),
         radial-gradient(circle at 88% 18%, rgba(249, 214, 241, .68) 0, rgba(249, 214, 241, 0) 38%),
         linear-gradient(135deg, #fffdf4 0%, #f9faff 48%, #fff8fd 100%);
     }
-    .container { width: min(1120px, 100%); text-align: center; }
+    .container { width: min(1120px, 100%); text-align: center; transform: translateY(-32px); }
     .logo-stage {
       position: relative;
-      width: clamp(112px, 14vw, 164px);
+      width: clamp(92px, 11vw, 132px);
       margin: 0 auto 28px;
       isolation: isolate;
     }
@@ -41,7 +42,7 @@
     h1 {
       margin-bottom: 14px;
       color: #1d5cff;
-      font-size: clamp(48px, 8vw, 88px);
+      font-size: 64px;
       font-weight: 650;
       letter-spacing: -.055em;
       line-height: .95;
@@ -54,8 +55,10 @@
       letter-spacing: -.02em;
     }
     .brand-link { color: #4f46e5; font-weight: 650; text-decoration: none; }
-    .demos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    a { cursor: url("/butterfly-cursor.svg") 4 3, pointer; }
+    .demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 350px)); justify-content: center; gap: 18px; }
     .demos > a {
+      position: relative;
       display: flex;
       min-height: 152px;
       flex-direction: column;
@@ -72,16 +75,25 @@
       letter-spacing: -.02em;
       text-align: left;
       text-decoration: none;
+      overflow: hidden;
       backdrop-filter: blur(18px);
       transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
     }
     .demos > a::before {
       content: "↗";
+      position: relative;
+      z-index: 3;
       align-self: flex-end;
       color: #1d5cff;
       font-size: 20px;
       line-height: 1;
     }
+    .card-copy { position: relative; z-index: 2; display: block; margin: 0; color: inherit; font-size: inherit; font-weight: inherit; }
+    .card-video, .card-video-shade { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .card-video { z-index: 0; object-fit: cover; }
+    .card-video-shade { z-index: 1; background: linear-gradient(180deg, rgba(8, 20, 42, .08), rgba(8, 20, 42, .82)); }
+    .video-card, .video-card span { color: #fff; }
+    .video-card .card-copy > span { color: rgba(255, 255, 255, .78); }
     .demos > a:hover {
       border-color: rgba(29, 92, 255, .55);
       box-shadow: 0 22px 55px rgba(55, 83, 160, .16);
@@ -90,6 +102,7 @@
     span { display: block; margin-top: 9px; color: #687890; font-size: 14px; font-weight: 450; line-height: 1.45; }
     @media (max-width: 760px) {
       body { align-items: flex-start; padding-top: 80px; }
+      .container { transform: none; }
       .demos { grid-template-columns: 1fr; }
       .demos > a { min-height: 126px; }
     }
@@ -103,9 +116,21 @@
     <h1>SuperDoc Demos</h1>
     <p>Working demos built with <a class="brand-link" href="https://superdoc.dev">SuperDoc</a></p>
     <div class="demos">
-      <a href="/docrag/">DocRAG<span>Document Q&A with citations</span></a>
-      <a href="/superdoc-inline-revisions/">Inline Revisions<span>Comments and tracked-change review</span></a>
-      <a href="/template-builder-document-api-v2-demo/">Template Builder API v2<span>Template fields with the Document API</span></a>
+      <a href="/docrag/"><span class="card-copy">DocRAG<span>Document Q&amp;A with citations</span></span></a>
+      <a class="video-card" href="/superdoc-inline-revisions/">
+        <video class="card-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true">
+          <source src="/inline-revisions-preview.mp4" type="video/mp4">
+        </video>
+        <span class="card-video-shade" aria-hidden="true"></span>
+        <span class="card-copy">Inline Revisions<span>Comments and tracked-change review</span></span>
+      </a>
+      <a class="video-card" href="/template-builder-document-api-v2-demo/">
+        <video class="card-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true">
+          <source src="/template-builder-preview.mp4" type="video/mp4">
+        </video>
+        <span class="card-video-shade" aria-hidden="true"></span>
+        <span class="card-copy">Template Builder API v2<span>Template fields with the Document API</span></span>
+      </a>
     </div>
   </div>
 </body>

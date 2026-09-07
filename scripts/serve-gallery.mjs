@@ -11,6 +11,7 @@ const contentTypes = {
   ".ico": "image/x-icon",
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".mp4": "video/mp4",
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
@@ -26,11 +27,37 @@ createServer(async (request, response) => {
       return;
     }
 
-    if ((await stat(filePath)).isDirectory()) filePath = path.join(filePath, "index.html");
+    let fileStat = await stat(filePath);
+    if (fileStat.isDirectory()) {
+      filePath = path.join(filePath, "index.html");
+      fileStat = await stat(filePath);
+    }
 
-    response.writeHead(200, {
+    const headers = {
       "Content-Type": contentTypes[path.extname(filePath)] || "application/octet-stream",
-    });
+      "Accept-Ranges": "bytes",
+    };
+    const range = request.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
+
+    if (range) {
+      const start = range[1] ? Number(range[1]) : 0;
+      const end = range[2] ? Math.min(Number(range[2]), fileStat.size - 1) : fileStat.size - 1;
+
+      if (start > end || start >= fileStat.size) {
+        response.writeHead(416, { "Content-Range": `bytes */${fileStat.size}` }).end();
+        return;
+      }
+
+      response.writeHead(206, {
+        ...headers,
+        "Content-Length": end - start + 1,
+        "Content-Range": `bytes ${start}-${end}/${fileStat.size}`,
+      });
+      createReadStream(filePath, { start, end }).pipe(response);
+      return;
+    }
+
+    response.writeHead(200, { ...headers, "Content-Length": fileStat.size });
     createReadStream(filePath).pipe(response);
   } catch {
     response.writeHead(404).end("Not found");
