@@ -25,15 +25,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        demo: [esign, template-builder]
+        demo: [superdoc-inline-revisions, template-builder-document-api-v2-demo]
     defaults:
       run:
         working-directory: ${{ matrix.demo }}
     steps:
       - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bunx vite build
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ${{ matrix.demo }}/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
 
   build-rag-web:
     name: Build rag/web
@@ -54,25 +61,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        demo: [esign, template-builder]
+        demo: [superdoc-inline-revisions, template-builder-document-api-v2-demo]
     steps:
       - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Build demo
         working-directory: ${{ matrix.demo }}
         run: |
-          bun install --frozen-lockfile
-          bunx vite build
+          pnpm install --frozen-lockfile
+          pnpm build
       - name: Install Playwright
         working-directory: tests
         run: |
-          bun install
-          bunx playwright install --with-deps chromium
+          pnpm install
+          pnpm exec playwright install --with-deps chromium
       - name: Run smoke test
         working-directory: tests
         env:
           DEMO: ${{ matrix.demo }}
-        run: bunx playwright test
+        run: pnpm exec playwright test
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

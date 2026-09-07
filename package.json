@@ -1,0 +1,9 @@
+{
+  "name": "superdoc-demos-gallery",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-gallery.mjs",
+    "start": "node scripts/build-gallery.mjs && node scripts/serve-gallery.mjs"
+  }
+}

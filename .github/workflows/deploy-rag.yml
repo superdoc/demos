@@ -50,6 +50,9 @@ jobs:
         with:
           node-version: 22
       - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
 
       # Build DocRAG
       - run: bun install --frozen-lockfile
@@ -60,30 +63,25 @@ jobs:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           BASE_PATH: /docrag/
 
-      # Build eSign
-      - run: bun install --frozen-lockfile
-        working-directory: esign
-      - run: bunx vite build
-        working-directory: esign
-        env:
-          BASE_PATH: /esign/
+      # Build Inline Revisions
+      - run: pnpm install --frozen-lockfile
+        working-directory: superdoc-inline-revisions
+      - run: pnpm build
+        working-directory: superdoc-inline-revisions
 
-      # Build Template Builder
-      - run: bun install --frozen-lockfile
-        working-directory: template-builder
-      - run: bunx vite build
-        working-directory: template-builder
-        env:
-          BASE_PATH: /template-builder/
+      # Build Template Builder Document API v2
+      - run: pnpm install --frozen-lockfile
+        working-directory: template-builder-document-api-v2-demo
+      - run: pnpm build
+        working-directory: template-builder-document-api-v2-demo
 
       # Assemble dist
       - run: |
-          mkdir -p dist/docrag dist/esign dist/template-builder
+          mkdir -p dist/docrag dist/superdoc-inline-revisions dist/template-builder-document-api-v2-demo
           cp -r rag/apps/web/dist/* dist/docrag/
-          cp -r esign/dist/* dist/esign/
-          cp -r template-builder/dist/* dist/template-builder/
-          cp dist-landing/index.html dist/
-          cp -r functions dist/functions
+          cp -r superdoc-inline-revisions/dist/* dist/superdoc-inline-revisions/
+          cp -r template-builder-document-api-v2-demo/dist/* dist/template-builder-document-api-v2-demo/
+          cp -r dist-landing/* dist/
 
       # Deploy
       - run: bunx wrangler pages deploy dist --project-name=superdoc-demos --commit-dirty=true

@@ -1,8 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 const allDemos = [
-	{ name: "esign", cwd: "../esign", port: 4173 },
-	{ name: "template-builder", cwd: "../template-builder", port: 4174 },
+	{ name: "superdoc-inline-revisions", cwd: "../superdoc-inline-revisions", port: 4173 },
+	{ name: "template-builder-document-api-v2-demo", cwd: "../template-builder-document-api-v2-demo", port: 4174 },
 ];
 
 const filter = process.env.DEMO;
@@ -20,7 +20,7 @@ export default defineConfig({
 		trace: "retain-on-failure",
 	},
 	webServer: demos.map((d) => ({
-		command: `bunx vite preview --port ${d.port} --strictPort`,
+		command: `pnpm exec vite preview --port ${d.port} --strictPort`,
 		cwd: d.cwd,
 		url: `http://localhost:${d.port}`,
 		reuseExistingServer: !process.env.CI,

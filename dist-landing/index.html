@@ -3,27 +3,109 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="/superdoc-logo.png">
   <title>SuperDoc Demos</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif; background: #fafafa; color: #000; height: 100vh; display: flex; align-items: center; justify-content: center; }
-    .container { text-align: center; }
-    h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-    p { font-size: 14px; color: #888; margin-bottom: 32px; }
-    .demos { display: flex; gap: 16px; }
-    a { display: block; padding: 20px 32px; border: 1px solid #e5e5e5; border-radius: 8px; background: #fff; text-decoration: none; color: #000; font-size: 14px; font-weight: 500; transition: border-color 0.15s; }
-    a:hover { border-color: #0070f3; }
-    span { display: block; font-size: 12px; color: #888; margin-top: 4px; font-weight: 400; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow-x: hidden;
+      padding: 48px 24px;
+      color: #172b4d;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      -webkit-font-smoothing: antialiased;
+      background:
+        radial-gradient(circle at 9% 88%, rgba(202, 218, 255, .72) 0, rgba(202, 218, 255, 0) 34%),
+        radial-gradient(circle at 88% 18%, rgba(249, 214, 241, .68) 0, rgba(249, 214, 241, 0) 38%),
+        linear-gradient(135deg, #fffdf4 0%, #f9faff 48%, #fff8fd 100%);
+    }
+    .container { width: min(1120px, 100%); text-align: center; }
+    .logo-stage {
+      position: relative;
+      width: clamp(112px, 14vw, 164px);
+      margin: 0 auto 28px;
+      isolation: isolate;
+    }
+    .logo {
+      display: block;
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: auto;
+      filter: drop-shadow(0 18px 24px rgba(41, 92, 173, .18));
+    }
+    h1 {
+      margin-bottom: 14px;
+      color: #1d5cff;
+      font-size: clamp(48px, 8vw, 88px);
+      font-weight: 650;
+      letter-spacing: -.055em;
+      line-height: .95;
+    }
+    p {
+      margin-bottom: 48px;
+      color: #53627a;
+      font-size: clamp(18px, 2.2vw, 26px);
+      font-weight: 450;
+      letter-spacing: -.02em;
+    }
+    .brand-link { color: #4f46e5; font-weight: 650; text-decoration: none; }
+    .demos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .demos > a {
+      display: flex;
+      min-height: 152px;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 28px;
+      border: 1px solid rgba(205, 215, 232, .82);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .82);
+      box-shadow: 0 18px 45px rgba(73, 91, 135, .10);
+      color: #1f3c68;
+      font-size: 18px;
+      font-weight: 650;
+      letter-spacing: -.02em;
+      text-align: left;
+      text-decoration: none;
+      backdrop-filter: blur(18px);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .demos > a::before {
+      content: "↗";
+      align-self: flex-end;
+      color: #1d5cff;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .demos > a:hover {
+      border-color: rgba(29, 92, 255, .55);
+      box-shadow: 0 22px 55px rgba(55, 83, 160, .16);
+      transform: translateY(-3px);
+    }
+    span { display: block; margin-top: 9px; color: #687890; font-size: 14px; font-weight: 450; line-height: 1.45; }
+    @media (max-width: 760px) {
+      body { align-items: flex-start; padding-top: 80px; }
+      .demos { grid-template-columns: 1fr; }
+      .demos > a { min-height: 126px; }
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="logo-stage">
+      <img class="logo" src="/superdoc-logo.png" alt="SuperDoc" width="782" height="867">
+    </div>
     <h1>SuperDoc Demos</h1>
-    <p>Working demos built with <a href="https://superdoc.dev" style="display:inline;padding:0;border:none;color:#0070f3;background:none;">SuperDoc</a></p>
+    <p>Working demos built with <a class="brand-link" href="https://superdoc.dev">SuperDoc</a></p>
     <div class="demos">
       <a href="/docrag/">DocRAG<span>Document Q&A with citations</span></a>
-      <a href="/esign/">eSign<span>eSignature orchestration</span></a>
-      <a href="/template-builder/">Template Builder<span>Document template engine</span></a>
+      <a href="/superdoc-inline-revisions/">Inline Revisions<span>Comments and tracked-change review</span></a>
+      <a href="/template-builder-document-api-v2-demo/">Template Builder API v2<span>Template fields with the Document API</span></a>
     </div>
   </div>
 </body>

@@ -12,19 +12,28 @@ Ask your documents. Get cited answers. Upload `.docx` files and get AI-powered a
 
 **Stack**: Cloudflare Workers + R2, PostgreSQL + pgvector, React, SuperDoc, Claude, OpenAI embeddings
 
-### [`esign/`](./esign) — eSign
+### [`superdoc-inline-revisions/`](./superdoc-inline-revisions) — Inline Revisions
 
-eSignature orchestration demo. Add signature fields to `.docx` and PDF documents, sign with custom signatures, and manage the signing workflow.
+Comments and tracked-change review controls built with SuperDoc's custom UI API.
 
-**Stack**: React, SuperDoc, @superdoc-dev/esign
+**Stack**: React, SuperDoc
 
-### [`template-builder/`](./template-builder) — Template Builder
+### [`template-builder-document-api-v2-demo/`](./template-builder-document-api-v2-demo) — Template Builder Document API v2
 
-Document template engine demo. Build reusable templates with dynamic fields and merge data into `.docx` documents.
+Template-field workflow built with SuperDoc's public Document API v2.
 
-**Stack**: React, SuperDoc, @superdoc-dev/template-builder
+**Stack**: Vue, SuperDoc
 
 ## Running a Demo
+
+Build and serve the local gallery (excluding DocRAG):
+
+```bash
+bun run start
+```
+
+Open [http://localhost:4173](http://localhost:4173). The command builds both
+static demos before serving the landing page and their route directories.
 
 Each demo is a standalone app. The general pattern:
 
