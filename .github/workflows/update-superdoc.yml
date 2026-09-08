@@ -1,0 +1,108 @@
+name: Update SuperDoc
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SuperDoc version or npm tag
+        required: true
+        default: latest
+      dry_run:
+        description: Preview changes without creating a branch or pull request
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    name: Update dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Update all demos and gallery version labels
+        run: node scripts/update-superdoc.mjs '${{ inputs.version }}'
+      - name: Show proposed update
+        run: |
+          git status --short
+          git diff --stat
+          git diff --check
+      - name: Build every demo
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: |
+          bun run --cwd rag build:web
+          pnpm --dir superdoc-inline-revisions build
+          pnpm --dir template-builder-document-api-v2-demo build
+      - name: Run unit tests when present
+        run: |
+          node scripts/run-optional-tests.mjs rag unit bun
+          node scripts/run-optional-tests.mjs superdoc-inline-revisions unit pnpm
+          node scripts/run-optional-tests.mjs template-builder-document-api-v2-demo unit pnpm
+      - name: Install browser test runner
+        working-directory: tests
+        run: pnpm install
+      - name: Install Chromium
+        working-directory: tests
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run browser smoke tests for every demo
+        working-directory: tests
+        run: pnpm exec playwright test
+      - name: Run demo-specific browser tests when present
+        run: |
+          node scripts/run-optional-tests.mjs rag browser bun
+          node scripts/run-optional-tests.mjs superdoc-inline-revisions browser pnpm
+          node scripts/run-optional-tests.mjs template-builder-document-api-v2-demo browser pnpm
+      - name: Rebuild DocRAG for its production base path
+        working-directory: rag
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          BASE_PATH: /docrag/
+        run: bun run build:web
+      - name: Compile DocRAG Worker without deploying
+        working-directory: rag/apps/api
+        run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
+      - name: Assemble release candidate
+        run: |
+          mkdir -p dist/docrag dist/superdoc-inline-revisions dist/template-builder-document-api-v2-demo
+          cp -r rag/apps/web/dist/* dist/docrag/
+          cp -r superdoc-inline-revisions/dist/* dist/superdoc-inline-revisions/
+          cp -r template-builder-document-api-v2-demo/dist/* dist/template-builder-document-api-v2-demo/
+          cp -r dist-landing/* dist/
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: superdoc-update-${{ github.run_id }}
+          path: |
+            dist/
+            worker-dist/
+          retention-days: 7
+      - name: Create update pull request
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          resolved=$(node -p "require('./superdoc-inline-revisions/node_modules/superdoc/package.json').version")
+          branch="automation/superdoc-${resolved}-${GITHUB_RUN_ID}"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git switch -c "$branch"
+          git add rag/apps/web/package.json rag/bun.lock \
+            superdoc-inline-revisions/package.json superdoc-inline-revisions/pnpm-lock.yaml \
+            template-builder-document-api-v2-demo/package.json template-builder-document-api-v2-demo/pnpm-lock.yaml \
+            dist-landing/index.html
+          git commit -m "chore: update SuperDoc to ${resolved}"
+          git push --set-upstream origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "chore: update SuperDoc to ${resolved}" \
+            --body "Updates every demo to SuperDoc ${resolved} and synchronizes the gallery version labels. Validation runs on this pull request."

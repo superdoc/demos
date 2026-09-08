@@ -52,7 +52,7 @@ const landingSource = await readFile(
   "utf8",
 );
 const localLanding = landingSource.replace(
-  /\s*<a href="\/docrag\/">.*?<\/a>/s,
+  /\s*<article class="demo-card" data-local-exclude>.*?<\/article>/s,
   "",
 );
 await writeFile(path.join(output, "index.html"), localLanding);

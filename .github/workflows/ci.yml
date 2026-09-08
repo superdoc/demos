@@ -1,93 +1,137 @@
-name: CI
+name: Validate Demos
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
 jobs:
-  rag-check:
-    name: rag - Lint & Typecheck
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rag
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bunx biome check .
-      - run: bunx tsc --noEmit
-
-  build-demos:
-    name: Build ${{ matrix.demo }}
+  typecheck-build:
+    name: Typecheck & build - ${{ matrix.demo }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        demo: [superdoc-inline-revisions, template-builder-document-api-v2-demo]
-    defaults:
-      run:
-        working-directory: ${{ matrix.demo }}
+        include:
+          - demo: docrag
+            directory: rag
+            manager: bun
+            install: bun install --frozen-lockfile
+            check: bunx biome check . && bunx tsc --noEmit && bun run build:web
+          - demo: inline-revisions
+            directory: superdoc-inline-revisions
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+            check: pnpm build
+          - demo: template-builder-api-v2
+            directory: template-builder-document-api-v2-demo
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+            check: pnpm build
     steps:
       - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
       - uses: pnpm/action-setup@v4
         with:
           version: 10.25.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: ${{ matrix.demo }}/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Install dependencies
+        working-directory: ${{ matrix.directory }}
+        run: ${{ matrix.install }}
+      - name: Typecheck and build
+        working-directory: ${{ matrix.directory }}
+        run: ${{ matrix.check }}
 
-  build-rag-web:
-    name: Build rag/web
-    needs: rag-check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-        working-directory: rag
-      - run: bunx vite build
-        working-directory: rag/apps/web
-
-  smoke:
-    name: Smoke - ${{ matrix.demo }}
-    needs: build-demos
+  unit-tests:
+    name: Unit tests - ${{ matrix.demo }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        demo: [superdoc-inline-revisions, template-builder-document-api-v2-demo]
+        include:
+          - demo: docrag
+            directory: rag
+            manager: bun
+            install: bun install --frozen-lockfile
+          - demo: inline-revisions
+            directory: superdoc-inline-revisions
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+          - demo: template-builder-api-v2
+            directory: template-builder-document-api-v2-demo
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
     steps:
       - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
       - uses: pnpm/action-setup@v4
         with:
           version: 10.25.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build demo
-        working-directory: ${{ matrix.demo }}
+      - name: Install dependencies
+        working-directory: ${{ matrix.directory }}
+        run: ${{ matrix.install }}
+      - name: Run unit tests when present
+        run: node scripts/run-optional-tests.mjs ${{ matrix.directory }} unit ${{ matrix.manager }}
+
+  browser-tests:
+    name: Browser tests - ${{ matrix.demo }}
+    needs: typecheck-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - demo: docrag
+            directory: rag
+            manager: bun
+            install: bun install --frozen-lockfile
+            build: bun run build:web
+          - demo: superdoc-inline-revisions
+            directory: superdoc-inline-revisions
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+            build: pnpm build
+          - demo: template-builder-document-api-v2-demo
+            directory: template-builder-document-api-v2-demo
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+            build: pnpm build
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and build demo
+        working-directory: ${{ matrix.directory }}
         run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-      - name: Install Playwright
+          ${{ matrix.install }}
+          ${{ matrix.build }}
+      - name: Install browser test runner
         working-directory: tests
-        run: |
-          pnpm install
-          pnpm exec playwright install --with-deps chromium
-      - name: Run smoke test
+        run: pnpm install
+      - name: Install Chromium
+        working-directory: tests
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run gallery smoke test
         working-directory: tests
         env:
           DEMO: ${{ matrix.demo }}
         run: pnpm exec playwright test
+      - name: Run demo-specific browser tests when present
+        run: node scripts/run-optional-tests.mjs ${{ matrix.directory }} browser ${{ matrix.manager }}
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-trace-${{ matrix.demo }}
-          path: tests/test-results/
+          name: playwright-results-${{ matrix.demo }}
+          path: |
+            tests/test-results/
+            ${{ matrix.directory }}/test-results/
           retention-days: 7

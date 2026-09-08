@@ -383,7 +383,7 @@
 
     "@superdoc-dev/sdk-windows-x64": ["@superdoc-dev/sdk-windows-x64@1.21.2-next.4", "", { "os": "win32", "cpu": "x64", "bin": { "superdoc": "bin/superdoc.exe" } }, "sha512-vPwE37B4++VRm124EnfXYBZiUeZVXm2YFzPvgaJ6Wl92a7iMA9eBF/EVbJsL5HM0MpsXvWDxtRDbNNFuXIt91w=="],
 
-    "@superdoc/docx-engine": ["@superdoc/docx-engine@0.11.0", "", { "dependencies": { "xml-js": "1.6.11" }, "peerDependencies": { "@hocuspocus/provider": "^2.13.6", "@liveblocks/client": "^3.15.5", "@liveblocks/yjs": "^3.15.5", "vue": "^3.5.0", "y-websocket": "^3.0.0", "yjs": "^13.6.19" }, "optionalPeers": ["@hocuspocus/provider", "@liveblocks/client", "@liveblocks/yjs", "y-websocket"] }, "sha512-0v6jdc5wI3qT8VNqAHVI8p7fn/nHHn1orda2gdaE170dgM/2z94ps4raZ3JfB9zvd5eheJEOnXBZJXc6uVruSw=="],
+    "@superdoc/docx-engine": ["@superdoc/docx-engine@0.12.0", "", { "dependencies": { "xml-js": "1.6.11" }, "peerDependencies": { "@hocuspocus/provider": "^2.13.6", "@liveblocks/client": "^3.15.5", "@liveblocks/yjs": "^3.15.5", "vue": "^3.5.0", "y-websocket": "^3.0.0", "yjs": "^13.6.19" }, "optionalPeers": ["@hocuspocus/provider", "@liveblocks/client", "@liveblocks/yjs", "y-websocket"] }, "sha512-HVCFoGwaDmIrQjGO0G2zXdwVXExrecH3w30fx92znLP4nfuX5AHztfbGyMkyIoilOm1bLlgq2hyBbGZ+uBzjUw=="],
 
     "@types/babel__core": ["@types/babel__core@7.20.5", "", { "dependencies": { "@babel/parser": "^7.20.7", "@babel/types": "^7.20.7", "@types/babel__generator": "*", "@types/babel__template": "*", "@types/babel__traverse": "*" } }, "sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA=="],
 
@@ -653,7 +653,7 @@
 
     "speakingurl": ["speakingurl@14.0.1", "", {}, "sha512-1POYv7uv2gXoyGFpBCmpDVSNV74IfsWlDW216UPjbWufNf+bSU6GdbDsxdcxtfwb4xlI3yxzOTKClUosxARYrQ=="],
 
-    "superdoc": ["superdoc@2.12.0", "", { "dependencies": { "@superdoc/docx-engine": "0.11.0", "@types/mdast": "^4.0.4", "@types/ws": "^8.18.1", "buffer-crc32": "^1.0.0", "eventemitter3": "^5.0.1", "jsdom": "^27.3.0", "konva": "^10.2.0", "pinia": "^3.0.4", "uuid": "^11.1.1", "vue": "^3.5.11", "y-websocket": "^3.0.0" }, "peerDependencies": { "@hocuspocus/provider": "^2.13.6", "@liveblocks/client": "^3.15.5", "@liveblocks/yjs": "^3.15.5", "pdfjs-dist": "^5.4.296", "react": ">=16.8.0", "yjs": "^13.6.19" }, "optionalPeers": ["@liveblocks/client", "@liveblocks/yjs", "pdfjs-dist", "react"] }, "sha512-6WYHFIXspmEcbQAIWhPf/SK+9uu4BPnKpWThkrdFPV4IZbOwk4XY2ZRdRN2ncZOPXxkkXwvqNf1aXh/06EPJzA=="],
+    "superdoc": ["superdoc@2.13.0", "", { "dependencies": { "@superdoc/docx-engine": "0.12.0", "@types/mdast": "^4.0.4", "@types/ws": "^8.18.1", "buffer-crc32": "^1.0.0", "eventemitter3": "^5.0.1", "jsdom": "^27.3.0", "konva": "^10.2.0", "pinia": "^3.0.4", "uuid": "^11.1.1", "vue": "^3.5.11", "y-websocket": "^3.0.0" }, "peerDependencies": { "@hocuspocus/provider": "^2.13.6", "@liveblocks/client": "^3.15.5", "@liveblocks/yjs": "^3.15.5", "pdfjs-dist": "^5.4.296", "react": ">=16.8.0", "yjs": "^13.6.19" }, "optionalPeers": ["@liveblocks/client", "@liveblocks/yjs", "pdfjs-dist", "react"] }, "sha512-5iZHmd9iqfkQS9WUAkbXidEEiE1qN4nCqIF7AceW0qmSeiFJsn2jHNUyY/nkReYTAVIN44mLNcoRxi+fNjCxjg=="],
 
     "superjson": ["superjson@2.2.6", "", { "dependencies": { "copy-anything": "^4" } }, "sha512-H+ue8Zo4vJmV2nRjpx86P35lzwDT3nItnIsocgumgr0hHMQ+ZGq5vrERg9kJBo5AWGmxZDhzDo+WVIJqkB0cGA=="],
 
