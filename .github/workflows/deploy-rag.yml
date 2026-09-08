@@ -3,6 +3,14 @@ name: Deploy Demos V2
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: Cloudflare environment to deploy to
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
       dry_run:
         description: Build and validate without deploying to Cloudflare
         type: boolean
@@ -10,7 +18,7 @@ on:
         default: true
 
 concurrency:
-  group: superdoc-demos-production
+  group: superdoc-demos-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -57,7 +65,7 @@ jobs:
         working-directory: rag/apps/api
         run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
 
-      - name: Assemble production bundle
+      - name: Assemble release bundle
         run: |
           mkdir -p dist/docrag dist/superdoc-inline-revisions dist/template-builder-document-api-v2-demo
           cp -r rag/apps/web/dist/* dist/docrag/
@@ -75,16 +83,41 @@ jobs:
           retention-days: 7
 
       - name: Deploy DocRAG API Worker
-        if: ${{ inputs.dry_run == false }}
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         working-directory: rag/apps/api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy
 
-      - name: Deploy gallery and demos
-        if: ${{ inputs.dry_run == false }}
+      - name: Deploy gallery and demos to production
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler pages deploy dist --project-name=superdoc-demos --commit-dirty=true
+
+      - name: Deploy gallery and demos to staging
+        id: staging
+        if: ${{ inputs.dry_run == false && inputs.environment == 'staging' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          branch="staging-${GITHUB_SHA::7}"
+          bunx wrangler pages deploy dist \
+            --project-name=superdoc-demos \
+            --branch="$branch" \
+            --commit-hash="$GITHUB_SHA" \
+            --commit-dirty=true | tee staging-deploy.log
+          url=$(grep -Eo 'https://[^[:space:]]+\.pages\.dev' staging-deploy.log | head -1)
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Publish staging URL
+        if: ${{ steps.staging.outputs.url != '' }}
+        env:
+          STAGING_URL: ${{ steps.staging.outputs.url }}
+        run: |
+          echo "## Staging deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "[$STAGING_URL]($STAGING_URL)" >> "$GITHUB_STEP_SUMMARY"
