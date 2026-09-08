@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       superdoc:
-        specifier: ^2.13.0
+        specifier: latest
         version: 2.13.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(typescript@5.9.3)(yjs@13.6.32)
       vue:
         specifier: ^3.4.0
