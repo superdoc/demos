@@ -2,6 +2,7 @@
   {
     "id": "inline-revisions",
     "screenshot": "inline-revisions-poster.jpg",
+    "video": "inline-revisions-preview.mp4",
     "title": "Inline Revisions",
     "description": "Document review with comments and tracked changes with a familiar UX.",
     "liveDemoUri": "/revisions/",
@@ -12,6 +13,7 @@
   {
     "id": "template-builder-api-v2",
     "screenshot": "template-builder-poster.jpg",
+    "video": "template-builder-preview.mp4",
     "title": "Template Builder",
     "description": "Prepare and fill templates with the Document API",
     "liveDemoUri": "/builder/",
@@ -22,6 +24,7 @@
   {
     "id": "docrag",
     "screenshot": "docrag-poster.jpg",
+    "video": "docrag-preview.mp4",
     "title": "DocRAG",
     "description": "Document Q&A with citations",
     "liveDemoUri": "/docrag/",

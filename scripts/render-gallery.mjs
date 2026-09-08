@@ -62,10 +62,13 @@ export async function renderGallery({ mode, output }) {
     const liveUri = mode === "local" && demo.localLiveDemoUri
       ? demo.localLiveDemoUri
       : demo.liveDemoUri;
+    const video = demo.video
+      ? `<video class="card-video" muted loop playsinline preload="metadata"><source src="/${escapeHtml(demo.video)}" type="video/mp4"></video>`
+      : "";
     return `      <article class="demo-slide${index === 0 ? " active" : ""}">
         <div class="demo-card">
           <a class="card-main-link" href="${escapeHtml(liveUri)}" aria-label="Open ${escapeHtml(demo.title)} demo"></a>
-          <img class="card-poster" src="/${escapeHtml(demo.screenshot)}" alt="${escapeHtml(demo.title)} demo preview">
+          <div class="card-media"><img class="card-poster" src="/${escapeHtml(demo.screenshot)}" alt="${escapeHtml(demo.title)} demo preview">${video}</div>
           <div class="card-body"><h2>${escapeHtml(demo.title)}</h2><p>${escapeHtml(demo.description)}</p><div class="card-actions"><a href="${escapeHtml(liveUri)}">Live demo</a><button class="copy-link" type="button">Copy</button><span>|</span><a href="${escapeHtml(demo.sourceUri)}" target="_blank" rel="noopener noreferrer">Source</a><button class="copy-link" type="button">Copy</button></div></div>
         </div>
       </article>`;

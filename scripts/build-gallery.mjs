@@ -29,10 +29,12 @@ await cp(
   path.join(output, "superdoc-logo.png"),
 );
 for (const demo of manifest) {
-  await cp(
-    path.join(root, "dist-landing", demo.screenshot),
-    path.join(output, demo.screenshot),
-  );
+  for (const asset of [demo.screenshot, demo.video].filter(Boolean)) {
+    await cp(
+      path.join(root, "dist-landing", asset),
+      path.join(output, asset),
+    );
+  }
 }
 
 for (const demo of demos) {
