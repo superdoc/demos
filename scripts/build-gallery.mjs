@@ -38,10 +38,6 @@ await cp(
   path.join(root, "dist-landing", "inline-revisions-preview.mp4"),
   path.join(output, "inline-revisions-preview.mp4"),
 );
-await cp(
-  path.join(root, "dist-landing", "butterfly-cursor.svg"),
-  path.join(output, "butterfly-cursor.svg"),
-);
 
 for (const demo of demos) {
   await cp(

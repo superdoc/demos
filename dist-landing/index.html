@@ -18,16 +18,15 @@
       font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-synthesis: none;
       -webkit-font-smoothing: antialiased;
-      cursor: url("/butterfly-cursor.svg") 4 3, auto;
       background:
         radial-gradient(circle at 9% 88%, rgba(202, 218, 255, .72) 0, rgba(202, 218, 255, 0) 34%),
         radial-gradient(circle at 88% 18%, rgba(249, 214, 241, .68) 0, rgba(249, 214, 241, 0) 38%),
         linear-gradient(135deg, #fffdf4 0%, #f9faff 48%, #fff8fd 100%);
     }
-    .container { width: min(1120px, 100%); text-align: center; transform: translateY(-32px); }
+    .container { width: min(1200px, 100%); text-align: center; transform: translateY(-48px); }
     .logo-stage {
       position: relative;
-      width: clamp(92px, 11vw, 132px);
+      width: clamp(76px, 9vw, 108px);
       margin: 0 auto 28px;
       isolation: isolate;
     }
@@ -55,12 +54,11 @@
       letter-spacing: -.02em;
     }
     .brand-link { color: #4f46e5; font-weight: 650; text-decoration: none; }
-    a { cursor: url("/butterfly-cursor.svg") 4 3, pointer; }
-    .demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 350px)); justify-content: center; gap: 18px; }
+    .demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 440px)); justify-content: center; gap: 22px; }
     .demos > a {
       position: relative;
       display: flex;
-      min-height: 152px;
+      min-height: 230px;
       flex-direction: column;
       align-items: flex-start;
       justify-content: space-between;
@@ -70,7 +68,7 @@
       background: rgba(255, 255, 255, .82);
       box-shadow: 0 18px 45px rgba(73, 91, 135, .10);
       color: #1f3c68;
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 650;
       letter-spacing: -.02em;
       text-align: left;
@@ -99,7 +97,7 @@
       box-shadow: 0 22px 55px rgba(55, 83, 160, .16);
       transform: translateY(-3px);
     }
-    span { display: block; margin-top: 9px; color: #687890; font-size: 14px; font-weight: 450; line-height: 1.45; }
+    span { display: block; margin-top: 7px; color: #687890; font-size: 12px; font-weight: 450; line-height: 1.45; }
     @media (max-width: 760px) {
       body { align-items: flex-start; padding-top: 80px; }
       .container { transform: none; }
