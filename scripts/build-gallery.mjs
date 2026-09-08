@@ -38,6 +38,14 @@ await cp(
   path.join(root, "dist-landing", "inline-revisions-preview.mp4"),
   path.join(output, "inline-revisions-preview.mp4"),
 );
+await cp(
+  path.join(root, "dist-landing", "inline-revisions-poster.jpg"),
+  path.join(output, "inline-revisions-poster.jpg"),
+);
+await cp(
+  path.join(root, "dist-landing", "template-builder-poster.jpg"),
+  path.join(output, "template-builder-poster.jpg"),
+);
 
 for (const demo of demos) {
   await cp(
@@ -51,10 +59,10 @@ const landingSource = await readFile(
   path.join(root, "dist-landing", "index.html"),
   "utf8",
 );
-const localLanding = landingSource.replace(
-  /\s*<article class="demo-card" data-local-exclude>.*?<\/article>/s,
-  "",
-);
+const localLanding = landingSource
+  .replace(/\s*<article class="demo-slide" data-local-exclude>.*?<\/article>/s, "")
+  .replace(/\s*<button class="demo-selector"[^>]*data-local-exclude><\/button>/s, "")
+  .replace(/\s*<div class="background placeholder" data-local-exclude><\/div>/s, "");
 await writeFile(path.join(output, "index.html"), localLanding);
 
 console.log(`Built local gallery in ${path.relative(root, output)}/`);

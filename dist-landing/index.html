@@ -6,125 +6,140 @@
   <link rel="icon" type="image/png" href="/superdoc-logo.png">
   <title>SuperDoc Demos</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
     body {
       min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow-x: hidden;
-      padding: 48px 24px;
-      color: #172b4d;
+      overflow: hidden;
+      color: #fff;
+      background: #15233c;
       font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-synthesis: none;
       -webkit-font-smoothing: antialiased;
+    }
+    .backgrounds, .background, .background::after { position: fixed; inset: 0; }
+    .backgrounds { z-index: 0; }
+    .background { opacity: 0; overflow: hidden; transition: opacity .55s ease; pointer-events: none; }
+    .background.active { opacity: 1; }
+    .background video { width: 100%; height: 100%; object-fit: cover; transform: scale(1.02); filter: saturate(.82) contrast(.92); }
+    .background.placeholder { background: radial-gradient(circle at 65% 25%, #6b7ee8, transparent 42%), linear-gradient(135deg, #172b50, #533b7b); }
+    .background::after {
+      content: "";
       background:
-        radial-gradient(circle at 9% 88%, rgba(202, 218, 255, .72) 0, rgba(202, 218, 255, 0) 34%),
-        radial-gradient(circle at 88% 18%, rgba(249, 214, 241, .68) 0, rgba(249, 214, 241, 0) 38%),
-        linear-gradient(135deg, #fffdf4 0%, #f9faff 48%, #fff8fd 100%);
+        linear-gradient(180deg, rgba(6, 14, 31, .26) 0%, rgba(7, 15, 31, .38) 46%, rgba(5, 12, 26, .92) 100%),
+        linear-gradient(90deg, rgba(5, 12, 28, .36), transparent 38%, rgba(5, 12, 28, .18));
     }
-    .container { width: min(1200px, 100%); text-align: center; transform: translateY(-48px); }
-    .logo-stage {
-      position: relative;
-      width: clamp(76px, 9vw, 108px);
-      margin: 0 auto 28px;
-      isolation: isolate;
-    }
-    .logo {
-      display: block;
-      position: relative;
-      z-index: 1;
-      width: 100%;
-      height: auto;
-      filter: drop-shadow(0 18px 24px rgba(41, 92, 173, .18));
-    }
-    .logo-home-link { display: block; }
-    h1 {
-      margin-bottom: 14px;
-      color: #1d5cff;
-      font-size: 64px;
-      font-weight: 650;
-      letter-spacing: -.055em;
-      line-height: .95;
-    }
-    p {
-      margin-bottom: 48px;
-      color: #53627a;
-      font-size: clamp(18px, 2.2vw, 26px);
-      font-weight: 450;
-      letter-spacing: -.02em;
-    }
-    .brand-link { color: #4f46e5; font-weight: 650; text-decoration: none; }
-    .demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 440px)); justify-content: center; gap: 22px; }
-    .demo-card {
-      position: relative;
-      min-height: 360px;
-      border: 1px solid rgba(205, 215, 232, .82);
-      border-radius: 18px;
-      background: #fff;
-      box-shadow: 0 18px 45px rgba(73, 91, 135, .10);
-      overflow: hidden;
-      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
-    }
-    .demo-card:hover {
-      border-color: rgba(29, 92, 255, .55);
-      box-shadow: 0 22px 55px rgba(55, 83, 160, .16);
-      transform: translateY(-3px);
-    }
+    .showcase { position: relative; z-index: 1; display: grid; min-height: 100vh; place-items: center; padding: 120px 32px 72px; }
+    .site-header { position: absolute; top: 28px; left: 50%; display: flex; align-items: center; gap: 14px; color: #fff; text-decoration: none; transform: translateX(-50%); }
+    .site-header img { display: block; width: 96px; height: auto; filter: drop-shadow(0 8px 15px rgba(0, 0, 0, .2)); }
+    .site-header h1 { margin: 0; font-size: 60px; font-weight: 680; letter-spacing: -.04em; white-space: nowrap; text-shadow: 0 2px 14px rgba(0, 0, 0, .3); }
+    .demo-stage { position: relative; width: min(760px, 72vw); }
+    .demo-slide { display: none; }
+    .demo-slide.active { display: block; animation: reveal .42s ease both; }
+    @keyframes reveal { from { opacity: 0; transform: translateY(10px) scale(.985); } }
+    .demo-card { position: relative; overflow: hidden; border: 1px solid rgba(255, 255, 255, .72); border-radius: 20px; background: rgba(255, 255, 255, .94); box-shadow: 0 30px 80px rgba(0, 0, 0, .34); }
     .card-main-link { position: absolute; z-index: 2; inset: 0; }
-    .card-media { position: relative; z-index: 1; height: 220px; overflow: hidden; background: linear-gradient(135deg, #dce8ff, #f3dcf6); box-shadow: 0 12px 28px rgba(40, 65, 115, .18); }
-    .card-video { width: 100%; height: 100%; object-fit: cover; }
-    .card-placeholder { display: grid; height: 100%; place-items: center; color: #1d5cff; font-size: 26px; font-weight: 700; }
-    .card-body { position: relative; min-height: 140px; padding: 20px 22px 18px; color: #1f3c68; text-align: left; }
-    .card-body h2 { margin: 0 0 5px; font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
-    .card-body p { margin: 0; color: #687890; font-size: 12px; font-weight: 450; letter-spacing: 0; line-height: 1.45; }
-    .card-body .card-version { margin-top: 7px; color: #8a96a9; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; font-weight: 600; }
-    .card-actions { position: absolute; z-index: 3; bottom: 18px; left: 22px; display: flex; align-items: center; gap: 8px; color: #a1aabc; font-size: 13px; font-weight: 650; }
-    .card-actions a { color: #1d5cff; text-decoration: none; }
+    .card-poster { display: block; width: 100%; aspect-ratio: 2.08 / 1; object-fit: cover; border-bottom: 1px solid #dce2eb; }
+    .card-placeholder { display: grid; width: 100%; aspect-ratio: 2.08 / 1; place-items: center; color: #1d5cff; background: linear-gradient(135deg, #dce8ff, #f3dcf6); font-size: 38px; font-weight: 720; }
+    .card-body { position: relative; min-height: 142px; padding: 22px 26px 24px; color: #f8fbff; background: #101b2e; text-align: left; }
+    .card-body h2 { margin: 0 0 6px; font-size: 19px; font-weight: 720; letter-spacing: -.025em; }
+    .card-body p { margin: 0; color: #b9c4d5; font-size: 13px; line-height: 1.45; }
+    .card-body .card-version { margin-top: 8px; color: #7f91ad; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; font-weight: 600; }
+    .card-actions { position: absolute; z-index: 3; right: 26px; bottom: 24px; display: flex; align-items: center; gap: 8px; color: #a1aabc; font-size: 13px; font-weight: 680; }
+    .card-actions a { color: #78a7ff; text-decoration: none; }
     .card-actions a:hover { text-decoration: underline; }
-    @media (max-width: 760px) {
-      body { align-items: flex-start; padding-top: 80px; }
-      .container { transform: none; }
-      .demos { grid-template-columns: 1fr; }
-      .demo-card { min-height: 340px; }
+    .selector { position: absolute; top: 50%; right: calc(100% + 34px); display: grid; gap: 14px; transform: translateY(-50%); }
+    .demo-selector { width: 42px; height: 8px; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .48); box-shadow: 0 1px 8px rgba(0, 0, 0, .16); cursor: pointer; transition: width .2s ease, background .2s ease; }
+    .demo-selector:hover { background: rgba(255, 255, 255, .76); }
+    .demo-selector.active { width: 54px; background: #fff; }
+    .backdrop-label { position: absolute; right: 0; bottom: -48px; margin: 0; color: rgba(255, 255, 255, .8); font-size: 12px; font-weight: 550; letter-spacing: .02em; }
+    @media (max-width: 820px) {
+      body { overflow-y: auto; }
+      .showcase { padding: 100px 20px 62px; }
+      .site-header { top: 22px; }
+      .site-header h1 { font-size: 50px; }
+      .site-header img { width: 80px; }
+      .demo-stage { width: min(100%, 620px); }
+      .selector { position: static; display: flex; justify-content: center; margin-bottom: 18px; transform: none; }
+      .card-body { min-height: 164px; padding: 20px; }
+      .card-actions { right: auto; bottom: 20px; left: 20px; }
+      .backdrop-label { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .background, .demo-slide { transition: none; animation: none; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo-stage">
-      <a class="logo-home-link" href="https://superdoc.dev" aria-label="Visit SuperDoc">
-        <img class="logo" src="/superdoc-logo.png" alt="SuperDoc" width="782" height="867">
-      </a>
-    </div>
-    <h1>SuperDoc Demos</h1>
-    <p>Working demos built with <a class="brand-link" href="https://superdoc.dev">SuperDoc</a></p>
-    <div class="demos">
-      <article class="demo-card" data-local-exclude>
-        <a class="card-main-link" href="/docrag/" aria-label="Open DocRAG demo"></a>
-        <div class="card-media"><div class="card-placeholder">DocRAG</div></div>
-        <div class="card-body">
-          <h2>DocRAG</h2><p>Document Q&amp;A with citations</p><p class="card-version">SuperDoc v2.13.0</p>
-          <div class="card-actions"><a href="/docrag/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/rag" target="_blank" rel="noopener noreferrer">Source</a></div>
-        </div>
-      </article>
-      <article class="demo-card">
-        <a class="card-main-link" href="/superdoc-inline-revisions/" aria-label="Open Inline Revisions demo"></a>
-        <div class="card-media"><video class="card-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true"><source src="/inline-revisions-preview.mp4" type="video/mp4"></video></div>
-        <div class="card-body">
-          <h2>Inline Revisions</h2><p>Comments and tracked-change review</p><p class="card-version">SuperDoc v2.13.0</p>
-          <div class="card-actions"><a href="/superdoc-inline-revisions/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/superdoc-inline-revisions" target="_blank" rel="noopener noreferrer">Source</a></div>
-        </div>
-      </article>
-      <article class="demo-card">
-        <a class="card-main-link" href="/template-builder-document-api-v2-demo/" aria-label="Open Template Builder API v2 demo"></a>
-        <div class="card-media"><video class="card-video" autoplay muted loop playsinline preload="metadata" aria-hidden="true"><source src="/template-builder-preview.mp4" type="video/mp4"></video></div>
-        <div class="card-body">
-          <h2>Template Builder API v2</h2><p>Template fields with the Document API</p><p class="card-version">SuperDoc v2.13.0</p>
-          <div class="card-actions"><a href="/template-builder-document-api-v2-demo/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/template-builder-document-api-v2-demo" target="_blank" rel="noopener noreferrer">Source</a></div>
-        </div>
-      </article>
-    </div>
+  <div class="backgrounds" aria-hidden="true">
+    <div class="background active"><video autoplay muted loop playsinline preload="metadata"><source src="/inline-revisions-preview.mp4" type="video/mp4"></video></div>
+    <div class="background"><video autoplay muted loop playsinline preload="metadata"><source src="/template-builder-preview.mp4" type="video/mp4"></video></div>
+    <div class="background placeholder" data-local-exclude></div>
   </div>
+  <main class="showcase">
+    <a class="site-header" href="https://superdoc.dev" aria-label="Visit SuperDoc">
+      <img src="/superdoc-logo.png" alt="">
+      <h1>Demos</h1>
+    </a>
+    <div class="demo-stage">
+      <nav class="selector" aria-label="Choose a demo">
+        <button class="demo-selector active" type="button" aria-label="Show Inline Revisions" aria-pressed="true"></button>
+        <button class="demo-selector" type="button" aria-label="Show Template Builder API v2" aria-pressed="false"></button>
+        <button class="demo-selector" type="button" aria-label="Show DocRAG" aria-pressed="false" data-local-exclude></button>
+      </nav>
+      <article class="demo-slide active">
+        <div class="demo-card">
+          <a class="card-main-link" href="/superdoc-inline-revisions/" aria-label="Open Inline Revisions demo"></a>
+          <img class="card-poster" src="/inline-revisions-poster.jpg" alt="Inline Revisions demo preview">
+          <div class="card-body"><h2>Inline Revisions</h2><p>Comments and tracked-change review</p><p class="card-version">SuperDoc v2.13.0</p><div class="card-actions"><a href="/superdoc-inline-revisions/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/superdoc-inline-revisions" target="_blank" rel="noopener noreferrer">Source</a></div></div>
+        </div>
+      </article>
+      <article class="demo-slide">
+        <div class="demo-card">
+          <a class="card-main-link" href="/template-builder-document-api-v2-demo/" aria-label="Open Template Builder API v2 demo"></a>
+          <img class="card-poster" src="/template-builder-poster.jpg" alt="Template Builder demo preview">
+          <div class="card-body"><h2>Template Builder API v2</h2><p>Template fields with the Document API</p><p class="card-version">SuperDoc v2.13.0</p><div class="card-actions"><a href="/template-builder-document-api-v2-demo/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/template-builder-document-api-v2-demo" target="_blank" rel="noopener noreferrer">Source</a></div></div>
+        </div>
+      </article>
+      <article class="demo-slide" data-local-exclude>
+        <div class="demo-card">
+          <a class="card-main-link" href="/docrag/" aria-label="Open DocRAG demo"></a>
+          <div class="card-placeholder">DocRAG</div>
+          <div class="card-body"><h2>DocRAG</h2><p>Document Q&amp;A with citations</p><p class="card-version">SuperDoc v2.13.0</p><div class="card-actions"><a href="/docrag/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/rag" target="_blank" rel="noopener noreferrer">Source</a></div></div>
+        </div>
+      </article>
+    </div>
+  </main>
+  <script>
+    const selectors = [...document.querySelectorAll('.demo-selector')];
+    const slides = [...document.querySelectorAll('.demo-slide')];
+    const backgrounds = [...document.querySelectorAll('.background')];
+    let activeIndex = 0;
+    let wheelLocked = false;
+    const activate = (index) => {
+      activeIndex = index;
+      selectors.forEach((selector, item) => {
+        selector.classList.toggle('active', item === index);
+        selector.setAttribute('aria-pressed', String(item === index));
+      });
+      slides.forEach((slide, item) => slide.classList.toggle('active', item === index));
+      backgrounds.forEach((background, item) => {
+        background.classList.toggle('active', item === index);
+        const video = background.querySelector('video');
+        if (video) item === index ? video.play().catch(() => {}) : video.pause();
+      });
+    };
+    selectors.forEach((selector, index) => selector.addEventListener('click', () => activate(index)));
+    window.addEventListener('wheel', (event) => {
+      if (wheelLocked || Math.abs(event.deltaY) < Math.abs(event.deltaX) || Math.abs(event.deltaY) < 8) return;
+      const nextIndex = Math.max(0, Math.min(selectors.length - 1, activeIndex + Math.sign(event.deltaY)));
+      if (nextIndex === activeIndex) return;
+      event.preventDefault();
+      wheelLocked = true;
+      activate(nextIndex);
+      window.setTimeout(() => { wheelLocked = false; }, 650);
+    }, { passive: false });
+    activate(0);
+  </script>
 </body>
 </html>
