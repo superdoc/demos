@@ -21,7 +21,6 @@
     .backgrounds { z-index: 0; }
     .background { opacity: 0; overflow: hidden; transition: opacity .55s ease; pointer-events: none; }
     .background.active { opacity: 1; }
-    .background video { width: 100%; height: 100%; object-fit: cover; transform: scale(1.02); filter: saturate(.82) contrast(.92); }
     .background.placeholder { background: radial-gradient(circle at 65% 25%, #6b7ee8, transparent 42%), linear-gradient(135deg, #172b50, #533b7b); }
     .background::after {
       content: "";
@@ -33,6 +32,8 @@
     .site-header { position: absolute; top: 28px; left: 50%; display: flex; align-items: center; gap: 14px; color: #fff; text-decoration: none; transform: translateX(-50%); }
     .site-header img { display: block; width: 96px; height: auto; filter: drop-shadow(0 8px 15px rgba(0, 0, 0, .2)); }
     .site-header h1 { margin: 0; font-size: 60px; font-weight: 680; letter-spacing: -.04em; white-space: nowrap; text-shadow: 0 2px 14px rgba(0, 0, 0, .3); }
+    .site-title { display: grid; gap: 1px; }
+    .site-version { margin: 0; color: rgba(255, 255, 255, .72); font-size: 13px; font-weight: 600; letter-spacing: .02em; }
     .demo-stage { position: relative; width: min(760px, 72vw); }
     .demo-slide { display: none; }
     .demo-slide.active { display: block; animation: reveal .42s ease both; }
@@ -44,10 +45,11 @@
     .card-body { position: relative; min-height: 142px; padding: 22px 26px 24px; color: #f8fbff; background: #101b2e; text-align: left; }
     .card-body h2 { margin: 0 0 6px; font-size: 19px; font-weight: 720; letter-spacing: -.025em; }
     .card-body p { margin: 0; color: #b9c4d5; font-size: 13px; line-height: 1.45; }
-    .card-body .card-version { margin-top: 8px; color: #7f91ad; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; font-weight: 600; }
     .card-actions { position: absolute; z-index: 3; right: 26px; bottom: 24px; display: flex; align-items: center; gap: 8px; color: #a1aabc; font-size: 13px; font-weight: 680; }
     .card-actions a { color: #78a7ff; text-decoration: none; }
     .card-actions a:hover { text-decoration: underline; }
+    .copy-link { width: 44px; padding: 3px 0; border: 1px solid #42516a; border-radius: 999px; color: #c8d5e8; background: #101b2e; font: inherit; font-size: 11px; cursor: pointer; }
+    .copy-link:hover { border-color: #78a7ff; color: #fff; }
     .selector { position: absolute; top: 50%; right: calc(100% + 34px); display: grid; gap: 14px; transform: translateY(-50%); }
     .demo-selector { width: 42px; height: 8px; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .48); box-shadow: 0 1px 8px rgba(0, 0, 0, .16); cursor: pointer; transition: width .2s ease, background .2s ease; }
     .demo-selector:hover { background: rgba(255, 255, 255, .76); }
@@ -72,42 +74,21 @@
 </head>
 <body>
   <div class="backgrounds" aria-hidden="true">
-    <div class="background active"><video autoplay muted loop playsinline preload="metadata"><source src="/inline-revisions-preview.mp4" type="video/mp4"></video></div>
-    <div class="background"><video autoplay muted loop playsinline preload="metadata"><source src="/template-builder-preview.mp4" type="video/mp4"></video></div>
-    <div class="background placeholder" data-local-exclude></div>
+    <!-- DEMO_BACKGROUNDS:START -->
+    <!-- DEMO_BACKGROUNDS:END -->
   </div>
   <main class="showcase">
     <a class="site-header" href="https://superdoc.dev" aria-label="Visit SuperDoc">
       <img src="/superdoc-logo.png" alt="">
-      <h1>Demos</h1>
+      <div class="site-title"><h1>Demos</h1><p class="site-version">SuperDoc v2.13.0 (latest)</p></div>
     </a>
     <div class="demo-stage">
       <nav class="selector" aria-label="Choose a demo">
-        <button class="demo-selector active" type="button" aria-label="Show Inline Revisions" aria-pressed="true"></button>
-        <button class="demo-selector" type="button" aria-label="Show Template Builder API v2" aria-pressed="false"></button>
-        <button class="demo-selector" type="button" aria-label="Show DocRAG" aria-pressed="false" data-local-exclude></button>
+        <!-- DEMO_SELECTORS:START -->
+        <!-- DEMO_SELECTORS:END -->
       </nav>
-      <article class="demo-slide active">
-        <div class="demo-card">
-          <a class="card-main-link" href="/superdoc-inline-revisions/" aria-label="Open Inline Revisions demo"></a>
-          <img class="card-poster" src="/inline-revisions-poster.jpg" alt="Inline Revisions demo preview">
-          <div class="card-body"><h2>Inline Revisions</h2><p>Comments and tracked-change review</p><p class="card-version">SuperDoc v2.13.0</p><div class="card-actions"><a href="/superdoc-inline-revisions/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/superdoc-inline-revisions" target="_blank" rel="noopener noreferrer">Source</a></div></div>
-        </div>
-      </article>
-      <article class="demo-slide">
-        <div class="demo-card">
-          <a class="card-main-link" href="/template-builder-document-api-v2-demo/" aria-label="Open Template Builder API v2 demo"></a>
-          <img class="card-poster" src="/template-builder-poster.jpg" alt="Template Builder demo preview">
-          <div class="card-body"><h2>Template Builder API v2</h2><p>Template fields with the Document API</p><p class="card-version">SuperDoc v2.13.0</p><div class="card-actions"><a href="/template-builder-document-api-v2-demo/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/template-builder-document-api-v2-demo" target="_blank" rel="noopener noreferrer">Source</a></div></div>
-        </div>
-      </article>
-      <article class="demo-slide" data-local-exclude>
-        <div class="demo-card">
-          <a class="card-main-link" href="/docrag/" aria-label="Open DocRAG demo"></a>
-          <div class="card-placeholder">DocRAG</div>
-          <div class="card-body"><h2>DocRAG</h2><p>Document Q&amp;A with citations</p><p class="card-version">SuperDoc v2.13.0</p><div class="card-actions"><a href="/docrag/">Live demo</a><span>|</span><a href="https://github.com/superdoc/demos/tree/main/rag" target="_blank" rel="noopener noreferrer">Source</a></div></div>
-        </div>
-      </article>
+      <!-- DEMO_CARDS:START -->
+      <!-- DEMO_CARDS:END -->
     </div>
   </main>
   <script>
@@ -123,13 +104,15 @@
         selector.setAttribute('aria-pressed', String(item === index));
       });
       slides.forEach((slide, item) => slide.classList.toggle('active', item === index));
-      backgrounds.forEach((background, item) => {
-        background.classList.toggle('active', item === index);
-        const video = background.querySelector('video');
-        if (video) item === index ? video.play().catch(() => {}) : video.pause();
-      });
+      backgrounds.forEach((background, item) => background.classList.toggle('active', item === index));
     };
     selectors.forEach((selector, index) => selector.addEventListener('click', () => activate(index)));
+    document.querySelectorAll('.copy-link').forEach((button) => button.addEventListener('click', () => {
+      navigator.clipboard.writeText(button.previousElementSibling.href);
+      window.clearTimeout(button.copyResetTimer);
+      button.textContent = '✓';
+      button.copyResetTimer = window.setTimeout(() => { button.textContent = 'Copy'; }, 1000);
+    }));
     window.addEventListener('wheel', (event) => {
       if (wheelLocked || Math.abs(event.deltaY) < Math.abs(event.deltaX) || Math.abs(event.deltaY) < 8) return;
       const nextIndex = Math.max(0, Math.min(selectors.length - 1, activeIndex + Math.sign(event.deltaY)));

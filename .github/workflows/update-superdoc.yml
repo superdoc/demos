@@ -79,6 +79,7 @@ jobs:
           cp -r superdoc-inline-revisions/dist/* dist/superdoc-inline-revisions/
           cp -r template-builder-document-api-v2-demo/dist/* dist/template-builder-document-api-v2-demo/
           cp -r dist-landing/* dist/
+          node scripts/render-gallery.mjs --mode production --output dist/index.html
       - name: Upload release candidate
         uses: actions/upload-artifact@v4
         with:
