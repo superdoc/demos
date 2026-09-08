@@ -1,2 +1,6 @@
 dist/
+worker-dist/
 node_modules/
+/dist-gallery/
+**/test-results/
+**/playwright-report/

@@ -1,48 +1,34 @@
-name: Deploy Demos
+name: Deploy Demos V2
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      environment:
+        description: Cloudflare environment to deploy to
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
+      dry_run:
+        description: Build and validate without deploying to Cloudflare
+        type: boolean
+        required: true
+        default: true
 
-env:
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+concurrency:
+  group: superdoc-demos-${{ inputs.environment }}
+  cancel-in-progress: false
 
 jobs:
-  check:
-    name: Lint & Typecheck
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rag
-    steps:
-      - uses: actions/checkout@v6
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bunx biome check .
-      - run: bunx tsc --noEmit
+  validate:
+    name: Validate release
+    uses: ./.github/workflows/ci.yml
 
-  deploy-api:
-    name: Deploy API Worker
-    needs: check
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rag
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bunx wrangler deploy
-        working-directory: rag/apps/api
-
-  deploy-web:
-    name: Deploy All Demos
-    needs: check
+  release:
+    name: Build release bundle
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -50,40 +36,88 @@ jobs:
         with:
           node-version: 22
       - uses: oven-sh/setup-bun@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
 
-      # Build DocRAG
-      - run: bun install --frozen-lockfile
+      - name: Build DocRAG
         working-directory: rag
-      - run: bunx vite build
-        working-directory: rag/apps/web
         env:
           VITE_API_URL: ${{ vars.VITE_API_URL }}
           BASE_PATH: /docrag/
+        run: |
+          bun install --frozen-lockfile
+          bun run build:web
 
-      # Build eSign
-      - run: bun install --frozen-lockfile
-        working-directory: esign
-      - run: bunx vite build
-        working-directory: esign
-        env:
-          BASE_PATH: /esign/
+      - name: Build Inline Revisions
+        working-directory: superdoc-inline-revisions
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
 
-      # Build Template Builder
-      - run: bun install --frozen-lockfile
-        working-directory: template-builder
-      - run: bunx vite build
-        working-directory: template-builder
-        env:
-          BASE_PATH: /template-builder/
+      - name: Build Template Builder Document API v2
+        working-directory: template-builder-document-api-v2-demo
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
 
-      # Assemble dist
-      - run: |
-          mkdir -p dist/docrag dist/esign dist/template-builder
+      - name: Compile DocRAG Worker without deploying
+        working-directory: rag/apps/api
+        run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
+
+      - name: Assemble release bundle
+        run: |
+          mkdir -p dist/docrag dist/superdoc-inline-revisions dist/template-builder-document-api-v2-demo
           cp -r rag/apps/web/dist/* dist/docrag/
-          cp -r esign/dist/* dist/esign/
-          cp -r template-builder/dist/* dist/template-builder/
-          cp dist-landing/index.html dist/
-          cp -r functions dist/functions
+          cp -r superdoc-inline-revisions/dist/* dist/superdoc-inline-revisions/
+          cp -r template-builder-document-api-v2-demo/dist/* dist/template-builder-document-api-v2-demo/
+          cp -r dist-landing/* dist/
 
-      # Deploy
-      - run: bunx wrangler pages deploy dist --project-name=superdoc-demos --commit-dirty=true
+      - name: Upload tested release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: superdoc-demos-${{ github.sha }}
+          path: |
+            dist/
+            worker-dist/
+          retention-days: 7
+
+      - name: Deploy DocRAG API Worker
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        working-directory: rag/apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler deploy
+
+      - name: Deploy gallery and demos to production
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler pages deploy dist --project-name=superdoc-demos --commit-dirty=true
+
+      - name: Deploy gallery and demos to staging
+        id: staging
+        if: ${{ inputs.dry_run == false && inputs.environment == 'staging' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          branch="staging-${GITHUB_SHA::7}"
+          bunx wrangler pages deploy dist \
+            --project-name=superdoc-demos \
+            --branch="$branch" \
+            --commit-hash="$GITHUB_SHA" \
+            --commit-dirty=true | tee staging-deploy.log
+          url=$(grep -Eo 'https://[^[:space:]]+\.pages\.dev' staging-deploy.log | head -1)
+          test -n "$url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Publish staging URL
+        if: ${{ steps.staging.outputs.url != '' }}
+        env:
+          STAGING_URL: ${{ steps.staging.outputs.url }}
+        run: |
+          echo "## Staging deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "[$STAGING_URL]($STAGING_URL)" >> "$GITHUB_STEP_SUMMARY"
