@@ -73,13 +73,7 @@ jobs:
         working-directory: rag/apps/api
         run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
       - name: Assemble release candidate
-        run: |
-          mkdir -p dist/docrag dist/superdoc-inline-revisions dist/template-builder-document-api-v2-demo
-          cp -r rag/apps/web/dist/* dist/docrag/
-          cp -r superdoc-inline-revisions/dist/* dist/superdoc-inline-revisions/
-          cp -r template-builder-document-api-v2-demo/dist/* dist/template-builder-document-api-v2-demo/
-          cp -r dist-landing/* dist/
-          node scripts/render-gallery.mjs --mode production --output dist/index.html
+        run: node scripts/assemble-release.mjs
       - name: Upload release candidate
         uses: actions/upload-artifact@v4
         with:
