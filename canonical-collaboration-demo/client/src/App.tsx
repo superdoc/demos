@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { deleteDocument, documentDownloadUrl, getRoom, touchRoom, uploadDocument } from './api';
+import { createBlankDocument, deleteDocument, documentDownloadUrl, getRoom, touchRoom, uploadDocument } from './api';
 import { ChatPanel } from './components/ChatPanel';
 import { DocumentEditor } from './components/DocumentEditor';
 import { Topbar, type DocumentMode } from './components/Topbar';
@@ -14,7 +14,7 @@ if (!params.has('room')) {
 }
 
 export default function App() {
-  const [roomId, setRoomId] = useState(initialRoomId);
+  const roomId = initialRoomId;
   const [room, setRoom] = useState<Room>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -57,18 +57,22 @@ export default function App() {
     }
   }
 
+  async function createBlank() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      setRoom(await createBlankDocument(roomId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function remove() {
     if (!room) return;
     await deleteDocument(room.room_id);
     setRoom(undefined);
-  }
-
-  function updateRoomId(value: string) {
-    const sanitizedRoomId = value.replace(/[^A-Za-z0-9_-]/g, '');
-    setRoomId(sanitizedRoomId);
-    const url = new URL(window.location.href);
-    url.searchParams.set('room', sanitizedRoomId);
-    window.history.replaceState(null, '', url);
   }
 
   return (
@@ -78,7 +82,7 @@ export default function App() {
         room={room}
         busy={busy}
         mode={mode}
-        onRoomIdChange={updateRoomId}
+        onNewDocument={() => void createBlank()}
         onUpload={(file) => void upload(file)}
         onDownload={() => {
           if (room) window.location.assign(documentDownloadUrl(room.room_id));
@@ -90,7 +94,12 @@ export default function App() {
       {error && <p className="banner error">{error}</p>}
       <section className="workspace">
         <div className="document-pane">
-          {room ? (
+          {busy ? (
+            <div className="upload-loading" role="status" aria-live="polite">
+              <span className="spinner" aria-hidden="true" />
+              <span>Preparing document…</span>
+            </div>
+          ) : room ? (
             <DocumentEditor
               room={room}
               mode={mode}

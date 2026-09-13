@@ -8,7 +8,7 @@ type TopbarProps = {
   room?: Room;
   busy: boolean;
   mode: DocumentMode;
-  onRoomIdChange: (value: string) => void;
+  onNewDocument: () => void;
   onUpload: (file: File) => void;
   onDownload: () => void;
   onDelete: () => void;
@@ -20,7 +20,7 @@ export function Topbar({
   room,
   busy,
   mode,
-  onRoomIdChange,
+  onNewDocument,
   onUpload,
   onDownload,
   onDelete,
@@ -43,6 +43,7 @@ export function Topbar({
   function chooseFileAction(event: ChangeEvent<HTMLSelectElement>) {
     const action = event.target.value;
     event.target.value = '';
+    if (action === 'new') onNewDocument();
     if (action === 'upload') fileInput.current?.click();
     if (action === 'save-as') onDownload();
     if (action === 'delete') onDelete();
@@ -51,11 +52,6 @@ export function Topbar({
   return (
     <header className="topbar">
       <div className="ribbon-tabs-row">
-        <label className="room-field">
-          Room
-          <input value={roomId} onChange={(event) => onRoomIdChange(event.target.value)} />
-        </label>
-
         <input
           ref={fileInput}
           className="visually-hidden"
@@ -73,6 +69,7 @@ export function Topbar({
           onChange={chooseFileAction}
         >
           <option value="" disabled>File</option>
+          <option value="new">New Document</option>
           <option value="upload">{room ? 'Replace document…' : 'Upload document…'}</option>
           <option value="save-as" disabled={!room}>Save As…</option>
           <option value="delete" disabled={!room}>Delete document</option>
@@ -103,4 +100,3 @@ export function Topbar({
     </header>
   );
 }
-

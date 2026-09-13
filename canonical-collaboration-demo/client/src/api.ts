@@ -22,6 +22,10 @@ export async function uploadDocument(roomId: string, file: File): Promise<Room> 
   );
 }
 
+export async function createBlankDocument(roomId: string): Promise<Room> {
+  return checked(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/document`, { method: 'POST' }));
+}
+
 export async function deleteDocument(roomId: string): Promise<void> {
   return checked(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/document`, { method: 'DELETE' }));
 }
@@ -58,6 +62,14 @@ export async function createJob(roomId: string, prompt: string): Promise<Job> {
 
 export async function getJob(roomId: string, jobId: string): Promise<Job> {
   return checked(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/jobs/${encodeURIComponent(jobId)}`));
+}
+
+export async function cancelJob(roomId: string, jobId: string): Promise<Job> {
+  return checked(
+    fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/jobs/${encodeURIComponent(jobId)}`, {
+      method: 'DELETE',
+    }),
+  );
 }
 
 export async function getChatHistory(roomId: string): Promise<ChatMessage[]> {

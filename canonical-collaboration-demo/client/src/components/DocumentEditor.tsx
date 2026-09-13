@@ -35,7 +35,7 @@ export function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) 
       <SuperDocEditor
         key={room.document_id}
         documentMode={mode}
-        ui={{ toolbar: { container: '#superdoc-toolbar' } }}
+        ui={{ toolbar: { container: '#superdoc-toolbar' }, loading: false }}
         documents={[
           {
             id: room.document_id,

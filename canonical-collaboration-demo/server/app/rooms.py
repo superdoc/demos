@@ -1,10 +1,12 @@
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 import re
 from typing import Any
 from uuid import uuid4
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException, UploadFile
 from superdoc import AsyncSuperDocClient
@@ -93,6 +95,39 @@ class RoomStore:
         if not content or len(content) > 25 * 1024 * 1024:
             raise HTTPException(400, "The document must be between 1 byte and 25 MB.")
 
+        return await self._replace_content(room_id, upload.filename, content)
+
+    async def create_blank(self, room_id: str) -> Room:
+        self.validate_id(room_id)
+        output = BytesIO()
+        with ZipFile(output, "w", ZIP_DEFLATED) as archive:
+            archive.writestr(
+                "[Content_Types].xml",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+                '<Default Extension="xml" ContentType="application/xml"/>'
+                '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+                '</Types>',
+            )
+            archive.writestr(
+                "_rels/.rels",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+                '</Relationships>',
+            )
+            archive.writestr(
+                "word/document.xml",
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                '<w:body><w:p/><w:sectPr><w:pgSz w:w="12240" w:h="15840"/>'
+                '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr></w:body>'
+                '</w:document>',
+            )
+        return await self._replace_content(room_id, "Untitled document.docx", output.getvalue())
+
+    async def _replace_content(self, room_id: str, filename: str, content: bytes) -> Room:
         async with self._lock:
             previous = self._rooms.get(room_id)
             generation = (previous.generation + 1) if previous else 1
@@ -104,7 +139,7 @@ class RoomStore:
             except Exception:
                 path.unlink(missing_ok=True)
                 raise
-            room = Room(room_id, document_id, generation, upload.filename, path, now(), *sessions)
+            room = Room(room_id, document_id, generation, filename, path, now(), *sessions)
             self._rooms[room_id] = room
             if previous:
                 await self._close(previous)

@@ -17,6 +17,7 @@ class JobService:
         self._agent = agent
         self._queue: asyncio.Queue[str] = asyncio.Queue()
         self._records: dict[str, JobRecord] = {}
+        self._running: dict[str, asyncio.Task[str]] = {}
         self._worker_task: asyncio.Task | None = None
 
     def start(self) -> None:
@@ -52,12 +53,24 @@ class JobService:
             raise HTTPException(404, "Job not found.")
         return record
 
+    async def cancel(self, room_id: str, job_id: str) -> JobRecord:
+        record = self.get(room_id, job_id)
+        if record.status in (JobStatus.completed, JobStatus.failed, JobStatus.cancelled):
+            return record
+        record.status = JobStatus.cancelled
+        record.updated_at = now()
+        task = self._running.get(job_id)
+        if task:
+            task.cancel()
+        print(json.dumps({"event": "job.cancelled", "jobId": job_id, "roomId": room_id}), flush=True)
+        return record
+
     def expire(self) -> list[str]:
         cutoff = now() - timedelta(seconds=settings.completed_job_ttl_seconds)
         expired = [
             job_id
             for job_id, record in self._records.items()
-            if record.status in (JobStatus.completed, JobStatus.failed) and record.updated_at < cutoff
+            if record.status in (JobStatus.completed, JobStatus.failed, JobStatus.cancelled) and record.updated_at < cutoff
         ]
         for job_id in expired:
             del self._records[job_id]
@@ -70,23 +83,37 @@ class JobService:
             if not record:
                 self._queue.task_done()
                 continue
+            if record.status == JobStatus.cancelled:
+                self._queue.task_done()
+                continue
             room = None
             try:
                 room = await self._rooms.require(record.room_id)
                 room.active_jobs += 1
                 record.status = JobStatus.running
                 record.updated_at = now()
-                record.answer = await self._agent.run(room.editor_document, record.prompt, room.conversation)
+                agent_task = asyncio.create_task(
+                    self._agent.run(room.editor_document, record.prompt, room.conversation)
+                )
+                self._running[job_id] = agent_task
+                record.answer = await agent_task
+                if record.status == JobStatus.cancelled:
+                    continue
                 record.status = JobStatus.applying_edit
                 record.updated_at = now()
                 await asyncio.sleep(0)
                 room.last_activity_at = now()
                 record.status = JobStatus.completed
+            except asyncio.CancelledError:
+                if self._worker_task and self._worker_task.cancelling():
+                    raise
+                record.status = JobStatus.cancelled
             except Exception as error:
                 record.status = JobStatus.failed
                 record.error = str(error)
             finally:
                 record.updated_at = now()
+                self._running.pop(job_id, None)
                 if room:
                     room.active_jobs = max(0, room.active_jobs - 1)
                 print(

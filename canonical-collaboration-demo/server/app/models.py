@@ -11,6 +11,7 @@ class JobStatus(str, Enum):
     applying_edit = "applying_edit"
     completed = "completed"
     failed = "failed"
+    cancelled = "cancelled"
 
 
 class CreateJobRequest(BaseModel):

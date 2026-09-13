@@ -35,6 +35,10 @@ def create_router(rooms: RoomStore, jobs: JobService, agent: DocumentAgent) -> A
     async def replace_document(room_id: str, file: UploadFile = File(...)) -> RoomResponse:
         return rooms.response(await rooms.replace(room_id, file))
 
+    @router.post("/rooms/{room_id}/document", response_model=RoomResponse, status_code=status.HTTP_201_CREATED)
+    async def create_blank_document(room_id: str) -> RoomResponse:
+        return rooms.response(await rooms.create_blank(room_id))
+
     @router.get("/rooms/{room_id}/document/info", response_model=RoomResponse)
     async def document_info(room_id: str) -> RoomResponse:
         return rooms.response(await rooms.require(room_id))
@@ -79,5 +83,9 @@ def create_router(rooms: RoomStore, jobs: JobService, agent: DocumentAgent) -> A
     @router.get("/rooms/{room_id}/jobs/{job_id}", response_model=JobRecord)
     async def get_job(room_id: str, job_id: str) -> JobRecord:
         return jobs.get(room_id, job_id)
+
+    @router.delete("/rooms/{room_id}/jobs/{job_id}", response_model=JobRecord)
+    async def cancel_job(room_id: str, job_id: str) -> JobRecord:
+        return await jobs.cancel(room_id, job_id)
 
     return router
