@@ -1,0 +1,69 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #19211c;
+  background: #eceee9;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 1000px; }
+button, input, textarea { font: inherit; }
+
+.topbar {
+  z-index: 12;
+  display: grid;
+  grid-template-rows: 50px 72px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #cfd5dd;
+  box-shadow: 0 1px 5px #11182712;
+}
+.ribbon-tabs-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e1e5ea;
+}
+h2, p { margin-top: 0; }
+.eyebrow { margin-bottom: 4px; color: #577062; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.room-field { display: flex; align-items: center; gap: 7px; color: #5b6470; font-size: 11px; font-weight: 700; }
+.room-field input { width: 150px; height: 34px; padding: 5px 10px; border: 1px solid #cfd4db; border-radius: 7px; }
+.file-menu { min-width: 112px; height: 34px; padding: 5px 28px 5px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 7px; font-size: 11px; font-weight: 750; }
+.file-title { position: absolute; left: 50%; display: flex; min-width: 260px; transform: translateX(-50%); text-align: center; }
+.file-name { max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
+.mode-select { display: flex; align-items: center; margin-left: auto; }
+.mode-select select { min-width: 122px; padding: 8px 30px 8px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 8px; outline: none; font-size: 12px; font-weight: 700; }
+.mode-select select:focus, .file-menu:focus { border-color: #3b82f6; outline: 0; box-shadow: 0 0 0 3px #3b82f61c; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.ribbon-controls-row { min-width: 0; display: flex; align-items: center; justify-content: center; padding: 3px 8px; overflow-x: auto; overflow-y: hidden; }
+.default-toolbar { width: auto; background: #f8f8f8; }
+
+button {
+  border: 0; border-radius: 7px; padding: 10px 14px; background: #175c3b; color: #fff; cursor: pointer; font-weight: 650;
+}
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.workspace { height: calc(100vh - 122px); display: grid; grid-template-columns: minmax(680px, 1fr) 360px; }
+.document-pane { min-width: 0; overflow: auto; }
+.editor-shell { height: 100%; background: #dfe2dd; }
+.editor-state { display: grid; min-height: 240px; place-items: center; color: #647168; }
+.welcome { margin: 72px auto; padding: 48px; max-width: 560px; text-align: center; background: #fff; border-radius: 12px; }
+
+.chat-panel { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: #fff; border-left: 1px solid #d7dbd4; }
+.chat-panel header { padding: 24px; border-bottom: 1px solid #e5e8e4; }
+.chat-panel header h2 { margin-bottom: 8px; }
+.chat-panel header > p:last-child { margin-bottom: 0; color: #647168; font-size: 13px; line-height: 1.45; }
+.chat-history { padding: 16px; overflow-y: auto; }
+.empty { color: #7a857d; font-size: 14px; }
+.message { margin-bottom: 12px; padding: 14px; background: #f3f5f2; border-radius: 9px; }
+.message.assistant { background: #eaf2ed; }
+.message-role { display: block; margin-bottom: 6px; color: #627068; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.message p { margin-bottom: 8px; line-height: 1.45; }
+.message .answer { margin-top: 12px; color: #4f5d54; font-size: 13px; }
+.job-status { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; color: #806414; }
+.job-status.completed { color: #187044; }
+.job-status.failed, .error { color: #a02e2e; }
+.chat-panel form { padding: 16px; border-top: 1px solid #e5e8e4; display: grid; gap: 8px; }
+.chat-panel form label { font-size: 12px; font-weight: 700; }
+.chat-panel textarea { min-height: 96px; resize: vertical; padding: 10px; border: 1px solid #c7cec8; border-radius: 7px; }
+.banner { position: fixed; z-index: 10; left: 50%; transform: translateX(-50%); top: 95px; padding: 10px 16px; background: #fff1f1; border-radius: 7px; box-shadow: 0 5px 20px #0002; }
