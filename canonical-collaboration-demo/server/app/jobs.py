@@ -30,14 +30,13 @@ class JobService:
 
     async def create(self, room_id: str, request: CreateJobRequest) -> JobRecord:
         await self._rooms.require(room_id)
-        job_id = request.job_id or f"job_{uuid4().hex}"
-        if job_id in self._records:
-            raise HTTPException(409, "A job with this ID already exists.")
+        job_id = f"job_{uuid4().hex}"
         timestamp = now()
         record = JobRecord(
             id=job_id,
             room_id=room_id,
             prompt=request.prompt.strip(),
+            isSuggesting=request.isSuggesting,
             status=JobStatus.queued,
             created_at=timestamp,
             updated_at=timestamp,
@@ -93,7 +92,12 @@ class JobService:
                 record.status = JobStatus.running
                 record.updated_at = now()
                 agent_task = asyncio.create_task(
-                    self._agent.run(room.editor_document, record.prompt, room.conversation)
+                    self._agent.run(
+                        room.editor_document,
+                        record.prompt,
+                        room.conversation,
+                        record.isSuggesting,
+                    )
                 )
                 self._running[job_id] = agent_task
                 record.answer = await agent_task

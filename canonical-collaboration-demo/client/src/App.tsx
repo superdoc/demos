@@ -19,6 +19,7 @@ export default function App() {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<DocumentMode>('editing');
+  const [chatWidth, setChatWidth] = useState(360);
 
   useEffect(() => {
     let active = true;
@@ -92,7 +93,7 @@ export default function App() {
       />
 
       {error && <p className="banner error">{error}</p>}
-      <section className="workspace">
+      <section className="workspace" style={{ gridTemplateColumns: `minmax(680px, 1fr) ${chatWidth}px` }}>
         <div className="document-pane">
           {busy ? (
             <div className="upload-loading" role="status" aria-live="polite">
@@ -112,7 +113,12 @@ export default function App() {
             </div>
           )}
         </div>
-        <ChatPanel roomId={roomId} disabled={!room || busy} />
+        <ChatPanel
+          roomId={roomId}
+          disabled={!room || busy}
+          width={chatWidth}
+          onWidthChange={setChatWidth}
+        />
       </section>
     </main>
   );

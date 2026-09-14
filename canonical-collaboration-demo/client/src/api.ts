@@ -50,12 +50,12 @@ export async function touchRoom(room: Room): Promise<void> {
   );
 }
 
-export async function createJob(roomId: string, prompt: string): Promise<Job> {
+export async function createJob(roomId: string, prompt: string, isSuggesting: boolean): Promise<Job> {
   return checked(
     fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/jobs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, isSuggesting }),
     }),
   );
 }

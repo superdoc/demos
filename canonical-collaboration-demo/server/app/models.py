@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobStatus(str, Enum):
@@ -15,14 +15,17 @@ class JobStatus(str, Enum):
 
 
 class CreateJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     prompt: str = Field(min_length=1, max_length=20_000)
-    job_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$")
+    isSuggesting: bool = True
 
 
 class JobRecord(BaseModel):
     id: str
     room_id: str
     prompt: str
+    isSuggesting: bool
     status: JobStatus
     created_at: datetime
     updated_at: datetime

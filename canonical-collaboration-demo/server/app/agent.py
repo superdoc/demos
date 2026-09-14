@@ -15,10 +15,24 @@ class DocumentAgent:
     def __init__(self) -> None:
         self._toolkit = create_agent_toolkit({"provider": "openai", "preset": "core"})
 
-    async def run(self, document: Any, prompt: str, history: list[dict[str, Any]]) -> str:
+    async def run(
+        self,
+        document: Any,
+        prompt: str,
+        history: list[dict[str, Any]],
+        is_suggesting: bool,
+    ) -> str:
         openai = AsyncOpenAI()
+        change_mode = "tracked" if is_suggesting else "direct"
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self._toolkit["system_prompt"]},
+            {
+                "role": "system",
+                "content": (
+                    f'{self._toolkit["system_prompt"]}\n\n'
+                    f"For this request, every document mutation must use changeMode={change_mode}. "
+                    "Choose actions that support this change mode."
+                ),
+            },
             *history,
             {"role": "user", "content": prompt},
         ]
@@ -46,8 +60,11 @@ class DocumentAgent:
             messages.append(choice.model_dump(exclude_none=True))
             for call in choice.tool_calls:
                 started = time.monotonic()
+                arguments: dict[str, Any] = {}
                 try:
                     arguments = json.loads(call.function.arguments or "{}")
+                    if call.function.name == "superdoc_perform_action":
+                        arguments["changeMode"] = change_mode
                     result = await self._toolkit["dispatch_async"](
                         document,
                         call.function.name,
@@ -60,6 +77,8 @@ class DocumentAgent:
                         {
                             "event": "agent.tool",
                             "tool": call.function.name,
+                            "changeMode": change_mode,
+                            "arguments": arguments,
                             "durationMs": round((time.monotonic() - started) * 1000),
                             "result": result,
                         },

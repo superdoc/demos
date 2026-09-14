@@ -35,6 +35,14 @@ export function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) 
       <SuperDocEditor
         key={room.document_id}
         documentMode={mode}
+        modules={{
+          trackChanges: {
+            enabled: true,
+            mode: 'review',
+            visible: true,
+          },
+        }}
+        rulers
         ui={{ toolbar: { container: '#superdoc-toolbar' }, loading: false }}
         documents={[
           {

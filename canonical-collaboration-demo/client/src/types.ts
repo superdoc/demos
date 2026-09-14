@@ -11,7 +11,8 @@ export type Job = {
   id: string;
   room_id: string;
   prompt: string;
-  status: 'queued' | 'running' | 'applying_edit' | 'completed' | 'failed';
+  isSuggesting: boolean;
+  status: 'queued' | 'running' | 'applying_edit' | 'completed' | 'failed' | 'cancelled';
   created_at: string;
   updated_at: string;
   answer?: string;

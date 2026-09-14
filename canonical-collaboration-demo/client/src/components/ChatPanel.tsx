@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import { cancelJob, createJob, getChatHistory, getJob } from '../api';
 import type { ChatMessage, Job } from '../types';
@@ -6,6 +6,8 @@ import type { ChatMessage, Job } from '../types';
 type ChatPanelProps = {
   roomId: string;
   disabled: boolean;
+  width: number;
+  onWidthChange: (width: number) => void;
 };
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -30,13 +32,59 @@ function CopyMessageButton({ content }: { content: string }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled }: ChatPanelProps) {
+function JobStatus({ job }: { job: Job }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (job.status !== 'running') return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [job.status, job.updated_at]);
+
+  const elapsedSeconds = job.status === 'running'
+    ? Math.max(0, Math.floor((now - new Date(job.updated_at).getTime()) / 1_000))
+    : undefined;
+  const elapsedTime = elapsedSeconds === undefined
+    ? undefined
+    : `${Math.floor(elapsedSeconds / 60).toString().padStart(2, '0')}:${(elapsedSeconds % 60).toString().padStart(2, '0')}`;
+
+  return (
+    <span className={`job-status ${job.status}`}>
+      {job.status.replace('_', ' ')}
+      {elapsedTime !== undefined && ` ${elapsedTime}`}
+    </span>
+  );
+}
+
+export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
+  const [isSuggesting, setIsSuggesting] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string>();
   const historyRef = useRef<HTMLDivElement>(null);
+  const resizeStartRef = useRef<{ x: number; width: number } | undefined>(undefined);
   const activeJob = jobs.find((job) => !TERMINAL.has(job.status));
+
+  function startResize(event: PointerEvent<HTMLDivElement>) {
+    resizeStartRef.current = { x: event.clientX, width };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function resize(event: PointerEvent<HTMLDivElement>) {
+    const start = resizeStartRef.current;
+    if (!start) return;
+    const maximum = Math.max(280, Math.min(720, window.innerWidth - 680));
+    onWidthChange(Math.max(280, Math.min(maximum, start.width + start.x - event.clientX)));
+  }
+
+  function stopResize(event: PointerEvent<HTMLDivElement>) {
+    resizeStartRef.current = undefined;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
 
   useLayoutEffect(() => {
     const history = historyRef.current;
@@ -86,7 +134,7 @@ export function ChatPanel({ roomId, disabled }: ChatPanelProps) {
     setError(undefined);
     setPrompt('');
     try {
-      const job = await createJob(roomId, message);
+      const job = await createJob(roomId, message, isSuggesting);
       setJobs((current) => [...current, job]);
       await poll(job);
     } catch (caught) {
@@ -102,16 +150,22 @@ export function ChatPanel({ roomId, disabled }: ChatPanelProps) {
 
   return (
     <aside className="chat-panel" aria-label="Agent chat">
+      <div
+        className="chat-resize-handle"
+        role="separator"
+        aria-label="Resize chat panel"
+        aria-orientation="vertical"
+        onPointerDown={startResize}
+        onPointerMove={resize}
+        onPointerUp={stopResize}
+        onPointerCancel={stopResize}
+      />
       <header>
-        <p className="eyebrow">Replaceable interface</p>
         <h2>Document agent</h2>
-        <p>This component only calls the public jobs API. Replace it with your own agent UI.</p>
+        <p>Ask the agent to edit the current document.</p>
       </header>
 
       <div ref={historyRef} className="chat-history">
-        {messages.length === 0 && jobs.length === 0 && (
-          <p className="empty">Ask the agent to edit the current document.</p>
-        )}
         {messages.map((message, index) => (
           <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
             <CopyMessageButton content={message.content} />
@@ -123,7 +177,7 @@ export function ChatPanel({ roomId, disabled }: ChatPanelProps) {
           <article className="message" key={job.id}>
             <CopyMessageButton content={job.answer ?? job.prompt} />
             <MarkdownMessage content={job.prompt} />
-            <span className={`job-status ${job.status}`}>{job.status.replace('_', ' ')}</span>
+            <JobStatus job={job} />
             {job.answer && <div className="answer"><MarkdownMessage content={job.answer} /></div>}
             {job.error && <p className="error">{job.error}</p>}
           </article>
@@ -131,13 +185,26 @@ export function ChatPanel({ roomId, disabled }: ChatPanelProps) {
       </div>
 
       <form onSubmit={submit}>
-        <label htmlFor="agent-prompt">Prompt</label>
+        <div className="prompt-options">
+          <label htmlFor="agent-prompt">Prompt</label>
+          <select
+            aria-label="Agent edit mode"
+            value={isSuggesting ? 'suggestion' : 'direct'}
+            disabled={disabled || Boolean(activeJob)}
+            onChange={(event) => setIsSuggesting(event.target.value === 'suggestion')}
+          >
+            <option value="suggestion">Reviewing</option>
+            <option value="direct">Editing</option>
+          </select>
+        </div>
         <textarea
           id="agent-prompt"
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           onKeyDown={handlePromptKeyDown}
-          placeholder="Add a short executive summary…"
+          placeholder={isSuggesting
+            ? 'Enter a prompt for the agent to apply as a suggestion.'
+            : 'Enter a prompt for the agent to apply as a direct edit.'}
           disabled={disabled || Boolean(activeJob)}
         />
         {error && <p className="error">{error}</p>}
