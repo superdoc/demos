@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { SuperDocEditor } from '@superdoc/react';
+import { memo, useEffect, useMemo, useState } from 'react';
+import { SuperDocEditor, type SuperDocEditorProps } from '@superdoc/react';
 import { api } from '../api';
 import type { Room } from '../types';
 import type { DocumentMode } from './Topbar';
@@ -10,9 +10,35 @@ type DocumentEditorProps = {
   onActivity: () => void;
 };
 
-export function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) {
+const editorModules: SuperDocEditorProps['modules'] = {
+  trackChanges: {
+    enabled: true,
+    mode: 'review',
+    visible: true,
+  },
+};
+const editorUi: SuperDocEditorProps['ui'] = {
+  toolbar: { container: '#superdoc-toolbar' },
+  loading: false,
+};
+const editorUser = { name: 'Demo user', email: 'demo@example.com' };
+
+export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) {
   const [documentBlob, setDocumentBlob] = useState<Blob>();
   const [loadError, setLoadError] = useState<string>();
+  const documents = useMemo<SuperDocEditorProps['documents']>(() => documentBlob ? [
+    {
+      id: room.document_id,
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      data: documentBlob,
+      v2Collaboration: {
+        providerType: 'hocuspocus',
+        documentId: room.document_id,
+        serverUrl: room.collaboration_url,
+        roomMode: 'join',
+      },
+    },
+  ] : [], [documentBlob, room.collaboration_url, room.document_id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -35,32 +61,14 @@ export function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) 
       <SuperDocEditor
         key={room.document_id}
         documentMode={mode}
-        modules={{
-          trackChanges: {
-            enabled: true,
-            mode: 'review',
-            visible: true,
-          },
-        }}
+        modules={editorModules}
         rulers
-        ui={{ toolbar: { container: '#superdoc-toolbar' }, loading: false }}
-        documents={[
-          {
-            id: room.document_id,
-            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            data: documentBlob,
-            v2Collaboration: {
-              providerType: 'hocuspocus',
-              documentId: room.document_id,
-              serverUrl: room.collaboration_url,
-              roomMode: 'join',
-            },
-          },
-        ]}
-        user={{ name: 'Demo user', email: 'demo@example.com' }}
+        ui={editorUi}
+        documents={documents}
+        user={editorUser}
         onTransaction={onActivity}
         onException={(event) => console.error('SuperDoc error', event)}
       />
     </div>
   );
-}
+});

@@ -1,9 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import { ChatPanel } from './components/ChatPanel';
 import { DocumentEditor } from './components/DocumentEditor';
 import { Topbar, type DocumentMode } from './components/Topbar';
 import type { Room } from './types';
+
+function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room | undefined) {
+  if (!currentRoom || !nextRoom) return currentRoom === nextRoom;
+  return currentRoom.room_id === nextRoom.room_id
+    && currentRoom.document_id === nextRoom.document_id
+    && currentRoom.generation === nextRoom.generation
+    && currentRoom.filename === nextRoom.filename
+    && currentRoom.collaboration_url === nextRoom.collaboration_url;
+}
 
 const params = new URLSearchParams(window.location.search);
 const initialRoomId = params.get('room') ?? `room-${crypto.randomUUID()}`;
@@ -20,6 +29,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<DocumentMode>('editing');
   const [chatWidth, setChatWidth] = useState(360);
+  const updateRoomActivity = useCallback(() => {
+    if (room) void api.getRoomStatus(room.room_id, room.generation);
+  }, [room]);
 
   useEffect(() => {
     let active = true;
@@ -27,7 +39,8 @@ export default function App() {
       try {
         const status = await api.getRoomStatus(roomId, room?.generation);
         if (!active) return;
-        setRoom(status.document ?? undefined);
+        const nextRoom = status.document ?? undefined;
+        setRoom((currentRoom) => hasSameDocumentMetadata(currentRoom, nextRoom) ? currentRoom : nextRoom);
         if (status.stale) {
           setError(status.document
             ? 'The document changed on the server. Reload the browser if the editor does not update.'
@@ -92,7 +105,7 @@ export default function App() {
       />
 
       {error && <p className="banner error">{error}</p>}
-      <section className="workspace" style={{ gridTemplateColumns: `minmax(680px, 1fr) ${chatWidth}px` }}>
+      <section className="workspace">
         <div className="document-pane">
           {busy ? (
             <div className="upload-loading" role="status" aria-live="polite">
@@ -103,7 +116,7 @@ export default function App() {
             <DocumentEditor
               room={room}
               mode={mode}
-              onActivity={() => void api.getRoomStatus(room.room_id, room.generation)}
+              onActivity={updateRoomActivity}
             />
           ) : (
             <div className="welcome">

@@ -15,7 +15,7 @@ if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required.');
 
 const app = Fastify({ logger: false });
 await app.register(cors, {
-  origin: ['http://localhost:15173', 'http://127.0.0.1:15173'],
+  origin: config.clientOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   exposedHeaders: ['Location'],
 });

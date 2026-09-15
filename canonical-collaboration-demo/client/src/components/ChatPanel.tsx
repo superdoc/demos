@@ -149,7 +149,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
   }
 
   return (
-    <aside className="chat-panel" aria-label="Agent chat">
+    <aside className="chat-panel" aria-label="Agent chat" style={{ width }}>
       <div
         className="chat-resize-handle"
         role="separator"

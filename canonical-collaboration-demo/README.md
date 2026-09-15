@@ -152,8 +152,20 @@ Document content travels through Hocuspocus. The browser posts to the room statu
 | `OPENAI_MODEL` | `gpt-5-mini` | Model used by the document agent |
 | `ROOM_TTL_SECONDS` | `3600` | Room expiry period since its last recorded activity |
 | `COMPLETED_JOB_TTL_SECONDS` | `600` | Retention period for terminal job records |
+| `CLIENT_ORIGINS` | Local client URLs and `https://demos.superdoc.dev` | Comma-separated browser origins allowed by CORS |
 
 Local service URLs and ports are configured in `scripts/dev.mjs`.
+
+## Deployment
+
+The shared demos release workflow builds the client with a relative asset base and publishes it to [https://demos.superdoc.dev/collab/](https://demos.superdoc.dev/collab/). The production build reads the backend origin from the GitHub Actions variable `COLLAB_API_URL`, falling back to the canonical Railway domain.
+
+The same production workflow deploys `server/` to Railway and then verifies `/api/health` before publishing the frontend. It requires these GitHub Actions secrets:
+
+- `RAILWAY_TOKEN`: a project-scoped Railway token for the production environment
+- `RAILWAY_SERVICE_ID`: the target Railway service ID
+
+The Railway service owns runtime configuration, including `OPENAI_API_KEY` and `PUBLIC_ORIGIN`. Set `PUBLIC_ORIGIN` to the service's HTTPS Railway domain without a trailing slash.
 
 ## HTTP API
 

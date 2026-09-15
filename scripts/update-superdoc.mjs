@@ -6,6 +6,7 @@ const packages = [
   { directory: "rag/apps/web", manifest: "rag/apps/web/package.json", manager: "bun" },
   { directory: "superdoc-inline-revisions", manifest: "superdoc-inline-revisions/package.json", manager: "pnpm" },
   { directory: "template-builder-document-api-v2-demo", manifest: "template-builder-document-api-v2-demo/package.json", manager: "pnpm" },
+  { directory: "canonical-collaboration-demo/client", manifest: "canonical-collaboration-demo/client/package.json", manager: "npm" },
 ];
 
 for (const entry of packages) {

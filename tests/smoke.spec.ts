@@ -12,6 +12,11 @@ test("demo mounts without console errors", async ({ page }, testInfo) => {
 			route.fulfill({ json: { documents: [], chunkCount: 0 } }),
 		);
 	}
+	if (testInfo.project.name === "canonical-collaboration-demo") {
+		await page.route("**/api/rooms/*/status", (route) =>
+			route.fulfill({ json: { document: null, stale: false } }),
+		);
+	}
 
 	await page.goto("/");
 	const mount = testInfo.project.name === "template-builder-document-api-v2-demo"
