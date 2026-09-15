@@ -27,6 +27,16 @@ jobs:
             manager: pnpm
             install: pnpm install --frozen-lockfile
             check: pnpm build
+          - demo: canonical-collaboration-client
+            directory: canonical-collaboration-demo/client
+            manager: npm
+            install: npm ci
+            check: npm run build
+          - demo: canonical-collaboration-server
+            directory: canonical-collaboration-demo/server
+            manager: npm
+            install: npm ci
+            check: npm run check
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -62,6 +72,10 @@ jobs:
             directory: template-builder-document-api-v2-demo
             manager: pnpm
             install: pnpm install --frozen-lockfile
+          - demo: canonical-collaboration-client
+            directory: canonical-collaboration-demo/client
+            manager: npm
+            install: npm ci
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -100,6 +114,11 @@ jobs:
             manager: pnpm
             install: pnpm install --frozen-lockfile
             build: pnpm build
+          - demo: canonical-collaboration-demo
+            directory: canonical-collaboration-demo/client
+            manager: npm
+            install: npm ci
+            build: npm run build
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2

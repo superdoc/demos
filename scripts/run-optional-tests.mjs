@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 
 const [directory, kind, manager] = process.argv.slice(2);
 if (!directory || !kind || !manager) {
-  console.error("Usage: run-optional-tests.mjs <directory> <unit|browser> <bun|pnpm>");
+  console.error("Usage: run-optional-tests.mjs <directory> <unit|browser> <bun|npm|pnpm>");
   process.exit(2);
 }
 

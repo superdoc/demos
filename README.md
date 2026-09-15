@@ -26,14 +26,25 @@ Template-field workflow built with SuperDoc's public Document API v2.
 
 ## Running a Demo
 
-Build and serve the local gallery (excluding DocRAG):
+Install, build, and run the local gallery and collaboration backend:
 
 ```bash
-bun run start
+bun start
 ```
 
-Open [http://localhost:4173](http://localhost:4173). The command builds both
-static demos before serving the landing page and their route directories.
+Open [http://localhost:4173](http://localhost:4173). The collaboration demo is
+available at [http://localhost:4173/collab/](http://localhost:4173/collab/).
+The command builds the locally hosted demos, starts the collaboration API on
+port 8000, and serves the gallery and frontend routes on port 4173. DocRAG
+retains its hosted link because its managed storage and database services are
+not part of the local launcher.
+
+The collaboration backend requires an API key before the first run:
+
+```bash
+cp canonical-collaboration-demo/.env.example canonical-collaboration-demo/.env
+# Add OPENAI_API_KEY to canonical-collaboration-demo/.env
+```
 
 Each demo is a standalone app. The general pattern:
 

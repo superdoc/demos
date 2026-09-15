@@ -61,6 +61,14 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      - name: Build Canonical Collaboration client
+        working-directory: canonical-collaboration-demo/client
+        env:
+          VITE_API_URL: ${{ vars.COLLAB_API_URL || 'https://canonical-collab-demo-backend-production.up.railway.app' }}
+        run: |
+          npm ci
+          npm run build
+
       - name: Compile DocRAG Worker without deploying
         working-directory: rag/apps/api
         run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
@@ -84,6 +92,28 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy
+
+      - name: Deploy Canonical Collaboration API
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        working-directory: canonical-collaboration-demo/server
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+        run: npx -y @railway/cli@latest up --service "$RAILWAY_SERVICE_ID" --environment production --detach --yes
+
+      - name: Verify Canonical Collaboration API
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        env:
+          COLLAB_API_URL: ${{ vars.COLLAB_API_URL || 'https://canonical-collab-demo-backend-production.up.railway.app' }}
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error "$COLLAB_API_URL/api/health"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Collaboration API did not become healthy." >&2
+          exit 1
 
       - name: Deploy gallery and demos to production
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}

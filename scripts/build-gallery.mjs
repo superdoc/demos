@@ -22,6 +22,14 @@ for (const demo of demos) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+const collaborationClient = path.join(root, "canonical-collaboration-demo", "client");
+const collaborationBuild = spawnSync("npm", ["run", "build"], {
+  cwd: collaborationClient,
+  env: { ...process.env, VITE_API_URL: "http://localhost:8000" },
+  stdio: "inherit",
+});
+if (collaborationBuild.status !== 0) process.exit(collaborationBuild.status ?? 1);
+
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(
@@ -44,6 +52,11 @@ for (const demo of demos) {
     { recursive: true },
   );
 }
+await cp(
+  path.join(collaborationClient, "dist"),
+  path.join(output, "collab"),
+  { recursive: true },
+);
 
 await renderGallery({ mode: "local", output: path.join(output, "index.html") });
 

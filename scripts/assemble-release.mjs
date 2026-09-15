@@ -23,5 +23,11 @@ for (const demo of manifest) {
   await cp(buildOutput, destination, { recursive: true });
 }
 
+await cp(
+  path.join(root, "canonical-collaboration-demo", "client", "dist"),
+  path.join(output, "collab"),
+  { recursive: true },
+);
+
 await renderGallery({ mode: "production", output: path.join(output, "index.html") });
 console.log(`Assembled ${manifest.length} demos from demos.json`);

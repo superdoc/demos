@@ -21,7 +21,8 @@ const contentTypes = {
 
 createServer(async (request, response) => {
   try {
-    const pathname = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
+    const requestUrl = new URL(request.url, "http://localhost");
+    const pathname = decodeURIComponent(requestUrl.pathname);
     let filePath = path.resolve(root, `.${pathname}`);
 
     if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
@@ -31,6 +32,10 @@ createServer(async (request, response) => {
 
     let fileStat = await stat(filePath);
     if (fileStat.isDirectory()) {
+      if (!pathname.endsWith("/")) {
+        response.writeHead(308, { Location: `${requestUrl.pathname}/${requestUrl.search}` }).end();
+        return;
+      }
       filePath = path.join(filePath, "index.html");
       fileStat = await stat(filePath);
     }
