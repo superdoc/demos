@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SuperDocEditor } from '@superdoc/react';
-import { getDocumentBlob } from '../api';
+import { api } from '../api';
 import type { Room } from '../types';
 import type { DocumentMode } from './Topbar';
 
@@ -18,7 +18,7 @@ export function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) 
     const controller = new AbortController();
     setDocumentBlob(undefined);
     setLoadError(undefined);
-    getDocumentBlob(room.room_id, controller.signal)
+    api.getDocumentBlob(room.room_id, controller.signal)
       .then(setDocumentBlob)
       .catch((error) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;

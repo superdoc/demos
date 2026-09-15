@@ -1,23 +1,25 @@
-.PHONY: dev install clean
+.PHONY: dev install profile profile-chart clean
 
 dev: install
-	@.venv/bin/python scripts/dev.py
+	@node scripts/dev.mjs $(if $(LOG),--log $(LOG),)
 
-install: .venv/.installed client/node_modules/.installed collaboration/node_modules/.installed
+install: client/node_modules/.installed server/node_modules/.installed
 
-.venv/.installed: server/requirements.txt
-	@python3 -m venv .venv
-	@.venv/bin/pip install -r server/requirements.txt
-	@touch $@
+profile: install
+	@test -n "$(DOC)" || (echo "Usage: make profile DOC=/path/to/document.docx [TRIALS=10]" && exit 1)
+	@node profiling/document-worker/profile.mjs "$(DOC)" profiling/document-worker/results/memory-trials.csv $(if $(TRIALS),$(TRIALS),)
+	@$(MAKE) profile-chart
+
+profile-chart:
+	@node profiling/document-worker/generate-breakdown-chart.mjs
 
 client/node_modules/.installed: client/package.json client/package-lock.json
 	@cd client && npm install
 	@touch $@
 
-collaboration/node_modules/.installed: collaboration/package.json collaboration/package-lock.json
-	@cd collaboration && npm install
+server/node_modules/.installed: server/package.json server/package-lock.json
+	@cd server && npm install
 	@touch $@
 
 clean:
-	@rm -rf .venv client/node_modules collaboration/node_modules client/dist
-
+	@rm -rf client/node_modules server/node_modules client/dist

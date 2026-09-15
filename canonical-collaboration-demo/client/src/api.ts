@@ -1,80 +1,127 @@
 import type { ChatMessage, Job, Room } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+type ResponseParser<T> = (response: Response) => Promise<T>;
 
-async function checked<T>(responsePromise: Promise<Response>): Promise<T> {
-  const response = await responsePromise;
-  if (response.ok) return response.status === 204 ? (undefined as T) : response.json();
-  const payload = await response.json().catch(() => ({ detail: response.statusText }));
-  throw new Error(payload.detail ?? payload.error ?? `Request failed (${response.status})`);
-}
+export class ApiClient {
+  constructor(private readonly baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000') {}
 
-export async function getRoom(roomId: string): Promise<Room | undefined> {
-  const state = await checked<{ document?: Room }>(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}`));
-  return state.document;
-}
+  private roomPath(roomId: string): string {
+    return `/api/rooms/${encodeURIComponent(roomId)}`;
+  }
 
-export async function uploadDocument(roomId: string, file: File): Promise<Room> {
-  const body = new FormData();
-  body.append('file', file);
-  return checked(
-    fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/document`, { method: 'PUT', body }),
-  );
-}
+  private documentRequest<T>(
+    roomId: string,
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    init?: Omit<RequestInit, 'method'>,
+    parse?: ResponseParser<T>,
+  ): Promise<T> {
+    return this.request(`${this.roomPath(roomId)}/document`, { ...init, method }, parse);
+  }
 
-export async function createBlankDocument(roomId: string): Promise<Room> {
-  return checked(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/document`, { method: 'POST' }));
-}
+  private async request<T>(path: string, init?: RequestInit, parse?: ResponseParser<T>): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, init);
 
-export async function deleteDocument(roomId: string): Promise<void> {
-  return checked(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/document`, { method: 'DELETE' }));
-}
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type') ?? '';
+      if (contentType.includes('application/json')) {
+        const payload = await response.json() as { detail?: string; error?: string };
+        throw new Error(payload.detail ?? payload.error ?? `Request failed (${response.status})`);
+      }
+      const message = (await response.text()).trim();
+      throw new Error(message || response.statusText || `Request failed (${response.status})`);
+    }
 
-export function documentDownloadUrl(roomId: string): string {
-  return `${API_URL}/api/rooms/${encodeURIComponent(roomId)}/document`;
-}
+    if (response.status === 204) return undefined as T;
+    return parse ? parse(response) : response.json() as Promise<T>;
+  }
 
-export async function getDocumentBlob(roomId: string, signal?: AbortSignal): Promise<Blob> {
-  const response = await fetch(documentDownloadUrl(roomId), { signal });
-  if (!response.ok) throw new Error(`Document download failed (${response.status})`);
-  return response.blob();
-}
+  async getRoom(roomId: string): Promise<Room | undefined> {
+    const state = await this.request<{ document?: Room }>(this.roomPath(roomId));
+    return state.document;
+  }
 
-export async function touchRoom(room: Room): Promise<void> {
-  return checked(
-    fetch(`${API_URL}/api/rooms/${encodeURIComponent(room.room_id)}/activity`, {
+  watchRoom(roomId: string, onRoom: (room: Room | undefined) => void, onError: (error: Error) => void): () => void {
+    let stopped = false;
+    let socket: WebSocket | undefined;
+    let reconnectTimer: number | undefined;
+    const websocketBaseUrl = this.baseUrl.replace(/^http/, 'ws');
+
+    const connect = () => {
+      socket = new WebSocket(`${websocketBaseUrl}${this.roomPath(roomId)}/events`);
+      socket.onmessage = (event) => {
+        try {
+          const update = JSON.parse(event.data) as { type: string; document?: Room | null };
+          if (update.type === 'room.updated') onRoom(update.document ?? undefined);
+        } catch (error) {
+          onError(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+      socket.onerror = () => onError(new Error('Room event connection failed.'));
+      socket.onclose = () => {
+        if (!stopped) reconnectTimer = window.setTimeout(connect, 1_000);
+      };
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }
+
+  uploadDocument(roomId: string, file: File): Promise<Room> {
+    const body = new FormData();
+    body.append('file', file);
+    return this.documentRequest(roomId, 'PUT', { body });
+  }
+
+  createBlankDocument(roomId: string): Promise<Room> {
+    return this.documentRequest(roomId, 'POST');
+  }
+
+  deleteDocument(roomId: string): Promise<void> {
+    return this.documentRequest(roomId, 'DELETE');
+  }
+
+  documentDownloadUrl(roomId: string): string {
+    return `${this.baseUrl}${this.roomPath(roomId)}/document`;
+  }
+
+  getDocumentBlob(roomId: string, signal?: AbortSignal): Promise<Blob> {
+    return this.documentRequest(roomId, 'GET', { signal }, (response) => response.blob());
+  }
+
+  sendRoomHeartbeat(room: Room): Promise<void> {
+    return this.request(`${this.roomPath(room.room_id)}/activity`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ generation: room.generation }),
-    }),
-  );
-}
+    });
+  }
 
-export async function createJob(roomId: string, prompt: string, isSuggesting: boolean): Promise<Job> {
-  return checked(
-    fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/jobs`, {
+  createJob(roomId: string, prompt: string, isSuggesting: boolean): Promise<Job> {
+    return this.request(`${this.roomPath(roomId)}/jobs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, isSuggesting }),
-    }),
-  );
-}
+    });
+  }
 
-export async function getJob(roomId: string, jobId: string): Promise<Job> {
-  return checked(fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/jobs/${encodeURIComponent(jobId)}`));
-}
+  getJob(roomId: string, jobId: string): Promise<Job> {
+    return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`);
+  }
 
-export async function cancelJob(roomId: string, jobId: string): Promise<Job> {
-  return checked(
-    fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/jobs/${encodeURIComponent(jobId)}`, {
+  cancelJob(roomId: string, jobId: string): Promise<Job> {
+    return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
-    }),
-  );
+    });
+  }
+
+  async getChatHistory(roomId: string): Promise<ChatMessage[]> {
+    const history = await this.request<{ messages: ChatMessage[] }>(`${this.roomPath(roomId)}/chat`);
+    return history.messages;
+  }
 }
 
-export async function getChatHistory(roomId: string): Promise<ChatMessage[]> {
-  const history = await checked<{ messages: ChatMessage[] }>(
-    fetch(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/chat`),
-  );
-  return history.messages;
-}
+export const api = new ApiClient();

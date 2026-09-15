@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createBlankDocument, deleteDocument, documentDownloadUrl, getRoom, touchRoom, uploadDocument } from './api';
+import { api } from './api';
 import { ChatPanel } from './components/ChatPanel';
 import { DocumentEditor } from './components/DocumentEditor';
 import { Topbar, type DocumentMode } from './components/Topbar';
@@ -22,27 +22,19 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(360);
 
   useEffect(() => {
-    let active = true;
-    const refresh = () => {
-      getRoom(roomId)
-        .then((next) => {
-          if (active) setRoom((current) => current?.document_id === next?.document_id ? current : next);
-        })
-        .catch(() => {
-          if (active) setRoom(undefined);
-        });
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 5_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
+    return api.watchRoom(
+      roomId,
+      (nextRoom) => {
+        setRoom(nextRoom);
+        setError(undefined);
+      },
+      (eventError) => setError(eventError.message),
+    );
   }, [roomId]);
 
   useEffect(() => {
     if (!room) return;
-    const timer = window.setInterval(() => void touchRoom(room), 30_000);
+    const timer = window.setInterval(() => void api.sendRoomHeartbeat(room), 30_000);
     return () => window.clearInterval(timer);
   }, [room]);
 
@@ -50,7 +42,7 @@ export default function App() {
     setBusy(true);
     setError(undefined);
     try {
-      setRoom(await uploadDocument(roomId, file));
+      setRoom(await api.uploadDocument(roomId, file));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -62,7 +54,7 @@ export default function App() {
     setBusy(true);
     setError(undefined);
     try {
-      setRoom(await createBlankDocument(roomId));
+      setRoom(await api.createBlankDocument(roomId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -72,7 +64,7 @@ export default function App() {
 
   async function remove() {
     if (!room) return;
-    await deleteDocument(room.room_id);
+    await api.deleteDocument(room.room_id);
     setRoom(undefined);
   }
 
@@ -86,7 +78,7 @@ export default function App() {
         onNewDocument={() => void createBlank()}
         onUpload={(file) => void upload(file)}
         onDownload={() => {
-          if (room) window.location.assign(documentDownloadUrl(room.room_id));
+          if (room) window.location.assign(api.documentDownloadUrl(room.room_id));
         }}
         onDelete={() => void remove()}
         onModeChange={setMode}
@@ -104,7 +96,7 @@ export default function App() {
             <DocumentEditor
               room={room}
               mode={mode}
-              onActivity={() => void touchRoom(room)}
+              onActivity={() => void api.sendRoomHeartbeat(room)}
             />
           ) : (
             <div className="welcome">

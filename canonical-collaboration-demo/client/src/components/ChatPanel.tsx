@@ -1,6 +1,6 @@
 import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
-import { cancelJob, createJob, getChatHistory, getJob } from '../api';
+import { api } from '../api';
 import type { ChatMessage, Job } from '../types';
 
 type ChatPanelProps = {
@@ -93,7 +93,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
 
   async function refreshHistory() {
     try {
-      setMessages(await getChatHistory(roomId));
+      setMessages(await api.getChatHistory(roomId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -109,7 +109,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
   async function poll(job: Job) {
     while (!TERMINAL.has(job.status)) {
       await new Promise((resolve) => window.setTimeout(resolve, 1_000));
-      job = await getJob(roomId, job.id);
+      job = await api.getJob(roomId, job.id);
       setJobs((current) => current.map((candidate) => (candidate.id === job.id ? job : candidate)));
     }
     if (job.status === 'completed') {
@@ -122,7 +122,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
     event.preventDefault();
     if (activeJob) {
       try {
-        const cancelled = await cancelJob(roomId, activeJob.id);
+        const cancelled = await api.cancelJob(roomId, activeJob.id);
         setJobs((current) => current.map((job) => (job.id === cancelled.id ? cancelled : job)));
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
@@ -134,7 +134,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
     setError(undefined);
     setPrompt('');
     try {
-      const job = await createJob(roomId, message, isSuggesting);
+      const job = await api.createJob(roomId, message, isSuggesting);
       setJobs((current) => [...current, job]);
       await poll(job);
     } catch (caught) {
