@@ -2,41 +2,80 @@
 
 A small reference application showing a browser user and a server-side Node agent editing the same SuperDoc document. Everything runs locally, and model requests go directly to OpenAI with your API key.
 
+## Control Diagram/Hierarchy
+
 ```mermaid
-flowchart LR
-    Browser["Browser<br/>Editor + agent panel"]
+flowchart TB
+    Client["Client"]
 
-    subgraph Server["Fastify server"]
-        API["HTTP API"]
-        Rooms["Rooms<br/>Metadata, chat, expiry"]
-        Jobs["Agent jobs<br/>Queue and status"]
-        Collab["Hocuspocus<br/>Live document state"]
+    subgraph Fastify["API"]
+        direction TB
+
+        Agent["Shared Agent"]
+
+        JobService["JobService"]
+
+        subgraph DocumentService["DocumentService"]
+            SDK["Shared SuperDocClient"]
+        end
+
+        subgraph RoomStore["RoomStore"]
+            direction TB
+
+            subgraph Room["Room"]
+                direction TB
+                Document["Document"]
+            end
+        end
     end
 
-    subgraph Worker["Document worker"]
-        SDK["SuperDoc SDK<br/>Document handles"]
-    end
+    Client -->|"HTTP requests"| Fastify
 
-    Files["Ephemeral DOCX files"]
-    Model["OpenAI"]
-    Runtime["SuperDoc runtime"]
+    JobService -->|"Runs shared agent with Document + prompt"| Agent
+    Agent -->|"Dispatches tool calls"| Document
 
-    Browser -->|"CRUD + prompts"| API
-    Browser <-->|"Document WebSocket"| Collab
+    RoomStore -->|"Requests document creation"| DocumentService
 
-    API --> Rooms
-    API --> Jobs
-    Rooms --> Files
-    Jobs --> Model
-
-    Rooms <-->|"IPC"| SDK
-    Jobs <-->|"Tool calls over IPC"| SDK
-
-    SDK <-->|"Backend document edits"| Collab
-    SDK --> Runtime
+    DocumentService -.->|"Creates and tracks"| Document
+    Document -.->|"Uses handle from"| SDK
 ```
 
-The browser owns the UI and interactive editor. Fastify owns the API, rooms, chat, expiry, jobs, and collaboration state. The document worker owns the backend SDK client and open document handles, while its SuperDoc runtime descendants perform document processing. The filesystem holds temporary DOCX source and export files.
+The diagram focuses on actions initiated through the HTTP API, such as creating, uploading, downloading, replacing, or deleting a document; submitting or cancelling an agent job; reading job or chat state; and checking room status. Separately, SuperDoc manages the client's connection to the document through the Hocuspocus WebSocket endpoint. That connection carries live document edits between browser editors and the backend SDK.
+
+The browser owns the UI and interactive editor. Fastify owns the API, rooms, chat, expiry, jobs, collaboration state, and document service. Each room owns one document object, while the document service owns the shared SDK client. The filesystem holds temporary DOCX source and export files.
+
+### Document Upload/Room Creation
+
+When the client creates a blank document or uploads a DOCX, the server performs this sequence:
+
+1. `RoomStore` writes the blank or uploaded DOCX to the ephemeral document directory.
+2. `RoomStore` asks `DocumentService` to open the file.
+3. `DocumentService` uses its shared `SuperDocClient` to open an SDK document handle.
+4. The SDK handle connects to Hocuspocus using the room ID as the document ID and seeds the collaboration state from the DOCX.
+5. `DocumentService` creates a `Document` containing the SDK handle, document ID, filename, file path, and generation number.
+6. `RoomStore` creates a `Room` that owns the `Document`.
+7. The API returns the document metadata and collaboration URL.
+8. The browser initializes SuperDoc with that metadata and connects to the same Hocuspocus document.
+9. Hocuspocus synchronizes the seeded document state into the browser editor.
+
+After initialization, live document edits travel through Hocuspocus. The source DOCX is not rewritten after every edit. When the document is downloaded, `Document.save()` exports the current SDK state to a temporary DOCX file.
+
+### Prompt Submission/Job Creation
+
+Submitting a prompt creates an asynchronous agent job. The agent applies document edits during its tool-call loop rather than waiting until the job is complete:
+
+1. The client posts the prompt and Reviewing/Editing mode to the API.
+2. `JobService` validates the room, creates and queues a server-generated job record, and immediately returns `202 Accepted` with its job ID.
+3. When the job reaches the front of the queue, `JobService` calls the shared agent's `run()` method with the room's `Document`.
+4. The agent runs its OpenAI tool-call loop.
+5. For each document tool call, the agent calls `Document.dispatch()`.
+6. The `Document` applies the operation through its SDK handle.
+7. The SDK sends the change through Hocuspocus, which synchronizes it to connected browsers.
+8. While this work runs, the client polls the job endpoint and observes `queued`, `running`, and eventually a terminal status.
+9. When the agent finishes, it returns its textual answer to `JobService` and appends the prompt and answer to the room's conversation.
+10. `JobService` marks the job complete, updates the room activity timestamp, and decrements the room's active-job count.
+
+The agent does not communicate with `RoomStore` directly. Document edits go through the room's `Document`; `JobService` manages room access, job status, cancellation, and completion.
 
 ## Quick start
 
@@ -67,11 +106,11 @@ make dev
 All service logs are shown by default. Filter them with either launcher form:
 
 ```bash
-node scripts/dev.mjs --log documentworker
-make dev LOG=documentworker
+node scripts/dev.mjs --log documentservice
+make dev LOG=documentservice
 ```
 
-`--log` accepts `all`, `api`, `rooms`, `worker`, `agent`, `documentworker`, `collab`, `client`, or `dev`. Use commas for multiple selections, such as `--log api,collab`. The `worker` selection refers to agent-job lifecycle logs; `documentworker` refers to SDK document operations and memory profiling.
+`--log` accepts `all`, `api`, `rooms`, `worker`, `agent`, `documentservice`, `collab`, `client`, or `dev`. Use commas for multiple selections, such as `--log api,collab`. The `worker` selection refers to agent-job lifecycle logs; `documentservice` refers to SDK document operations.
 
 The first run installs the Node dependencies. Open [http://localhost:15173](http://localhost:15173). Press Ctrl-C once to stop both processes. The `.env` file is ignored by Git.
 
@@ -98,13 +137,12 @@ The chat panel is isolated in `client/src/components/ChatPanel.tsx`. It communic
 | --- | --- | --- |
 | React client | `http://localhost:15173` | SuperDoc editor, file controls, and replaceable chat UI |
 | Fastify server | `http://localhost:8000` | HTTP API, OpenAI orchestration, agent-job queue, room metadata, and Hocuspocus collaboration |
-| Document worker | Child process using IPC | One shared Node SDK runtime and all active backend document sessions |
+| Document service | Inside the Fastify process | One shared Node SDK client and all active backend document objects |
 | Hocuspocus endpoint | `ws://localhost:8000/collaboration` | Live document synchronization between the browser and backend runtime |
-| Room-events endpoint | `ws://localhost:8000/api/rooms/{roomId}/events` | Document creation, replacement metadata, and deletion notifications |
 
-The Fastify process owns the ephemeral room registry, source files, activity timestamps, conversation history, agent-job queue, and job records. Hocuspocus owns the live collaborative state inside that process. A separate document-worker process owns one shared `SuperDocClient` and multiple document handles. The API sends individual open, replace, tool-dispatch, save, and close operations to it over Node IPC. This keeps agent-job lifecycle state out of the worker while allowing API replacement and agent editing without an open browser.
+The Fastify process owns the ephemeral room registry, source files, activity timestamps, conversation history, agent-job queue, job records, and one shared `SuperDocClient`. Each room owns a `Document` object containing its metadata and SDK handle. `DocumentService` creates these objects and owns shared SDK startup and shutdown. `RoomStore` may request `Document.close()` during deletion or expiry, but it does not perform SDK operations itself.
 
-Document content travels through Hocuspocus. The room-events WebSocket carries only lifecycle metadata, so the client does not poll room state. Job status is still polled while a submitted job is active because it is an asynchronous task status API, not document synchronization.
+Document content travels through Hocuspocus. The browser posts to the room status endpoint every 30 seconds to refresh activity and reconcile lifecycle metadata. Replacement content still arrives immediately through collaboration; metadata changes and deletion are detected by the next status request. Job status is polled separately while a submitted job is active because it is an asynchronous task status API.
 
 ## Configuration
 
@@ -114,7 +152,6 @@ Document content travels through Hocuspocus. The room-events WebSocket carries o
 | `OPENAI_MODEL` | `gpt-5-mini` | Model used by the document agent |
 | `ROOM_TTL_SECONDS` | `3600` | Room expiry period since its last recorded activity |
 | `COMPLETED_JOB_TTL_SECONDS` | `600` | Retention period for terminal job records |
-| `DOCUMENT_WORKER_MEMORY_SAMPLE_MS` | `5000` | Interval for document-worker memory samples; minimum 1000 ms |
 
 Local service URLs and ports are configured in `scripts/dev.mjs`.
 
@@ -132,7 +169,7 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | `GET` | `/api/rooms/{roomId}/document/info` | Read document and collaboration metadata |
 | `PATCH` | `/api/rooms/{roomId}/document` | Dispatch one SuperDoc toolkit operation through the backend SDK |
 | `DELETE` | `/api/rooms/{roomId}/document` | Delete the document and room state |
-| `POST` | `/api/rooms/{roomId}/activity` | Refresh activity for a specific document generation |
+| `POST` | `/api/rooms/{roomId}/status` | Refresh activity and return current metadata with a stale-generation indicator |
 | `GET` | `/api/rooms/{roomId}/chat` | Read completed agent conversation messages |
 | `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}` | Read job status and result |
@@ -199,69 +236,34 @@ Set `isSuggesting` to `true` for tracked agent changes or `false` for direct edi
 5. Choose **Save As** and confirm the exported DOCX includes subsequent browser and agent edits.
 6. Close the browser, enqueue another job through the API, then reopen the same room URL and confirm the backend edit is present.
 
-Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`, `[worker]`, `[agent]`, `[document-worker]`, `[collab]`, and `[dev]` prefixes. General backend events report the Fastify process memory. The document worker logs `operation.started`, `operation.completed`, or `operation.failed` for every SDK operation, including its duration and active-document count.
-
-Document-worker logs separate the worker process from its SuperDoc runtime descendants:
-
-```text
-[document-worker] service.ready pid:12345 documents:0 workerRssMB:91.5 runtimeRssMB:124.8 totalRssMB:216.3
-[document-worker] memory.sample documents:1 workerRssMB:94.5 runtimeRssMB:195.5 totalRssMB:290.0
-```
-
-`workerRssMB` is the resident memory of the Node document-worker process. `runtimeRssMB` is the combined resident memory of its SuperDoc runtime descendants. `totalRssMB` is their sum. Logs cover the zero-document baseline, periodic samples, every operation boundary, completed collaboration sync, file replacement, document close, and worker shutdown. Multiple documents share the same worker and SDK runtime, so the operating system cannot provide exact per-document attribution.
-
-### Document-worker memory profiler
-
-The repeatable profiler lives in `profiling/document-worker/`. It starts a fresh server for every trial, uploads copies of one DOCX according to the configured lifecycle, samples worker/runtime/total RSS at every state, and then generates a three-panel SVG chart.
-
-Configure the workload in `profiling/document-worker/profile.config.mjs`:
-
-- `trials` controls the default number of fresh-process trials.
-- Sampling and settling durations control how many idle readings are collected and how long the runtime settles.
-- `operations` is the ordered workload. Each entry names the chart phase, expected open-document count, and an `open`, `close`, or `sample` action. Open and close actions use matching numeric `slot` values.
-
-Run the configured profile with any DOCX:
-
-```bash
-make profile DOC=/absolute/path/to/document.docx
-```
-
-Override only the trial count without editing the configuration:
-
-```bash
-make profile DOC=/absolute/path/to/document.docx TRIALS=25
-```
-
-Outputs are written to `profiling/document-worker/results/memory-trials.csv` and `memory-by-state.svg`. The results directory is ignored because RSS measurements are machine- and workload-specific. To regenerate the chart from an existing CSV, run `make profile-chart`.
+Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`, `[worker]`, `[agent]`, `[document-service]`, `[collab]`, and `[dev]` prefixes.
 
 ## Ephemeral state and expiry
 
 - A room holds one document and one conversation.
 - Replacement retains the document ID, increments its generation, and clears its conversation.
 - Terminal job records expire after 10 minutes by default.
-- Rooms expire after one hour without browser, API, collaboration, or agent activity by default.
-- The browser sends an activity heartbeat every 30 seconds while a document is open.
+- Rooms expire after one hour without recorded activity from a status heartbeat, a room/document/chat request that resolves the room, a collaboration change, or agent execution by default. Job-status polling alone does not refresh room activity.
+- The browser checks room status every 30 seconds, including while the room is empty; an existing room records that check as activity.
 - Cleanup runs once per minute, so removal can occur up to roughly one minute after the deadline.
 - Active jobs prevent room expiry.
 - Process restart recovery is deliberately unsupported; room, collaboration, chat, and job state are in memory.
 
 ## Code map
 
-- Fastify and Hocuspocus lifecycle, HTTP routes, service composition, and room events: `server/src/server.js`
-- Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms.js`
-- API-side IPC client for document operations: `server/src/document-worker-client.js`
-- Multi-document SDK runtime and per-operation memory logging: `server/src/document-worker-process.js`
+- Fastify and Hocuspocus setup, health and collaboration routes, hooks, cleanup, and shutdown: `server/src/server.js`
+- Room, document, chat, status, and job routes: `server/src/rooms/routes.js`
+- Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms/store.js`
+- Shared SDK client, document objects, and document operations: `server/src/document-service.js`
 - OpenAI calls, system prompt, and SuperDoc tool dispatch: `server/src/agent.js`
-- In-memory queue, cancellation, and job state: `server/src/jobs.js`
-- Browser API and room-events clients: `client/src/api.ts`
+- In-memory queue, cancellation, and job state: `server/src/job-service.js`
+- Browser API and room-status client: `client/src/api.ts`
 - Replaceable agent UI: `client/src/components/ChatPanel.tsx`
 - SuperDoc editor: `client/src/components/DocumentEditor.tsx`
 - One-command launcher: `scripts/dev.mjs`
-- Repeatable document-worker memory benchmark: `profiling/document-worker/profile.mjs`
-- Memory benchmark workload and trial configuration: `profiling/document-worker/profile.config.mjs`
 
 ## Production boundary
 
 This demo packages a runnable local collaboration topology; it is not a production deployment template. A production owner would still need authentication and authorization, secrets management, durable document and job storage, queue recovery, collaboration persistence, horizontal scaling, rate limits, observability, backups, TLS, and deployment-specific CORS and public URLs.
 
-Kyra can replace the chat component and agent orchestration while retaining the HTTP document surface and SuperDoc collaboration connection. They would operate this Node service or an equivalent implementation preserving the synchronization and state contracts.
+Integrators can replace the chat component and agent orchestration while retaining the HTTP document surface and SuperDoc collaboration connection. They would operate this Node service or an equivalent implementation preserving the synchronization and state contracts.

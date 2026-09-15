@@ -22,21 +22,28 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(360);
 
   useEffect(() => {
-    return api.watchRoom(
-      roomId,
-      (nextRoom) => {
-        setRoom(nextRoom);
-        setError(undefined);
-      },
-      (eventError) => setError(eventError.message),
-    );
-  }, [roomId]);
-
-  useEffect(() => {
-    if (!room) return;
-    const timer = window.setInterval(() => void api.sendRoomHeartbeat(room), 30_000);
-    return () => window.clearInterval(timer);
-  }, [room]);
+    let active = true;
+    const updateStatus = async () => {
+      try {
+        const status = await api.getRoomStatus(roomId, room?.generation);
+        if (!active) return;
+        setRoom(status.document ?? undefined);
+        if (status.stale) {
+          setError(status.document
+            ? 'The document changed on the server. Reload the browser if the editor does not update.'
+            : 'The document no longer exists. Reload the browser or create a new document.');
+        }
+      } catch (caught) {
+        if (active) setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    };
+    void updateStatus();
+    const timer = window.setInterval(() => void updateStatus(), 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [roomId, room?.generation]);
 
   async function upload(file: File) {
     setBusy(true);
@@ -96,7 +103,7 @@ export default function App() {
             <DocumentEditor
               room={room}
               mode={mode}
-              onActivity={() => void api.sendRoomHeartbeat(room)}
+              onActivity={() => void api.getRoomStatus(room.room_id, room.generation)}
             />
           ) : (
             <div className="welcome">

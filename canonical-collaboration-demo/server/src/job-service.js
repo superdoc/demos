@@ -107,7 +107,7 @@ export class JobService {
           record.updated_at = new Date().toISOString();
           logEvent('worker', 'job.running', { jobId, roomId: record.room_id, queueSize: this.#queue.length });
           record.answer = await this.#agent.run(
-            room.documentId,
+            room.document,
             record.prompt,
             room.conversation,
             record.isSuggesting,

@@ -1,4 +1,4 @@
-import type { ChatMessage, Job, Room } from './types';
+import type { ChatMessage, Job, Room, RoomStatus } from './types';
 
 type ResponseParser<T> = (response: Response) => Promise<T>;
 
@@ -40,36 +40,6 @@ export class ApiClient {
     return state.document;
   }
 
-  watchRoom(roomId: string, onRoom: (room: Room | undefined) => void, onError: (error: Error) => void): () => void {
-    let stopped = false;
-    let socket: WebSocket | undefined;
-    let reconnectTimer: number | undefined;
-    const websocketBaseUrl = this.baseUrl.replace(/^http/, 'ws');
-
-    const connect = () => {
-      socket = new WebSocket(`${websocketBaseUrl}${this.roomPath(roomId)}/events`);
-      socket.onmessage = (event) => {
-        try {
-          const update = JSON.parse(event.data) as { type: string; document?: Room | null };
-          if (update.type === 'room.updated') onRoom(update.document ?? undefined);
-        } catch (error) {
-          onError(error instanceof Error ? error : new Error(String(error)));
-        }
-      };
-      socket.onerror = () => onError(new Error('Room event connection failed.'));
-      socket.onclose = () => {
-        if (!stopped) reconnectTimer = window.setTimeout(connect, 1_000);
-      };
-    };
-
-    connect();
-    return () => {
-      stopped = true;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      socket?.close();
-    };
-  }
-
   uploadDocument(roomId: string, file: File): Promise<Room> {
     const body = new FormData();
     body.append('file', file);
@@ -92,11 +62,11 @@ export class ApiClient {
     return this.documentRequest(roomId, 'GET', { signal }, (response) => response.blob());
   }
 
-  sendRoomHeartbeat(room: Room): Promise<void> {
-    return this.request(`${this.roomPath(room.room_id)}/activity`, {
+  getRoomStatus(roomId: string, generation?: number): Promise<RoomStatus> {
+    return this.request(`${this.roomPath(roomId)}/status`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ generation: room.generation }),
+      body: JSON.stringify({ generation }),
     });
   }
 

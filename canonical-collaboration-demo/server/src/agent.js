@@ -4,25 +4,16 @@ import { logEvent } from './logging.js';
 
 const maximumTurns = 12;
 
-export class DocumentAgent {
-  #openai = new OpenAI();
-  #toolkit;
-  #documentWorker;
+export function createDocumentAgent(documents) {
+  const openai = new OpenAI();
+  const toolkit = documents.getToolkit();
 
-  constructor(documentWorker) {
-    this.#documentWorker = documentWorker;
-  }
-
-  async initialize() {
-    this.#toolkit = await this.#documentWorker.getToolkit();
-  }
-
-  async run(documentId, prompt, history, isSuggesting, signal) {
+  async function run(document, prompt, history, isSuggesting, signal) {
     const changeMode = isSuggesting ? 'tracked' : 'direct';
     const messages = [
       {
         role: 'system',
-        content: `${this.#toolkit.systemPrompt}\n\nFor this request, every document mutation must use changeMode=${changeMode}. Choose actions that support this change mode.`,
+        content: `${toolkit.systemPrompt}\n\nFor this request, every document mutation must use changeMode=${changeMode}. Choose actions that support this change mode.`,
       },
       ...history,
       { role: 'user', content: prompt },
@@ -32,8 +23,8 @@ export class DocumentAgent {
 
     for (let turn = 1; turn <= maximumTurns; turn += 1) {
       const modelStarted = performance.now();
-      const response = await this.#openai.chat.completions.create(
-        { model: config.openaiModel, messages, tools: this.#toolkit.tools },
+      const response = await openai.chat.completions.create(
+        { model: config.openaiModel, messages, tools: toolkit.tools },
         { signal },
       );
       const choice = response.choices[0].message;
@@ -59,7 +50,7 @@ export class DocumentAgent {
         try {
           args = JSON.parse(call.function.arguments || '{}');
           if (call.function.name === 'superdoc_perform_action') args.changeMode = changeMode;
-          result = await this.#documentWorker.dispatch(documentId, call.function.name, args);
+          result = await document.dispatch(call.function.name, args);
         } catch (error) {
           result = { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
@@ -85,7 +76,5 @@ export class DocumentAgent {
     return answer;
   }
 
-  dispatch(documentId, tool, args) {
-    return this.#documentWorker.dispatch(documentId, tool, args);
-  }
+  return { run };
 }

@@ -1,31 +1,23 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { config } from './config.js';
-import { logEvent } from './logging.js';
+import { config } from '../config.js';
+import { logEvent } from '../logging.js';
 
 const roomIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
 
 export class Room {
-  constructor({ roomId, filename, path: documentPath }) {
+  constructor({ roomId, document }) {
     this.roomId = roomId;
-    this.documentId = roomId;
-    this.generation = 1;
-    this.filename = filename;
-    this.path = documentPath;
+    this.document = document;
     this.lastActivityAt = new Date();
     this.activeJobs = 0;
     this.conversation = [];
   }
 
-  replaceDocument(filename, documentPath) {
-    const previousPath = this.path;
-    this.path = documentPath;
-    this.filename = filename;
-    this.generation += 1;
+  documentReplaced() {
     this.conversation = [];
     this.updateLastActivityAt();
-    return previousPath;
   }
 
   updateLastActivityAt() {
@@ -44,13 +36,11 @@ export class Room {
 export class RoomStore {
   #rooms = new Map();
   #collaboration;
-  #events;
-  #documentWorker;
+  #documents;
 
-  constructor(collaboration, events, documentWorker) {
+  constructor(collaboration, documents) {
     this.#collaboration = collaboration;
-    this.#events = events;
-    this.#documentWorker = documentWorker;
+    this.#documents = documents;
   }
 
   async initialize() {
@@ -69,7 +59,7 @@ export class RoomStore {
   find(roomId, updateActivity = true) {
     this.validateId(roomId);
     const room = this.#rooms.get(roomId);
-    if (room && updateActivity) this.updateLastActivityAt(room.documentId);
+    if (room && updateActivity) this.updateLastActivityAt(room.document.id);
     return room;
   }
 
@@ -119,21 +109,19 @@ export class RoomStore {
       const replacementPath = path.join(config.documentRoot, `${roomId}-${randomUUID()}.docx`);
       await fs.writeFile(replacementPath, content);
       try {
-        await this.#documentWorker.replaceFile(existingRoom.documentId, replacementPath);
+        await existingRoom.document.replace(filename, replacementPath);
       } catch (error) {
         await fs.rm(replacementPath, { force: true });
         throw error;
       }
-      const previousPath = existingRoom.replaceDocument(filename, replacementPath);
-      await fs.rm(previousPath, { force: true });
+      existingRoom.documentReplaced();
       logEvent('rooms', 'room.replaced', {
         roomId,
-        documentId: existingRoom.documentId,
-        generation: existingRoom.generation,
+        documentId: existingRoom.document.id,
+        generation: existingRoom.document.generation,
         documentBytes: content.length,
         activeRooms: this.#rooms.size,
       });
-      this.#events.publish(roomId, this.response(existingRoom));
       return existingRoom;
     }
 
@@ -141,21 +129,21 @@ export class RoomStore {
     const documentPath = path.join(config.documentRoot, `${roomId}-${randomUUID()}.docx`);
     await fs.writeFile(documentPath, content);
     try {
-      await this.#documentWorker.open(documentId, documentPath, {
-        providerType: 'hocuspocus',
-        url: `ws://127.0.0.1:${config.port}/collaboration`,
-        documentId,
-        roomMode: 'create',
-        syncTimeoutMs: 90_000,
-      });
-      const room = new Room({
-        roomId,
+      const document = await this.#documents.open({
+        id: documentId,
         filename,
         path: documentPath,
+        collaboration: {
+          providerType: 'hocuspocus',
+          url: `ws://127.0.0.1:${config.port}/collaboration`,
+          documentId,
+          roomMode: 'create',
+          syncTimeoutMs: 90_000,
+        },
       });
+      const room = new Room({ roomId, document });
       this.#rooms.set(roomId, room);
       logEvent('rooms', 'room.created', { roomId, documentId, documentBytes: content.length, activeRooms: this.#rooms.size });
-      this.#events.publish(roomId, this.response(room));
       return room;
     } catch (error) {
       await fs.rm(documentPath, { force: true });
@@ -163,16 +151,13 @@ export class RoomStore {
     }
   }
 
-  heartbeat(roomId, generation) {
-    const room = this.require(roomId, false);
-    if (room.generation !== generation) {
-      const error = new Error('The room document has been replaced.');
-      error.name = 'HttpError';
-      error.statusCode = 409;
-      throw error;
-    }
-    room.updateLastActivityAt();
-    logEvent('rooms', 'room.heartbeat', { roomId, documentId: room.documentId, generation });
+  status(roomId, generation) {
+    this.validateId(roomId);
+    const room = this.#rooms.get(roomId);
+    const stale = generation !== undefined && room?.document.generation !== generation;
+    if (room) room.updateLastActivityAt();
+    logEvent('rooms', 'room.status', { roomId, documentId: room?.document.id, generation, stale });
+    return { document: room ? this.response(room) : null, stale };
   }
 
   updateLastActivityAt(documentId) {
@@ -182,11 +167,11 @@ export class RoomStore {
 
   async export(roomId) {
     const room = this.require(roomId);
-    const exportPath = path.join(config.documentRoot, `${room.documentId}-export-${randomUUID()}.docx`);
+    const exportPath = path.join(config.documentRoot, `${room.document.id}-export-${randomUUID()}.docx`);
     try {
-      await this.#documentWorker.save(room.documentId, exportPath);
+      await room.document.save(exportPath);
       const content = await fs.readFile(exportPath);
-      logEvent('rooms', 'document.exported', { roomId, documentId: room.documentId, documentBytes: content.length });
+      logEvent('rooms', 'document.exported', { roomId, documentId: room.document.id, documentBytes: content.length });
       return { room, content };
     } finally {
       await fs.rm(exportPath, { force: true });
@@ -203,8 +188,7 @@ export class RoomStore {
     }
     this.#rooms.delete(roomId);
     await this.#close(room);
-    this.#events.publish(roomId, null);
-    logEvent('rooms', 'room.deleted', { roomId, documentId: room.documentId, activeRooms: this.#rooms.size });
+    logEvent('rooms', 'room.deleted', { roomId, documentId: room.document.id, activeRooms: this.#rooms.size });
   }
 
   async expire() {
@@ -222,17 +206,16 @@ export class RoomStore {
   }
 
   async #close(room) {
-    await this.#documentWorker.close(room.documentId).catch(() => {});
-    await this.#collaboration.unload(room.documentId).catch(() => {});
-    await fs.rm(room.path, { force: true });
+    await room.document.close().catch(() => {});
+    await this.#collaboration.unload(room.document.id).catch(() => {});
   }
 
   response(room) {
     return {
       room_id: room.roomId,
-      document_id: room.documentId,
-      generation: room.generation,
-      filename: room.filename,
+      document_id: room.document.id,
+      generation: room.document.generation,
+      filename: room.document.filename,
       last_activity_at: room.lastActivityAt.toISOString(),
       collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };

@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const validLogServices = new Set(['all', 'api', 'rooms', 'worker', 'agent', 'documentworker', 'collab', 'client', 'dev']);
+const validLogServices = new Set(['all', 'api', 'rooms', 'worker', 'agent', 'documentservice', 'collab', 'client', 'dev']);
 
 function parseLogServices(arguments_) {
   const logIndex = arguments_.indexOf('--log');

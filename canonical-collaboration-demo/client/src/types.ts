@@ -7,6 +7,11 @@ export type Room = {
   collaboration_url: string;
 };
 
+export type RoomStatus = {
+  document: Room | null;
+  stale: boolean;
+};
+
 export type Job = {
   id: string;
   room_id: string;
