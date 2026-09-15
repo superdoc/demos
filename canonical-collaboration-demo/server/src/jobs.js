@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
-import { logEvent } from './diagnostics.js';
-import { HttpError } from './http-error.js';
+import { logEvent } from './logging.js';
 
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
+const maximumPromptCharacters = 20_000;
 
 export class JobService {
   #rooms;
@@ -21,9 +21,17 @@ export class JobService {
   create(roomId, input) {
     this.#rooms.require(roomId);
     const prompt = typeof input?.prompt === 'string' ? input.prompt.trim() : '';
-    if (!prompt || prompt.length > 20_000) throw new HttpError(400, 'Prompt must contain between 1 and 20,000 characters.');
+    if (!prompt || prompt.length > maximumPromptCharacters) {
+      const error = new Error(`Prompt must contain between 1 and ${maximumPromptCharacters} characters.`);
+      error.name = 'HttpError';
+      error.statusCode = 400;
+      throw error;
+    }
     if (input?.isSuggesting !== undefined && typeof input.isSuggesting !== 'boolean') {
-      throw new HttpError(400, 'isSuggesting must be a boolean.');
+      const error = new Error('isSuggesting must be a boolean.');
+      error.name = 'HttpError';
+      error.statusCode = 400;
+      throw error;
     }
     const timestamp = new Date().toISOString();
     const record = {
@@ -46,7 +54,12 @@ export class JobService {
 
   get(roomId, jobId) {
     const record = this.#records.get(jobId);
-    if (!record || record.room_id !== roomId) throw new HttpError(404, 'Job not found.');
+    if (!record || record.room_id !== roomId) {
+      const error = new Error('Job not found.');
+      error.name = 'HttpError';
+      error.statusCode = 404;
+      throw error;
+    }
     return record;
   }
 
@@ -89,7 +102,7 @@ export class JobService {
         this.#active = { record, controller };
         try {
           room = this.#rooms.require(record.room_id);
-          room.activeJobs += 1;
+          room.startJob();
           record.status = 'running';
           record.updated_at = new Date().toISOString();
           logEvent('worker', 'job.running', { jobId, roomId: record.room_id, queueSize: this.#queue.length });
@@ -103,7 +116,7 @@ export class JobService {
           if (record.status !== 'cancelled') {
             record.status = 'applying_edit';
             record.updated_at = new Date().toISOString();
-            room.lastActivityAt = new Date();
+            room.updateLastActivityAt();
             record.status = 'completed';
           }
         } catch (error) {
@@ -116,7 +129,7 @@ export class JobService {
           }
         } finally {
           record.updated_at = new Date().toISOString();
-          if (room) room.activeJobs = Math.max(0, room.activeJobs - 1);
+          room?.finishJob();
           this.#active = undefined;
           logEvent('worker', 'job.finished', { jobId, roomId: record.room_id, status: record.status, queueSize: this.#queue.length });
         }

@@ -2,6 +2,42 @@
 
 A small reference application showing a browser user and a server-side Node agent editing the same SuperDoc document. Everything runs locally, and model requests go directly to OpenAI with your API key.
 
+```mermaid
+flowchart LR
+    Browser["Browser<br/>Editor + agent panel"]
+
+    subgraph Server["Fastify server"]
+        API["HTTP API"]
+        Rooms["Rooms<br/>Metadata, chat, expiry"]
+        Jobs["Agent jobs<br/>Queue and status"]
+        Collab["Hocuspocus<br/>Live document state"]
+    end
+
+    subgraph Worker["Document worker"]
+        SDK["SuperDoc SDK<br/>Document handles"]
+    end
+
+    Files["Ephemeral DOCX files"]
+    Model["OpenAI"]
+    Runtime["SuperDoc runtime"]
+
+    Browser -->|"CRUD + prompts"| API
+    Browser <-->|"Document WebSocket"| Collab
+
+    API --> Rooms
+    API --> Jobs
+    Rooms --> Files
+    Jobs --> Model
+
+    Rooms <-->|"IPC"| SDK
+    Jobs <-->|"Tool calls over IPC"| SDK
+
+    SDK <-->|"Backend document edits"| Collab
+    SDK --> Runtime
+```
+
+The browser owns the UI and interactive editor. Fastify owns the API, rooms, chat, expiry, jobs, and collaboration state. The document worker owns the backend SDK client and open document handles, while its SuperDoc runtime descendants perform document processing. The filesystem holds temporary DOCX source and export files.
+
 ## Quick start
 
 Prerequisites:
@@ -211,12 +247,10 @@ Outputs are written to `profiling/document-worker/results/memory-trials.csv` and
 
 ## Code map
 
-- Fastify lifecycle and service composition: `server/src/server.js`
-- HTTP and room-events routes: `server/src/routes.js`
+- Fastify and Hocuspocus lifecycle, HTTP routes, service composition, and room events: `server/src/server.js`
 - Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms.js`
 - API-side IPC client for document operations: `server/src/document-worker-client.js`
 - Multi-document SDK runtime and per-operation memory logging: `server/src/document-worker-process.js`
-- Hocuspocus connection and document activity: `server/src/collaboration.js`
 - OpenAI calls, system prompt, and SuperDoc tool dispatch: `server/src/agent.js`
 - In-memory queue, cancellation, and job state: `server/src/jobs.js`
 - Browser API and room-events clients: `client/src/api.ts`

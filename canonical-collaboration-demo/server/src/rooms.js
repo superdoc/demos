@@ -1,11 +1,45 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { collaborationUrl, config } from './config.js';
-import { logEvent } from './diagnostics.js';
-import { HttpError } from './http-error.js';
+import { config } from './config.js';
+import { logEvent } from './logging.js';
 
 const roomIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
+
+export class Room {
+  constructor({ roomId, filename, path: documentPath }) {
+    this.roomId = roomId;
+    this.documentId = roomId;
+    this.generation = 1;
+    this.filename = filename;
+    this.path = documentPath;
+    this.lastActivityAt = new Date();
+    this.activeJobs = 0;
+    this.conversation = [];
+  }
+
+  replaceDocument(filename, documentPath) {
+    const previousPath = this.path;
+    this.path = documentPath;
+    this.filename = filename;
+    this.generation += 1;
+    this.conversation = [];
+    this.updateLastActivityAt();
+    return previousPath;
+  }
+
+  updateLastActivityAt() {
+    this.lastActivityAt = new Date();
+  }
+
+  startJob() {
+    this.activeJobs += 1;
+  }
+
+  finishJob() {
+    this.activeJobs = Math.max(0, this.activeJobs - 1);
+  }
+}
 
 export class RoomStore {
   #rooms = new Map();
@@ -25,27 +59,43 @@ export class RoomStore {
 
   validateId(roomId) {
     if (!roomIdPattern.test(roomId)) {
-      throw new HttpError(400, 'Room IDs may contain letters, numbers, underscores, and hyphens.');
+      const error = new Error('Room IDs may contain letters, numbers, underscores, and hyphens.');
+      error.name = 'HttpError';
+      error.statusCode = 400;
+      throw error;
     }
   }
 
-  find(roomId, touch = true) {
+  find(roomId, updateActivity = true) {
     this.validateId(roomId);
     const room = this.#rooms.get(roomId);
-    if (room && touch) this.touchDocument(room.documentId);
+    if (room && updateActivity) this.updateLastActivityAt(room.documentId);
     return room;
   }
 
-  require(roomId, touch = true) {
-    const room = this.find(roomId, touch);
-    if (!room) throw new HttpError(404, 'This room does not have a document.');
+  require(roomId, updateActivity = true) {
+    const room = this.find(roomId, updateActivity);
+    if (!room) {
+      const error = new Error('This room does not have a document.');
+      error.name = 'HttpError';
+      error.statusCode = 404;
+      throw error;
+    }
     return room;
   }
 
   async replaceUpload(roomId, filename, content) {
-    if (!filename?.toLowerCase().endsWith('.docx')) throw new HttpError(400, 'Upload a .docx document.');
+    if (!filename?.toLowerCase().endsWith('.docx')) {
+      const error = new Error('Upload a .docx document.');
+      error.name = 'HttpError';
+      error.statusCode = 400;
+      throw error;
+    }
     if (!content.length || content.length > config.maximumUploadBytes) {
-      throw new HttpError(400, 'The document must be between 1 byte and 25 MB.');
+      const error = new Error(`The document must be between 1 byte and ${config.maximumUploadMegabytes} MB.`);
+      error.name = 'HttpError';
+      error.statusCode = 400;
+      throw error;
     }
     return this.#replace(roomId, filename, content);
   }
@@ -57,34 +107,34 @@ export class RoomStore {
 
   async #replace(roomId, filename, content) {
     this.validateId(roomId);
-    const existing = this.#rooms.get(roomId);
-    if (existing?.activeJobs) throw new HttpError(409, 'Wait for the active agent job before replacing the document.');
+    const existingRoom = this.#rooms.get(roomId);
+    if (existingRoom?.activeJobs) {
+      const error = new Error('Wait for the active agent job before replacing the document.');
+      error.name = 'HttpError';
+      error.statusCode = 409;
+      throw error;
+    }
 
-    if (existing) {
+    if (existingRoom) {
       const replacementPath = path.join(config.documentRoot, `${roomId}-${randomUUID()}.docx`);
       await fs.writeFile(replacementPath, content);
       try {
-        await this.#documentWorker.replaceFile(existing.documentId, replacementPath);
+        await this.#documentWorker.replaceFile(existingRoom.documentId, replacementPath);
       } catch (error) {
         await fs.rm(replacementPath, { force: true });
         throw error;
       }
-      const previousPath = existing.path;
-      existing.path = replacementPath;
+      const previousPath = existingRoom.replaceDocument(filename, replacementPath);
       await fs.rm(previousPath, { force: true });
-      existing.filename = filename;
-      existing.generation += 1;
-      existing.lastActivityAt = new Date();
-      existing.conversation = [];
       logEvent('rooms', 'room.replaced', {
         roomId,
-        documentId: existing.documentId,
-        generation: existing.generation,
+        documentId: existingRoom.documentId,
+        generation: existingRoom.generation,
         documentBytes: content.length,
         activeRooms: this.#rooms.size,
       });
-      this.#events.publish(roomId, this.response(existing));
-      return existing;
+      this.#events.publish(roomId, this.response(existingRoom));
+      return existingRoom;
     }
 
     const documentId = roomId;
@@ -93,21 +143,16 @@ export class RoomStore {
     try {
       await this.#documentWorker.open(documentId, documentPath, {
         providerType: 'hocuspocus',
-        url: collaborationUrl(`http://127.0.0.1:${config.port}`),
+        url: `ws://127.0.0.1:${config.port}/collaboration`,
         documentId,
         roomMode: 'create',
         syncTimeoutMs: 90_000,
       });
-      const room = {
+      const room = new Room({
         roomId,
-        documentId,
-        generation: 1,
         filename,
         path: documentPath,
-        lastActivityAt: new Date(),
-        activeJobs: 0,
-        conversation: [],
-      };
+      });
       this.#rooms.set(roomId, room);
       logEvent('rooms', 'room.created', { roomId, documentId, documentBytes: content.length, activeRooms: this.#rooms.size });
       this.#events.publish(roomId, this.response(room));
@@ -120,14 +165,19 @@ export class RoomStore {
 
   heartbeat(roomId, generation) {
     const room = this.require(roomId, false);
-    if (room.generation !== generation) throw new HttpError(409, 'The room document has been replaced.');
-    room.lastActivityAt = new Date();
+    if (room.generation !== generation) {
+      const error = new Error('The room document has been replaced.');
+      error.name = 'HttpError';
+      error.statusCode = 409;
+      throw error;
+    }
+    room.updateLastActivityAt();
     logEvent('rooms', 'room.heartbeat', { roomId, documentId: room.documentId, generation });
   }
 
-  touchDocument(documentId) {
+  updateLastActivityAt(documentId) {
     const room = this.#rooms.get(documentId);
-    if (room) room.lastActivityAt = new Date();
+    room?.updateLastActivityAt();
   }
 
   async export(roomId) {
@@ -145,7 +195,12 @@ export class RoomStore {
 
   async delete(roomId) {
     const room = this.require(roomId, false);
-    if (room.activeJobs) throw new HttpError(409, 'Cancel the active agent job before deleting the document.');
+    if (room.activeJobs) {
+      const error = new Error('Cancel the active agent job before deleting the document.');
+      error.name = 'HttpError';
+      error.statusCode = 409;
+      throw error;
+    }
     this.#rooms.delete(roomId);
     await this.#close(room);
     this.#events.publish(roomId, null);
@@ -179,7 +234,7 @@ export class RoomStore {
       generation: room.generation,
       filename: room.filename,
       last_activity_at: room.lastActivityAt.toISOString(),
-      collaboration_url: collaborationUrl(),
+      collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };
   }
 }

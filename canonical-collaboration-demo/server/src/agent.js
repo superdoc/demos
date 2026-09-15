@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { config } from './config.js';
-import { logEvent } from './diagnostics.js';
+import { logEvent } from './logging.js';
 
 const maximumTurns = 12;
 
