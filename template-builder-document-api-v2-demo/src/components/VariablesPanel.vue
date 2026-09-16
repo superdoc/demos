@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
-import type { TemplateVariable } from '../template-logic';
+import type { TemplateVariable, TemplateVariableValue } from '../template-logic';
 
 const props = defineProps<{ variables: TemplateVariable[] }>();
 
@@ -8,14 +8,61 @@ const emit = defineEmits<{
   add: [type: TemplateVariable['type']];
   load: [];
   remove: [id: string];
-  update: [id: string, field: 'name' | 'value', value: string | boolean];
+  update: [id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]];
 }>();
 
 const chooseVariableType = (event: Event) => {
   const select = event.target as HTMLSelectElement;
-  if (select.value === 'text' || select.value === 'boolean') emit('add', select.value);
+  if (select.value === 'text' || select.value === 'boolean' || select.value === 'textList' || select.value === 'tableRows') emit('add', select.value);
   select.value = '';
 };
+
+type TextListVariable = Extract<TemplateVariable, { type: 'textList' }>;
+type TableRowsVariable = Extract<TemplateVariable, { type: 'tableRows' }>;
+
+const updateTextListItem = (variable: TextListVariable, index: number, value: string) => {
+  const items = [...variable.value];
+  items[index] = value;
+  emit('update', variable.id, 'value', items);
+};
+
+const addTextListItem = (variable: TextListVariable) => emit('update', variable.id, 'value', [...variable.value, '']);
+const removeTextListItem = (variable: TextListVariable, index: number) => emit('update', variable.id, 'value', variable.value.filter((_, itemIndex) => itemIndex !== index));
+
+const updateTableColumn = (variable: TableRowsVariable, index: number, value: string) => {
+  const oldColumn = variable.columns[index];
+  const columns = [...variable.columns];
+  columns[index] = value;
+  const rows = variable.value.map(row => ({ ...row, [value]: row[oldColumn] ?? '' }));
+  emit('update', variable.id, 'columns', columns);
+  emit('update', variable.id, 'value', rows);
+};
+
+const addTableColumn = (variable: TableRowsVariable) => emit('update', variable.id, 'columns', [...variable.columns, '']);
+
+const removeTableColumn = (variable: TableRowsVariable, index: number) => emit(
+  'update',
+  variable.id,
+  'columns',
+  variable.columns.filter((_, columnIndex) => columnIndex !== index),
+);
+
+const updateTableCell = (variable: TableRowsVariable, rowIndex: number, column: string, value: string) => {
+  const rows = variable.value.map((row, index) => index === rowIndex ? { ...row, [column]: value } : row);
+  emit('update', variable.id, 'value', rows);
+};
+
+const addTableRow = (variable: TableRowsVariable) => {
+  const row = Object.fromEntries(variable.columns.map(column => [column, '']));
+  emit('update', variable.id, 'value', [...variable.value, row]);
+};
+
+const removeTableRow = (variable: TableRowsVariable, rowIndex: number) => emit(
+  'update',
+  variable.id,
+  'value',
+  variable.value.filter((_, index) => index !== rowIndex),
+);
 
 const searchInput = ref('');
 const searchQuery = ref('');
@@ -52,6 +99,8 @@ onBeforeUnmount(() => {
           <option value="" disabled>Add variable</option>
           <option value="text">Text</option>
           <option value="boolean">True/false</option>
+          <option value="textList">Text list</option>
+          <option value="tableRows">Table rows</option>
         </select>
       </div>
     </header>
@@ -66,8 +115,22 @@ onBeforeUnmount(() => {
     >
 
     <div v-if="filteredVariables.length" class="variable-list">
-      <div v-for="variable in filteredVariables" :key="variable.id" class="variable-row">
-        <label>
+      <div v-for="variable in filteredVariables" :key="variable.id" class="variable-row" :class="{ 'table-variable': variable.type === 'tableRows' }">
+        <div v-if="variable.type === 'tableRows'" class="table-variable-header">
+          <label>
+            <span>Variable name</span>
+            <input
+              :value="variable.name"
+              type="text"
+              placeholder="variable_name"
+              @input="emit('update', variable.id, 'name', ($event.target as HTMLInputElement).value)"
+            >
+          </label>
+          <button class="remove-variable" type="button" :aria-label="`Remove ${variable.name || 'variable'}`" @click="emit('remove', variable.id)">
+            Remove
+          </button>
+        </div>
+        <label v-else>
           <span>Variable name</span>
           <input
             :value="variable.name"
@@ -85,7 +148,7 @@ onBeforeUnmount(() => {
             @input="emit('update', variable.id, 'value', ($event.target as HTMLInputElement).value)"
           >
         </label>
-        <label v-else>
+        <label v-else-if="variable.type === 'boolean'">
           <span>Value</span>
           <span class="boolean-control">
             <button
@@ -99,7 +162,50 @@ onBeforeUnmount(() => {
             <strong>{{ variable.value ? 'True' : 'False' }}</strong>
           </span>
         </label>
-        <button class="remove-variable" type="button" :aria-label="`Remove ${variable.name || 'variable'}`" @click="emit('remove', variable.id)">
+        <div v-else-if="variable.type === 'textList'" class="collection-editor">
+          <span>Items</span>
+          <div v-for="(item, index) in variable.value" :key="index" class="collection-row">
+            <input
+              :value="item"
+              type="text"
+              :placeholder="`Item ${index + 1}`"
+              @input="updateTextListItem(variable, index, ($event.target as HTMLInputElement).value)"
+            >
+            <button type="button" aria-label="Remove text item" @click="removeTextListItem(variable, index)">Remove</button>
+          </div>
+          <button class="add-collection-item" type="button" @click="addTextListItem(variable)">Add item</button>
+        </div>
+        <div v-if="variable.type === 'tableRows'" class="collection-editor table-row-editor">
+          <span>Columns</span>
+          <div v-for="(column, columnIndex) in variable.columns" :key="columnIndex" class="column-definition">
+            <input
+              :value="column"
+              type="text"
+              placeholder="column_name"
+              @input="updateTableColumn(variable, columnIndex, ($event.target as HTMLInputElement).value)"
+            >
+            <button type="button" aria-label="Remove column" @click="removeTableColumn(variable, columnIndex)">Remove</button>
+          </div>
+          <button class="add-collection-item" type="button" @click="addTableColumn(variable)">Add column</button>
+          <span class="rows-heading">Rows</span>
+          <div v-for="(row, rowIndex) in variable.value" :key="rowIndex" class="table-data-row">
+            <div class="table-data-row-header">
+              <strong>Row {{ rowIndex + 1 }}</strong>
+              <button type="button" aria-label="Remove table row" @click="removeTableRow(variable, rowIndex)">Remove</button>
+            </div>
+            <label v-for="column in variable.columns" :key="column">
+              <span>{{ column || 'Unnamed column' }}</span>
+              <input
+                :value="row[column]"
+                type="text"
+                :placeholder="column || 'Value'"
+                @input="updateTableCell(variable, rowIndex, column, ($event.target as HTMLInputElement).value)"
+              >
+            </label>
+          </div>
+          <button class="add-collection-item" type="button" @click="addTableRow(variable)">Add row</button>
+        </div>
+        <button v-if="variable.type !== 'tableRows'" class="remove-variable" type="button" :aria-label="`Remove ${variable.name || 'variable'}`" @click="emit('remove', variable.id)">
           Remove
         </button>
       </div>
@@ -125,6 +231,8 @@ header .load-variables:hover { color: #1d4ed8; background: #f8fafc; border-color
 .variable-search { width: 100%; margin-bottom: 12px; padding: 9px 11px; color: #252a32; background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; font: inherit; font-size: 12px; }
 .variable-search:focus { border-color: #2563eb; outline: 2px solid #2563eb22; }
 .variable-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: end; padding: 11px; background: #f8fafc; border: 1px solid #e1e7ef; border-radius: 8px; }
+.variable-row.table-variable { display: flex; align-items: stretch; flex-direction: column; gap: 14px; }
+.table-variable-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 label { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
 label span { color: #596273; font-size: 10px; font-weight: 700; }
 input { width: 100%; min-width: 0; padding: 8px 9px; color: #252a32; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; font-size: 12px; }
@@ -138,5 +246,17 @@ input:focus { border-color: #2563eb; outline: 2px solid #2563eb22; }
 .boolean-toggle:focus-visible { outline: 2px solid #2563eb55; outline-offset: 2px; }
 .remove-variable { padding: 8px 9px; color: #b42318; background: #fff; border: 1px solid #f0b8b3; border-radius: 6px; font-size: 10px; font-weight: 700; cursor: pointer; }
 .remove-variable:hover { color: #fff; background: #b42318; border-color: #b42318; }
+.collection-editor { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+.collection-editor > span { color: #596273; font-size: 10px; font-weight: 700; }
+.collection-row { display: flex; min-width: 0; gap: 5px; }
+.collection-row input { flex: 1 1 0; }
+.collection-row button, .column-definition button, .table-data-row button, .add-collection-item { padding: 6px 8px; color: #596273; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 10px; font-weight: 700; cursor: pointer; }
+.collection-row button:hover, .column-definition button:hover, .table-data-row button:hover { color: #b42318; border-color: #f0b8b3; }
+.add-collection-item { align-self: flex-start; color: #245fae; border-color: #b9c9df; }
+.column-definition { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.rows-heading { margin-top: 8px; }
+.table-data-row { display: flex; min-width: 0; flex-direction: column; gap: 7px; padding: 9px; background: #fff; border: 1px solid #dbe3ee; border-radius: 7px; }
+.table-data-row-header { display: flex; align-items: center; justify-content: space-between; }
+.table-data-row-header strong { color: #303640; font-size: 11px; }
 .empty-state { margin: 0; padding: 24px 12px; color: #8a919b; text-align: center; font-size: 12px; }
 </style>

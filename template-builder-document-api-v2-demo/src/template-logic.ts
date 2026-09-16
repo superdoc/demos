@@ -7,13 +7,36 @@ export type TemplateVariable = {
 } | {
   type: 'boolean';
   value: boolean;
+} | {
+  type: 'textList';
+  value: string[];
+} | {
+  type: 'tableRows';
+  columns: string[];
+  value: Array<Record<string, string>>;
 });
 
-export type DiscoveredVariable = Pick<TemplateVariable, 'name' | 'type'>;
+export type TemplateVariableValue = TemplateVariable['value'];
+
+export type DiscoveredVariable =
+  | { name: string; type: 'text' | 'boolean' }
+  | { name: string; type: 'tableRows'; columns: string[] };
 
 export const discoverTemplateVariables = (text: string): DiscoveredVariable[] => {
-  const discovered = new Map<string, TemplateVariable['type']>();
-  const interpolationPattern = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+  const discovered = new Map<string, 'text' | 'boolean' | 'tableRows'>();
+  const tableRows = new Map<string, string[]>();
+  const tableLoopPattern = /\{%\s*tr\s+for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s*%\}([\s\S]*?)\{%\s*tr\s+endfor\s*%\}/g;
+  for (const match of text.matchAll(tableLoopPattern)) {
+    const alias = match[1];
+    const name = match[2];
+    const columns = new Set<string>();
+    const columnPattern = new RegExp(`\\{\\{\\s*${alias}\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
+    for (const columnMatch of match[3].matchAll(columnPattern)) columns.add(columnMatch[1]);
+    tableRows.set(name, [...columns]);
+    discovered.set(name, 'tableRows');
+  }
+
+  const interpolationPattern = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?=\||\}\})/g;
   for (const match of text.matchAll(interpolationPattern)) discovered.set(match[1], 'text');
 
   const ifPattern = /\{%\s*(?:p\s+)?if\s+([\s\S]*?)\s*%\}/g;
@@ -35,7 +58,68 @@ export const discoverTemplateVariables = (text: string): DiscoveredVariable[] =>
     }
   }
 
-  return Array.from(discovered, ([name, type]) => ({ name, type }));
+  return Array.from(discovered, ([name, type]) => type === 'tableRows'
+    ? { name, type, columns: tableRows.get(name) ?? [] }
+    : { name, type });
+};
+
+export type TableRowLoop = {
+  alias: string;
+  variableName: string;
+  tableOrdinal: number;
+  openingRowIndex: number;
+  closingRowIndex: number;
+  prototypeRows: Array<{ rowIndex: number; cells: string[] }>;
+};
+
+type ExtractedBlock = {
+  text: string;
+  tableContext?: { tableOrdinal: number; rowIndex: number; columnIndex: number };
+};
+
+export const findTableRowLoops = (blocks: ExtractedBlock[]): TableRowLoop[] => {
+  const rows = new Map<string, { tableOrdinal: number; rowIndex: number; cells: Map<number, string> }>();
+  for (const block of blocks) {
+    const context = block.tableContext;
+    if (!context) continue;
+    const key = `${context.tableOrdinal}:${context.rowIndex}`;
+    const row = rows.get(key) ?? { tableOrdinal: context.tableOrdinal, rowIndex: context.rowIndex, cells: new Map() };
+    row.cells.set(context.columnIndex, `${row.cells.get(context.columnIndex) ?? ''}${block.text}`);
+    rows.set(key, row);
+  }
+
+  const orderedRows = [...rows.values()].sort((a, b) => a.tableOrdinal - b.tableOrdinal || a.rowIndex - b.rowIndex);
+  const loops: TableRowLoop[] = [];
+  const openings = new Map<number, { alias: string; variableName: string; rowIndex: number }>();
+  for (const row of orderedRows) {
+    const text = [...row.cells.values()].join('').trim();
+    const opening = text.match(/^\{%\s*tr\s+for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s*%\}$/);
+    if (opening) {
+      openings.set(row.tableOrdinal, { alias: opening[1], variableName: opening[2], rowIndex: row.rowIndex });
+      continue;
+    }
+    if (!/^\{%\s*tr\s+endfor\s*%\}$/.test(text)) continue;
+    const start = openings.get(row.tableOrdinal);
+    if (!start) throw new Error('A table-row loop has an end tag without a matching start tag.');
+    const prototypeRows = orderedRows
+      .filter(candidate => candidate.tableOrdinal === row.tableOrdinal && candidate.rowIndex > start.rowIndex && candidate.rowIndex < row.rowIndex)
+      .map(candidate => ({
+        rowIndex: candidate.rowIndex,
+        cells: [...candidate.cells.entries()].sort(([a], [b]) => a - b).map(([, value]) => value),
+      }));
+    if (!prototypeRows.length) throw new Error(`Table-row loop "${start.variableName}" has no prototype row.`);
+    loops.push({
+      alias: start.alias,
+      variableName: start.variableName,
+      tableOrdinal: row.tableOrdinal,
+      openingRowIndex: start.rowIndex,
+      closingRowIndex: row.rowIndex,
+      prototypeRows,
+    });
+    openings.delete(row.tableOrdinal);
+  }
+  if (openings.size) throw new Error('A table-row loop is missing its end tag.');
+  return loops;
 };
 
 type Value = string | number | boolean;

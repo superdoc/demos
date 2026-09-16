@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: letter portrait; margin: 1in; }
+    body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.25; color: #172033; }
+    h1 { margin: 0 0 6pt; color: #163f73; font-size: 24pt; }
+    .subtitle { margin: 0 0 20pt; color: #667085; font-size: 11pt; }
+    h2 { margin: 12pt 0 5pt; color: #245fae; font-size: 15pt; page-break-after: avoid; }
+    .page-break { page-break-before: always; }
+    .callout { margin: 0 0 6pt; padding: 6pt 10pt; background: #eef4fb; border-left: 4pt solid #2563eb; color: #26364d; }
+    .callout strong { color: #163f73; }
+    .template { margin: 0 0 8pt; padding: 7pt 9pt; background: #f7f8fa; border: 1pt solid #d9dee7; font-family: Consolas, monospace; font-size: 10pt; }
+    .template-block { margin: 0; padding: 3pt 9pt; background: #f7f8fa; border-left: 1pt solid #d9dee7; border-right: 1pt solid #d9dee7; font-family: Consolas, monospace; font-size: 10pt; }
+    .template-block.first { padding-top: 7pt; border-top: 1pt solid #d9dee7; }
+    .template-block.last { margin-bottom: 8pt; padding-bottom: 7pt; border-bottom: 1pt solid #d9dee7; }
+    table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+    th, td { padding: 7pt; border: 1pt solid #cbd5e1; text-align: left; }
+    th { color: #163f73; background: #eef4fb; }
+    td { font-family: Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>Template Parser Test Document</h1>
+  <p class="subtitle">A focused fixture for visually checking variable and conditional rendering.</p>
+
+  <h2>1. Text interpolation</h2>
+  <p class="callout"><strong>Test:</strong> Replace a named text variable while preserving the surrounding sentence.</p>
+  <p class="template">Document title: {{ document_title }}</p>
+
+  <h2>2. Inline boolean condition</h2>
+  <p class="callout"><strong>Test:</strong> Include inline content only when a boolean variable is true.</p>
+  <p class="template">{% if show_summary %}Summary content is enabled.{% endif %}</p>
+
+  <h2>3. Inline condition with alternate</h2>
+  <p class="callout"><strong>Test:</strong> Choose exactly one inline branch from a boolean value.</p>
+  <p class="template">{% if use_formal_tone %}Thank you for your consideration.{% else %}Thanks for taking a look!{% endif %}</p>
+
+  <h2>4. Paragraph-level condition</h2>
+  <p class="callout"><strong>Test:</strong> Retain or remove complete paragraphs and remove all directive paragraphs.</p>
+  <p class="template-block first">{%p if is_technical_sow %}</p>
+  <p class="template-block">Technical deliverables include architecture, implementation, and verification.</p>
+  <p class="template-block last">{%p endif %}</p>
+
+  <h2 class="page-break">5. Paragraph-level alternate</h2>
+  <p class="callout"><strong>Test:</strong> Select one complete paragraph branch and remove the unused branch.</p>
+  <p class="template-block first">{%p if use_formal_tone %}</p>
+  <p class="template-block">Please review the enclosed statement of work.</p>
+  <p class="template-block">{%p else %}</p>
+  <p class="template-block">Take a look at the project plan below.</p>
+  <p class="template-block last">{%p endif %}</p>
+
+  <h2>6. Empty alternate branch</h2>
+  <p class="callout"><strong>Test:</strong> Safely render an alternate branch that contains no content.</p>
+  <p class="template">{% if include_notice %}This notice is included.{% else %}{% endif %}</p>
+
+  <h2>7. Compound boolean expression</h2>
+  <p class="callout"><strong>Test:</strong> Require two boolean variables to be true.</p>
+  <p class="template">{% if has_approval and has_budget %}The project is approved and funded.{% endif %}</p>
+
+  <h2>8. String comparison</h2>
+  <p class="callout"><strong>Test:</strong> Compare a text variable with a quoted string value.</p>
+  <p class="template">{% if service_tier == 'premium' %}Premium support is included.{% else %}Standard support is included.{% endif %}</p>
+
+  <h2>9. Nested conditions</h2>
+  <p class="callout"><strong>Test:</strong> Resolve the inner condition before evaluating the containing condition.</p>
+  <p class="template">{% if include_details %}Details are enabled. {% if show_internal_notes %}Internal notes are visible.{% else %}Internal notes are hidden.{% endif %}{% endif %}</p>
+
+  <h2 class="page-break">10. Table-row loop</h2>
+  <p class="callout"><strong>Test:</strong> Repeat the prototype row once per item in a structured list, then remove the directive rows.</p>
+  <table border="1" cellspacing="0" cellpadding="7" style="border: 1pt solid #94a3b8; border-collapse: collapse;">
+    <tr><th>Description</th><th>Due date</th><th>Fee</th></tr>
+    <tr><td colspan="3">{%tr for row in fee_schedule %}</td></tr>
+    <tr><td>{{ row.description }}</td><td>{{ row.due_date }}</td><td>{{ row.fee }}</td></tr>
+    <tr><td colspan="3">{%tr endfor %}</td></tr>
+  </table>
+</body>
+</html>

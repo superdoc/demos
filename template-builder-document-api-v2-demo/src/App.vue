@@ -8,9 +8,16 @@ import FieldCard from './components/FieldCard.vue';
 import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
-import { discoverTemplateVariables, evaluateBooleanExpression, findInnermostConditional, type TemplateVariable } from './template-logic';
+import {
+  discoverTemplateVariables,
+  evaluateBooleanExpression,
+  findInnermostConditional,
+  findTableRowLoops,
+  type TemplateVariable,
+  type TemplateVariableValue,
+} from './template-logic';
 
-const documentUrl = `${import.meta.env.BASE_URL}brief-nda.docx`;
+const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
 // =============================================================================
 // State
@@ -20,7 +27,7 @@ const superdocInstance = shallowRef<SuperDoc | null>(null);
 const fieldController = shallowRef<FieldController | null>(null);
 const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
-const documentName = ref('brief-nda.docx');
+const documentName = ref('parser-test-document.docx');
 const documentMode = ref<'suggesting' | 'editing' | 'viewing'>('editing');
 const activeTab = ref<'active' | 'all' | 'clause' | 'variables'>('all');
 const variables = ref<TemplateVariable[]>([]);
@@ -206,9 +213,10 @@ const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
 };
 
 const addVariable = (type: TemplateVariable['type']) => {
-  variables.value.push(type === 'boolean'
-    ? { id: crypto.randomUUID(), type, name: '', value: false }
-    : { id: crypto.randomUUID(), type, name: '', value: '' });
+  if (type === 'boolean') variables.value.push({ id: crypto.randomUUID(), type, name: '', value: false });
+  else if (type === 'textList') variables.value.push({ id: crypto.randomUUID(), type, name: '', value: [''] });
+  else if (type === 'tableRows') variables.value.push({ id: crypto.randomUUID(), type, name: '', columns: ['column'], value: [{ column: '' }] });
+  else variables.value.push({ id: crypto.randomUUID(), type, name: '', value: '' });
 };
 
 const loadVariables = async () => {
@@ -217,9 +225,14 @@ const loadVariables = async () => {
   const existingNames = new Set(variables.value.map(variable => variable.name.trim()).filter(Boolean));
   for (const discovered of discoverTemplateVariables(text)) {
     if (existingNames.has(discovered.name)) continue;
-    variables.value.push(discovered.type === 'boolean'
-      ? { id: crypto.randomUUID(), type: 'boolean', name: discovered.name, value: false }
-      : { id: crypto.randomUUID(), type: 'text', name: discovered.name, value: '' });
+    if (discovered.type === 'boolean') {
+      variables.value.push({ id: crypto.randomUUID(), type: 'boolean', name: discovered.name, value: false });
+    } else if (discovered.type === 'tableRows') {
+      const emptyRow = Object.fromEntries(discovered.columns.map(column => [column, '']));
+      variables.value.push({ id: crypto.randomUUID(), type: 'tableRows', name: discovered.name, columns: discovered.columns, value: [emptyRow] });
+    } else {
+      variables.value.push({ id: crypto.randomUUID(), type: 'text', name: discovered.name, value: '' });
+    }
     existingNames.add(discovered.name);
   }
 };
@@ -228,15 +241,81 @@ const removeVariable = (id: string) => {
   variables.value = variables.value.filter(variable => variable.id !== id);
 };
 
-const updateVariable = (id: string, field: 'name' | 'value', value: string | boolean) => {
+const updateVariable = (id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]) => {
   const variable = variables.value.find(candidate => candidate.id === id);
   if (!variable) return;
   if (field === 'name' && typeof value === 'string') variable.name = value;
   if (field === 'value' && variable.type === 'text' && typeof value === 'string') variable.value = value;
   if (field === 'value' && variable.type === 'boolean' && typeof value === 'boolean') variable.value = value;
+  if (field === 'value' && variable.type === 'textList' && Array.isArray(value)) variable.value = value as string[];
+  if (field === 'value' && variable.type === 'tableRows' && Array.isArray(value)) variable.value = value as Array<Record<string, string>>;
+  if (field === 'columns' && variable.type === 'tableRows' && Array.isArray(value)) {
+    variable.columns = value as string[];
+    variable.value = variable.value.map(row => Object.fromEntries(variable.columns.map(column => [column, row[column] ?? ''])));
+  }
 };
 
 const escapeRegularExpression = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const renderTableRowLoops = async () => {
+  const documentApi = superdocInstance.value?.activeEditor?.doc;
+  if (!documentApi) throw new Error('Document API is unavailable.');
+  const extracted = await documentApi.extract({});
+  const loops = findTableRowLoops(extracted.blocks);
+  if (!loops.length) return;
+  const tableMatches = await documentApi.query.match({
+    select: { type: 'node', nodeType: 'table' },
+    limit: 1000,
+  });
+
+  for (const loop of [...loops].sort((a, b) => b.tableOrdinal - a.tableOrdinal || b.openingRowIndex - a.openingRowIndex)) {
+    const tableMatch = tableMatches.items[loop.tableOrdinal];
+    if (!tableMatch || tableMatch.matchKind !== 'node' || tableMatch.address.nodeType !== 'table') {
+      throw new Error(`Table for row loop "${loop.variableName}" could not be found.`);
+    }
+    const variable = variables.value.find(candidate => candidate.name.trim() === loop.variableName);
+    const rows = variable?.type === 'tableRows' ? variable.value : [];
+    const tableTarget = {
+      kind: 'block' as const,
+      nodeType: 'table' as const,
+      nodeId: tableMatch.address.nodeId,
+    };
+
+    if (!rows.length) {
+      await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: loop.closingRowIndex });
+      for (const prototype of [...loop.prototypeRows].reverse()) {
+        await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: prototype.rowIndex });
+      }
+      await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: loop.openingRowIndex });
+      continue;
+    }
+
+    const outputRowCount = rows.length * loop.prototypeRows.length;
+    const insertedRowCount = outputRowCount - loop.prototypeRows.length;
+    const lastPrototypeRow = loop.prototypeRows[loop.prototypeRows.length - 1]?.rowIndex;
+    if (lastPrototypeRow === undefined) throw new Error(`Table-row loop "${loop.variableName}" has no prototype row.`);
+    if (insertedRowCount > 0) {
+      await documentApi.tables.insertRow({ target: tableTarget, rowIndex: lastPrototypeRow, position: 'below', count: insertedRowCount });
+    }
+
+    for (const [itemIndex, item] of rows.entries()) {
+      for (const [prototypeOffset, prototype] of loop.prototypeRows.entries()) {
+        const rowIndex = loop.prototypeRows[0].rowIndex + itemIndex * loop.prototypeRows.length + prototypeOffset;
+        for (const [columnIndex, template] of prototype.cells.entries()) {
+          const pattern = new RegExp(`\\{\\{\\s*${escapeRegularExpression(loop.alias)}\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
+          const text = template.replace(pattern, (_, column: string) => item[column] ?? '');
+          await documentApi.tables.setCellText({ target: tableTarget, rowIndex, columnIndex, text });
+        }
+      }
+    }
+
+    await documentApi.tables.deleteRow({
+      target: tableTarget,
+      rowIndex: loop.closingRowIndex + insertedRowCount,
+    });
+    await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: loop.openingRowIndex });
+  }
+};
 
 const replaceConditionalBlock = async (source: string, replacement: string, paragraphScoped: boolean) => {
   const documentApi = superdocInstance.value?.activeEditor?.doc;
@@ -316,10 +395,14 @@ const renderVariables = async () => {
 
   const values = new Map(
     variables.value
+      .filter(variable => variable.type === 'text' || variable.type === 'boolean')
       .map(variable => [variable.name.trim(), String(variable.value)] as const)
       .filter(([name]) => name.length > 0),
   );
-  const expressionValues = new Map(variables.value.map(variable => [variable.name.trim(), variable.value] as const).filter(([name]) => name.length > 0));
+  const expressionValues = new Map(variables.value
+    .filter(variable => variable.type === 'text' || variable.type === 'boolean')
+    .map(variable => [variable.name.trim(), variable.value] as const)
+    .filter(([name]) => name.length > 0));
   renderingVariables.value = true;
   modeBeforeVariableRender = documentMode.value;
   variableRenderSnapshot = await superdoc.ui.document.export({
@@ -333,6 +416,7 @@ const renderVariables = async () => {
   superdoc.setDocumentMode('editing');
 
   try {
+    await renderTableRowLoops();
     for (let pass = 0; pass < 1000; pass += 1) {
       const text = await superdoc.activeEditor?.doc?.getText?.({});
       if (text === undefined) throw new Error('Document text is unavailable.');
