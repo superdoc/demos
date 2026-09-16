@@ -75,5 +75,13 @@
     <tr><td>{{ row.description }}</td><td>{{ row.due_date }}</td><td>{{ row.fee }}</td></tr>
     <tr><td colspan="3">{%tr endfor %}</td></tr>
   </table>
+
+  <h2>11. Default for false-like values</h2>
+  <p class="callout"><strong>Test:</strong> Use fallback text when a value is missing, empty, false, or otherwise false-like.</p>
+  <p class="template">Special instructions: {{ special_instructions | default('None', true) }}</p>
+
+  <h2>12. Default for undefined values only</h2>
+  <p class="callout"><strong>Test:</strong> Preserve an existing false-like value and use fallback text only when the variable is undefined.</p>
+  <p class="template">Timeline reference: {{ timeline_reference | default('above', false) }}</p>
 </body>
 </html>

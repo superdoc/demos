@@ -22,6 +22,30 @@ export type DiscoveredVariable =
   | { name: string; type: 'text' | 'boolean' }
   | { name: string; type: 'tableRows'; columns: string[] };
 
+export type Interpolation = {
+  name: string;
+  fallback?: string;
+  useFallbackForFalsyValues: boolean;
+};
+
+export const parseInterpolation = (source: string): Interpolation | null => {
+  const match = source.match(/^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\|\s*default\(\s*(['"])((?:\\.|(?!\2).)*)\2\s*(?:,\s*(true|false)\s*)?\))?\s*\}\}$/);
+  if (!match) return null;
+  return {
+    name: match[1],
+    fallback: match[3]?.replace(/\\(['"\\])/g, '$1'),
+    useFallbackForFalsyValues: match[4] === 'true',
+  };
+};
+
+export const renderInterpolation = (interpolation: Interpolation, values: ReadonlyMap<string, string | boolean>) => {
+  const exists = values.has(interpolation.name);
+  const value = values.get(interpolation.name);
+  const shouldUseFallback = !exists || (interpolation.useFallbackForFalsyValues && !value);
+  if (shouldUseFallback) return interpolation.fallback ?? '';
+  return String(value ?? '');
+};
+
 export const discoverTemplateVariables = (text: string): DiscoveredVariable[] => {
   const discovered = new Map<string, 'text' | 'boolean' | 'tableRows'>();
   const tableRows = new Map<string, string[]>();

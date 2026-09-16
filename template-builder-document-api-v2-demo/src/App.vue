@@ -13,6 +13,8 @@ import {
   evaluateBooleanExpression,
   findInnermostConditional,
   findTableRowLoops,
+  parseInterpolation,
+  renderInterpolation,
   type TemplateVariable,
   type TemplateVariableValue,
 } from './template-logic';
@@ -396,7 +398,7 @@ const renderVariables = async () => {
   const values = new Map(
     variables.value
       .filter(variable => variable.type === 'text' || variable.type === 'boolean')
-      .map(variable => [variable.name.trim(), String(variable.value)] as const)
+      .map(variable => [variable.name.trim(), variable.value] as const)
       .filter(([name]) => name.length > 0),
   );
   const expressionValues = new Map(variables.value
@@ -438,18 +440,20 @@ const renderVariables = async () => {
         throw new Error(`Conditional block did not change the document: ${block.expression}`);
       }
     }
-    for (const [name, value] of values) {
-      const query = `\\{\\{\\s*${escapeRegularExpression(name)}\\s*\\}\\}`;
-      const matches = await superdoc.activeEditor?.doc?.query?.match?.({
-        select: { type: 'text', pattern: query, mode: 'regex', caseSensitive: true },
-        limit: 1000,
+    const interpolations = await superdoc.activeEditor?.doc?.query?.match?.({
+      select: { type: 'text', pattern: '\\{\\{[^{}]+\\}\\}', mode: 'regex', caseSensitive: true },
+      limit: 1000,
+    });
+    if (!interpolations) throw new Error('Document query is unavailable.');
+    for (const match of [...interpolations.items].reverse()) {
+      if (match.matchKind !== 'text') continue;
+      const source = match.blocks.map(block => block.text).join('');
+      const interpolation = parseInterpolation(source);
+      if (!interpolation) continue;
+      await superdoc.activeEditor?.doc?.replace?.({
+        target: match.target,
+        text: renderInterpolation(interpolation, values),
       });
-      if (!matches) throw new Error('Document query is unavailable.');
-
-      for (const match of [...matches.items].reverse()) {
-        if (match.matchKind !== 'text') continue;
-        await superdoc.activeEditor?.doc?.replace?.({ target: match.target, text: value });
-      }
     }
 
     variablesRendered.value = true;
