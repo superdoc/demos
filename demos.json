@@ -11,6 +11,16 @@
     "localSourceDirectory": "superdoc-inline-revisions"
   },
   {
+    "id": "agentic-collaboration",
+    "screenshot": "agentic-collaboration-poster.png",
+    "title": "Agentic Collaboration",
+    "description": "Real time collaboration with agents and humans",
+    "liveDemoUri": "/collab/",
+    "sourceUri": "https://github.com/superdoc/demos/tree/main/canonical-collaboration-demo",
+    "packageDirectory": "canonical-collaboration-demo/client",
+    "versioned": false
+  },
+  {
     "id": "template-builder-api-v2",
     "screenshot": "template-builder-poster.jpg",
     "video": "template-builder-preview.mp4",

@@ -39,8 +39,8 @@ export async function renderGallery({ mode, output }) {
   if (new Set(ids).size !== ids.length) throw new Error("Demo ids must be unique");
 
   const versionEntries = mode === "local"
-    ? manifest.filter((demo) => demo.localSourceDirectory)
-    : manifest;
+    ? manifest.filter((demo) => demo.localSourceDirectory && demo.versioned !== false)
+    : manifest.filter((demo) => demo.versioned !== false);
   const versions = await Promise.all(versionEntries.map(async (demo) => {
     const packageJson = await readFile(
       path.join(root, demo.packageDirectory, "node_modules", "superdoc", "package.json"),
