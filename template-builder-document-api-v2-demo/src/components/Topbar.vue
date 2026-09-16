@@ -7,6 +7,8 @@ defineProps<{
   documentName: string;
   ready: boolean;
   mode: DocumentMode;
+  variablesRendered: boolean;
+  renderingVariables: boolean;
   fieldExplorerVisible: boolean;
 }>();
 
@@ -15,6 +17,7 @@ const emit = defineEmits<{
   newDocument: [];
   upload: [file: File];
   modeChange: [mode: DocumentMode];
+  toggleVariables: [];
   toggleFieldExplorer: [];
 }>();
 
@@ -85,6 +88,14 @@ const chooseFileAction = (event: Event) => {
           <option value="viewing">Viewing</option>
         </select>
       </label>
+
+      <button
+        class="render-variables-toggle"
+        :class="{ active: variablesRendered }"
+        :aria-pressed="variablesRendered"
+        :disabled="!ready || renderingVariables"
+        @click="emit('toggleVariables')"
+      >{{ variablesRendered ? 'Hide variables' : 'Render variables' }}</button>
 
       <button
         class="field-explorer-toggle"
@@ -201,6 +212,7 @@ const chooseFileAction = (event: Event) => {
   font-weight: 700;
 }
 
+.render-variables-toggle,
 .field-explorer-toggle {
   margin-left: 8px;
   padding: 8px 11px;
@@ -213,6 +225,7 @@ const chooseFileAction = (event: Event) => {
   cursor: pointer;
 }
 
+.render-variables-toggle.active,
 .field-explorer-toggle.active {
   color: #fff;
   background: #2563eb;

@@ -7,6 +7,8 @@ import Topbar from './components/Topbar.vue';
 import FieldCard from './components/FieldCard.vue';
 import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
+import VariablesPanel from './components/VariablesPanel.vue';
+import { evaluateBooleanExpression, findInnermostConditional, type TemplateVariable } from './template-logic';
 
 const documentUrl = `${import.meta.env.BASE_URL}brief-nda.docx`;
 
@@ -20,7 +22,10 @@ const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
 const documentName = ref('brief-nda.docx');
 const documentMode = ref<'suggesting' | 'editing' | 'viewing'>('editing');
-const activeTab = ref<'active' | 'all' | 'clause'>('all');
+const activeTab = ref<'active' | 'all' | 'clause' | 'variables'>('all');
+const variables = ref<TemplateVariable[]>([]);
+const variablesRendered = ref(false);
+const renderingVariables = ref(false);
 const editingFieldId = ref<string | null>(null);
 const editingInstanceIds = ref<string[]>([]);
 const activeDocumentFieldId = ref<string | null>(null);
@@ -37,6 +42,8 @@ let pendingInsertTarget: SelectionTarget | null = null;
 let selectionCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 const SELECTION_CAPTURE_DEBOUNCE_MS = 150;
 let stopFieldSubscription: (() => void) | null = null;
+let variableRenderSnapshot: Blob | null = null;
+let modeBeforeVariableRender: typeof documentMode.value = 'editing';
 
 const sidebarFields = computed(() => fields.value);
 
@@ -188,7 +195,7 @@ const openActiveDocumentField = (instanceId: string) => {
   activeTab.value = 'active';
 };
 
-const selectSidebarTab = (tab: 'active' | 'all' | 'clause') => {
+const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
   activeTab.value = tab;
   if (tab === 'active') {
     if (activeDocumentFieldId.value) openActiveDocumentField(activeDocumentFieldId.value);
@@ -196,6 +203,131 @@ const selectSidebarTab = (tab: 'active' | 'all' | 'clause') => {
   } else if (editingSource.value === 'document') {
     closeFieldEditor();
   }
+};
+
+const addVariable = (type: TemplateVariable['type']) => {
+  variables.value.push(type === 'boolean'
+    ? { id: crypto.randomUUID(), type, name: '', value: false }
+    : { id: crypto.randomUUID(), type, name: '', value: '' });
+};
+
+const removeVariable = (id: string) => {
+  variables.value = variables.value.filter(variable => variable.id !== id);
+};
+
+const updateVariable = (id: string, field: 'name' | 'value', value: string | boolean) => {
+  const variable = variables.value.find(candidate => candidate.id === id);
+  if (!variable) return;
+  if (field === 'name' && typeof value === 'string') variable.name = value;
+  if (field === 'value' && variable.type === 'text' && typeof value === 'string') variable.value = value;
+  if (field === 'value' && variable.type === 'boolean' && typeof value === 'boolean') variable.value = value;
+};
+
+const escapeRegularExpression = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const replaceConditionalBlock = async (source: string, replacement: string) => {
+  const documentApi = superdocInstance.value?.activeEditor?.doc;
+  const matches = await documentApi?.query?.match?.({
+    select: { type: 'text', pattern: source, mode: 'contains', caseSensitive: true },
+    limit: 1000,
+  });
+  if (!matches) throw new Error('Document query is unavailable.');
+  let count = 0;
+  for (const match of [...matches.items].reverse()) {
+    if (match.matchKind !== 'text') continue;
+    await documentApi?.replace?.({ target: match.target, text: replacement });
+    count += 1;
+  }
+  return count;
+};
+
+const hideVariables = async (nextMode = modeBeforeVariableRender) => {
+  const superdoc = superdocInstance.value;
+  if (!superdoc || !variablesRendered.value) return;
+
+  renderingVariables.value = true;
+  superdoc.setDocumentMode('editing');
+  try {
+    if (!variableRenderSnapshot) throw new Error('The original document snapshot is unavailable.');
+    const originalDocument = new File([variableRenderSnapshot], documentName.value, { type: DOCX });
+    variableRenderSnapshot = null;
+    await superdoc.replaceFile(originalDocument);
+    await fieldController.value?.load();
+    variablesRendered.value = false;
+    superdoc.setDocumentMode(nextMode);
+    documentMode.value = nextMode;
+  } finally {
+    renderingVariables.value = false;
+  }
+};
+
+const renderVariables = async () => {
+  const superdoc = superdocInstance.value;
+  if (!superdoc || variablesRendered.value) return;
+
+  const values = new Map(
+    variables.value
+      .map(variable => [variable.name.trim(), String(variable.value)] as const)
+      .filter(([name]) => name.length > 0),
+  );
+  const expressionValues = new Map(variables.value.map(variable => [variable.name.trim(), variable.value] as const).filter(([name]) => name.length > 0));
+  renderingVariables.value = true;
+  modeBeforeVariableRender = documentMode.value;
+  variableRenderSnapshot = await superdoc.ui.document.export({
+    exportType: ['docx'],
+    triggerDownload: false,
+  }) ?? null;
+  if (!variableRenderSnapshot) {
+    renderingVariables.value = false;
+    throw new Error('The document could not be captured before rendering.');
+  }
+  superdoc.setDocumentMode('editing');
+
+  try {
+    for (let pass = 0; pass < 1000; pass += 1) {
+      const text = await superdoc.activeEditor?.doc?.getText?.({});
+      if (text === undefined) throw new Error('Document text is unavailable.');
+      const block = findInnermostConditional(text);
+      if (!block) break;
+      const replacement = evaluateBooleanExpression(block.expression, expressionValues) ? block.truthyContent : block.falsyContent;
+      const count = await replaceConditionalBlock(block.source, replacement);
+      if (!count) throw new Error('A conditional template block could not be replaced.');
+    }
+    for (const [name, value] of values) {
+      const query = `\\{\\{\\s*${escapeRegularExpression(name)}\\s*\\}\\}`;
+      const matches = await superdoc.activeEditor?.doc?.query?.match?.({
+        select: { type: 'text', pattern: query, mode: 'regex', caseSensitive: true },
+        limit: 1000,
+      });
+      if (!matches) throw new Error('Document query is unavailable.');
+
+      for (const match of [...matches.items].reverse()) {
+        if (match.matchKind !== 'text') continue;
+        await superdoc.activeEditor?.doc?.replace?.({ target: match.target, text: value });
+      }
+    }
+
+    variablesRendered.value = true;
+    superdoc.setDocumentMode('viewing');
+    documentMode.value = 'viewing';
+  } catch (error) {
+    if (variableRenderSnapshot) {
+      const originalDocument = new File([variableRenderSnapshot], documentName.value, { type: DOCX });
+      variableRenderSnapshot = null;
+      await superdoc.replaceFile(originalDocument);
+      await fieldController.value?.load();
+    }
+    superdoc.setDocumentMode(modeBeforeVariableRender);
+    documentMode.value = modeBeforeVariableRender;
+    console.error('Failed to render variables', error);
+  } finally {
+    renderingVariables.value = false;
+  }
+};
+
+const toggleVariables = async () => {
+  if (variablesRendered.value) await hideVariables();
+  else await renderVariables();
 };
 
 const handleDocumentFieldClick = (event: Event) => {
@@ -301,6 +433,7 @@ const handleExport = async () => {
 };
 
 const handleUpload = async (file: File) => {
+  if (variablesRendered.value) await hideVariables();
   highlightedGroupKeys.value = new Set();
   highlightLockedFields.value = false;
   await superdocInstance.value?.replaceFile(file);
@@ -313,6 +446,8 @@ const handleUpload = async (file: File) => {
 const handleNewDocument = async () => {
   const superdoc = superdocInstance.value;
   if (!superdoc) return;
+
+  if (variablesRendered.value) await hideVariables();
 
   const blankDocument = await getFileObject(BlankDOCX, 'untitled.docx', DOCX);
   editingFieldId.value = null;
@@ -328,7 +463,11 @@ const handleNewDocument = async () => {
   await fieldController.value?.load();
 };
 
-const handleModeChange = (mode: 'suggesting' | 'editing' | 'viewing') => {
+const handleModeChange = async (mode: 'suggesting' | 'editing' | 'viewing') => {
+  if (variablesRendered.value && mode !== 'viewing') {
+    await hideVariables(mode);
+    return;
+  }
   superdocInstance.value?.setDocumentMode(mode);
   documentMode.value = mode;
 };
@@ -409,11 +548,14 @@ onBeforeUnmount(() => {
       :document-name="documentName"
       :ready="isReady"
       :mode="documentMode"
+      :variables-rendered="variablesRendered"
+      :rendering-variables="renderingVariables"
       :field-explorer-visible="fieldExplorerVisible"
       @upload="handleUpload"
       @new-document="handleNewDocument"
       @export="handleExport"
       @mode-change="handleModeChange"
+      @toggle-variables="toggleVariables"
       @toggle-field-explorer="fieldExplorerVisible = !fieldExplorerVisible"
     />
 
@@ -428,7 +570,7 @@ onBeforeUnmount(() => {
 
       <!-- Field List Sidebar -->
       <aside v-if="fieldExplorerVisible" class="sidebar">
-        <div class="highlight-toolbar">
+        <div v-if="activeTab !== 'variables'" class="highlight-toolbar">
           <button
             :class="{ active: highlightAllFields }"
             :aria-pressed="highlightAllFields"
@@ -445,9 +587,18 @@ onBeforeUnmount(() => {
           <button :class="{ active: activeTab === 'active' }" @click="selectSidebarTab('active')">Active field</button>
           <button :class="{ active: activeTab === 'all' }" @click="selectSidebarTab('all')">Fields</button>
           <button :class="{ active: activeTab === 'clause' }" @click="selectSidebarTab('clause')">Clauses</button>
+          <button :class="{ active: activeTab === 'variables' }" @click="selectSidebarTab('variables')">Variables</button>
         </div>
 
-        <template v-if="!editingField && !creatingField && !deletingField && activeTab !== 'active'">
+        <VariablesPanel
+          v-if="!editingField && !creatingField && !deletingField && activeTab === 'variables'"
+          :variables="variables"
+          @add="addVariable"
+          @remove="removeVariable"
+          @update="updateVariable"
+        />
+
+        <template v-else-if="!editingField && !creatingField && !deletingField && activeTab !== 'active'">
 
           <div class="sidebar-heading">
             <div>
@@ -690,7 +841,7 @@ onBeforeUnmount(() => {
   z-index: 5;
   top: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   margin: 0 -14px;
   padding: 9px 8px 0;
   background: #fff;
