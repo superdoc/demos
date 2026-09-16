@@ -9,11 +9,12 @@ import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import {
-  TemplateVariableController,
-  type DocumentMode,
+  TemplateVariables,
   type TemplateVariable,
   type TemplateVariableValue,
-} from './template-variable-controller';
+} from './template-variables';
+
+type DocumentMode = 'suggesting' | 'editing' | 'viewing';
 
 const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
@@ -23,7 +24,7 @@ const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
 const superdocInstance = shallowRef<SuperDoc | null>(null);
 const fieldController = shallowRef<FieldController | null>(null);
-const templateVariableController = shallowRef<TemplateVariableController | null>(null);
+const templateVars = shallowRef<TemplateVariables | null>(null);
 const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
 const documentName = ref('parser-test-document.docx');
@@ -49,6 +50,7 @@ let selectionCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 const SELECTION_CAPTURE_DEBOUNCE_MS = 150;
 let stopFieldSubscription: (() => void) | null = null;
 let stopTemplateVariableSubscription: (() => void) | null = null;
+let modeBeforeVariableRender: DocumentMode = 'editing';
 
 const sidebarFields = computed(() => fields.value);
 
@@ -210,19 +212,41 @@ const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
   }
 };
 
-const addVariable = (type: TemplateVariable["type"]) => templateVariableController.value?.add(type);
+const addVariable = (type: TemplateVariable["type"]) => templateVars.value?.add(type);
 
-const loadVariables = async () => templateVariableController.value?.load();
+const loadVariables = async () => templateVars.value?.load();
 
-const removeVariable = (id: string) => templateVariableController.value?.remove(id);
+const removeVariable = (id: string) => templateVars.value?.remove(id);
 
 const updateVariable = (id: string, field: "name" | "value" | "columns", value: TemplateVariableValue | string[]) => {
-  templateVariableController.value?.update(id, field, value);
+  templateVars.value?.update(id, field, value);
+};
+
+const unrenderVariables = async (nextMode = modeBeforeVariableRender) => {
+  if (!variablesRendered.value) return;
+  superdocInstance.value?.setDocumentMode('editing');
+  await templateVars.value?.unrender();
+  superdocInstance.value?.setDocumentMode(nextMode);
+  documentMode.value = nextMode;
 };
 
 const toggleVariables = async () => {
-  const nextMode = await templateVariableController.value?.toggle(documentMode.value);
-  if (nextMode) documentMode.value = nextMode;
+  if (variablesRendered.value) {
+    await unrenderVariables();
+    return;
+  }
+
+  modeBeforeVariableRender = documentMode.value;
+  superdocInstance.value?.setDocumentMode('editing');
+  try {
+    await templateVars.value?.render();
+    superdocInstance.value?.setDocumentMode('viewing');
+    documentMode.value = 'viewing';
+  } catch (error) {
+    superdocInstance.value?.setDocumentMode(modeBeforeVariableRender);
+    documentMode.value = modeBeforeVariableRender;
+    throw error;
+  }
 };
 
 const handleDocumentFieldClick = (event: Event) => {
@@ -328,7 +352,7 @@ const handleExport = async () => {
 };
 
 const handleUpload = async (file: File) => {
-  if (variablesRendered.value) documentMode.value = await templateVariableController.value?.hide() ?? documentMode.value;
+  await unrenderVariables();
   highlightedGroupKeys.value = new Set();
   highlightLockedFields.value = false;
   await superdocInstance.value?.replaceFile(file);
@@ -342,7 +366,7 @@ const handleNewDocument = async () => {
   const superdoc = superdocInstance.value;
   if (!superdoc) return;
 
-  if (variablesRendered.value) documentMode.value = await templateVariableController.value?.hide() ?? documentMode.value;
+  await unrenderVariables();
 
   const blankDocument = await getFileObject(BlankDOCX, 'untitled.docx', DOCX);
   editingFieldId.value = null;
@@ -360,8 +384,7 @@ const handleNewDocument = async () => {
 
 const handleModeChange = async (mode: DocumentMode) => {
   if (variablesRendered.value && mode !== 'viewing') {
-    await templateVariableController.value?.hide(mode);
-    documentMode.value = mode;
+    await unrenderVariables(mode);
     return;
   }
   superdocInstance.value?.setDocumentMode(mode);
@@ -411,21 +434,19 @@ onMounted(() => {
     onReady: async () => {
       superdocInstance.value = superdoc;
       fieldController.value = new FieldController(superdoc);
-      templateVariableController.value = new TemplateVariableController(
-        superdoc,
-        () => documentName.value,
-        async () => { await fieldController.value?.load(); },
-      );
+      templateVars.value = new TemplateVariables(superdoc, {
+        onDocumentRestored: async () => { await fieldController.value?.load(); },
+      });
       stopFieldSubscription = fieldController.value.subscribe((snapshot) => {
         const nextFields = [...snapshot];
         if (JSON.stringify(nextFields) === JSON.stringify(fields.value)) return;
         fields.value = nextFields;
         console.log(`Field controller: ${snapshot.length} fields`);
       });
-      stopTemplateVariableSubscription = templateVariableController.value.subscribe((snapshot) => {
-        variables.value = [...snapshot.variables];
-        variablesRendered.value = snapshot.rendered;
-        renderingVariables.value = snapshot.rendering;
+      stopTemplateVariableSubscription = templateVars.value.subscribe((state) => {
+        variables.value = [...state.variables];
+        variablesRendered.value = state.rendered;
+        renderingVariables.value = state.rendering;
       });
       isReady.value = true;
       console.log('SuperDoc ready');
@@ -446,7 +467,7 @@ onBeforeUnmount(() => {
   stopFieldSubscription?.();
   stopTemplateVariableSubscription?.();
   fieldController.value?.destroy();
-  templateVariableController.value?.destroy();
+  templateVars.value?.destroy();
   document.querySelector('#superdoc-editor')?.removeEventListener('click', handleDocumentFieldClick);
   superdocInstance.value?.destroy();
 });
