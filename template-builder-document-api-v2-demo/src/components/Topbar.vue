@@ -7,6 +7,7 @@ defineProps<{
   documentName: string;
   ready: boolean;
   mode: DocumentMode;
+  variablesRendered: boolean;
   fieldExplorerVisible: boolean;
 }>();
 
@@ -46,7 +47,10 @@ const chooseFileAction = (event: Event) => {
   <header class="topbar">
     <div class="ribbon-tabs-row">
       <div class="file-title">
-        <div class="file-name">{{ documentName }}</div>
+        <div class="file-name">
+          {{ documentName }}
+          <span v-if="variablesRendered" class="rendered-label">(rendered)</span>
+        </div>
       </div>
 
       <input
@@ -68,7 +72,7 @@ const chooseFileAction = (event: Event) => {
         <option value="" disabled>File</option>
         <option value="new">New document</option>
         <option value="upload">Upload…</option>
-        <option value="save-as">Save As…</option>
+        <option value="save-as">Save As…{{ variablesRendered ? ' (rendered)' : '' }}</option>
       </select>
 
       <a class="more-demos-button" href="/">Demos</a>
@@ -143,6 +147,12 @@ const chooseFileAction = (event: Event) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rendered-label {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .file-menu {
@@ -238,6 +248,7 @@ const chooseFileAction = (event: Event) => {
 }
 
 .ribbon-controls-row {
+  position: relative;
   min-width: 0;
   display: flex;
   align-items: center;

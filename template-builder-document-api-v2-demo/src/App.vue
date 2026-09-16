@@ -7,8 +7,16 @@ import Topbar from './components/Topbar.vue';
 import FieldCard from './components/FieldCard.vue';
 import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
+import VariablesPanel from './components/VariablesPanel.vue';
+import {
+  TemplateVariables,
+  type TemplateVariable,
+  type TemplateVariableValue,
+} from './template-variables';
 
-const documentUrl = `${import.meta.env.BASE_URL}brief-nda.docx`;
+type DocumentMode = 'suggesting' | 'editing' | 'viewing';
+
+const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
 // =============================================================================
 // State
@@ -16,11 +24,15 @@ const documentUrl = `${import.meta.env.BASE_URL}brief-nda.docx`;
 
 const superdocInstance = shallowRef<SuperDoc | null>(null);
 const fieldController = shallowRef<FieldController | null>(null);
+const templateVars = shallowRef<TemplateVariables | null>(null);
 const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
-const documentName = ref('brief-nda.docx');
+const documentName = ref('parser-test-document.docx');
 const documentMode = ref<'suggesting' | 'editing' | 'viewing'>('editing');
-const activeTab = ref<'active' | 'all' | 'clause'>('all');
+const activeTab = ref<'active' | 'all' | 'clause' | 'variables'>('all');
+const variables = ref<TemplateVariable[]>([]);
+const variablesRendered = ref(false);
+const renderingVariables = ref(false);
 const editingFieldId = ref<string | null>(null);
 const editingInstanceIds = ref<string[]>([]);
 const activeDocumentFieldId = ref<string | null>(null);
@@ -37,6 +49,8 @@ let pendingInsertTarget: SelectionTarget | null = null;
 let selectionCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 const SELECTION_CAPTURE_DEBOUNCE_MS = 150;
 let stopFieldSubscription: (() => void) | null = null;
+let stopTemplateVariableSubscription: (() => void) | null = null;
+let modeBeforeVariableRender: DocumentMode = 'editing';
 
 const sidebarFields = computed(() => fields.value);
 
@@ -188,13 +202,50 @@ const openActiveDocumentField = (instanceId: string) => {
   activeTab.value = 'active';
 };
 
-const selectSidebarTab = (tab: 'active' | 'all' | 'clause') => {
+const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
   activeTab.value = tab;
   if (tab === 'active') {
     if (activeDocumentFieldId.value) openActiveDocumentField(activeDocumentFieldId.value);
     else closeFieldEditor();
   } else if (editingSource.value === 'document') {
     closeFieldEditor();
+  }
+};
+
+const addVariable = (type: TemplateVariable["type"]) => templateVars.value?.add(type);
+
+const loadVariables = async () => templateVars.value?.load();
+
+const removeVariable = (id: string) => templateVars.value?.remove(id);
+
+const updateVariable = (id: string, field: "name" | "value" | "columns", value: TemplateVariableValue | string[]) => {
+  templateVars.value?.update(id, field, value);
+};
+
+const unrenderVariables = async (nextMode = modeBeforeVariableRender) => {
+  if (!variablesRendered.value) return;
+  superdocInstance.value?.setDocumentMode('editing');
+  await templateVars.value?.unrender();
+  superdocInstance.value?.setDocumentMode(nextMode);
+  documentMode.value = nextMode;
+};
+
+const toggleVariables = async () => {
+  if (variablesRendered.value) {
+    await unrenderVariables();
+    return;
+  }
+
+  modeBeforeVariableRender = documentMode.value;
+  superdocInstance.value?.setDocumentMode('editing');
+  try {
+    await templateVars.value?.render();
+    superdocInstance.value?.setDocumentMode('viewing');
+    documentMode.value = 'viewing';
+  } catch (error) {
+    superdocInstance.value?.setDocumentMode(modeBeforeVariableRender);
+    documentMode.value = modeBeforeVariableRender;
+    throw error;
   }
 };
 
@@ -301,6 +352,7 @@ const handleExport = async () => {
 };
 
 const handleUpload = async (file: File) => {
+  await unrenderVariables();
   highlightedGroupKeys.value = new Set();
   highlightLockedFields.value = false;
   await superdocInstance.value?.replaceFile(file);
@@ -313,6 +365,8 @@ const handleUpload = async (file: File) => {
 const handleNewDocument = async () => {
   const superdoc = superdocInstance.value;
   if (!superdoc) return;
+
+  await unrenderVariables();
 
   const blankDocument = await getFileObject(BlankDOCX, 'untitled.docx', DOCX);
   editingFieldId.value = null;
@@ -328,7 +382,11 @@ const handleNewDocument = async () => {
   await fieldController.value?.load();
 };
 
-const handleModeChange = (mode: 'suggesting' | 'editing' | 'viewing') => {
+const handleModeChange = async (mode: DocumentMode) => {
+  if (variablesRendered.value && mode !== 'viewing') {
+    await unrenderVariables(mode);
+    return;
+  }
   superdocInstance.value?.setDocumentMode(mode);
   documentMode.value = mode;
 };
@@ -376,9 +434,19 @@ onMounted(() => {
     onReady: async () => {
       superdocInstance.value = superdoc;
       fieldController.value = new FieldController(superdoc);
+      templateVars.value = new TemplateVariables(superdoc, {
+        onDocumentRestored: async () => { await fieldController.value?.load(); },
+      });
       stopFieldSubscription = fieldController.value.subscribe((snapshot) => {
-        fields.value = [...snapshot];
+        const nextFields = [...snapshot];
+        if (JSON.stringify(nextFields) === JSON.stringify(fields.value)) return;
+        fields.value = nextFields;
         console.log(`Field controller: ${snapshot.length} fields`);
+      });
+      stopTemplateVariableSubscription = templateVars.value.subscribe((state) => {
+        variables.value = [...state.variables];
+        variablesRendered.value = state.rendered;
+        renderingVariables.value = state.rendering;
       });
       isReady.value = true;
       console.log('SuperDoc ready');
@@ -397,7 +465,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
   stopFieldSubscription?.();
+  stopTemplateVariableSubscription?.();
   fieldController.value?.destroy();
+  templateVars.value?.destroy();
   document.querySelector('#superdoc-editor')?.removeEventListener('click', handleDocumentFieldClick);
   superdocInstance.value?.destroy();
 });
@@ -409,6 +479,7 @@ onBeforeUnmount(() => {
       :document-name="documentName"
       :ready="isReady"
       :mode="documentMode"
+      :variables-rendered="variablesRendered"
       :field-explorer-visible="fieldExplorerVisible"
       @upload="handleUpload"
       @new-document="handleNewDocument"
@@ -421,14 +492,14 @@ onBeforeUnmount(() => {
     <div class="main">
       <!-- Editor -->
       <div class="editor-container">
-        <div class="editor-wrapper">
+        <div class="editor-wrapper" :class="{ 'variables-rendered': variablesRendered }">
           <div id="superdoc-editor"></div>
         </div>
       </div>
 
       <!-- Field List Sidebar -->
       <aside v-if="fieldExplorerVisible" class="sidebar">
-        <div class="highlight-toolbar">
+        <div v-if="activeTab !== 'variables'" class="highlight-toolbar">
           <button
             :class="{ active: highlightAllFields }"
             :aria-pressed="highlightAllFields"
@@ -445,9 +516,22 @@ onBeforeUnmount(() => {
           <button :class="{ active: activeTab === 'active' }" @click="selectSidebarTab('active')">Active field</button>
           <button :class="{ active: activeTab === 'all' }" @click="selectSidebarTab('all')">Fields</button>
           <button :class="{ active: activeTab === 'clause' }" @click="selectSidebarTab('clause')">Clauses</button>
+          <button :class="{ active: activeTab === 'variables' }" @click="selectSidebarTab('variables')">Variables</button>
         </div>
 
-        <template v-if="!editingField && !creatingField && !deletingField && activeTab !== 'active'">
+        <VariablesPanel
+          v-if="!editingField && !creatingField && !deletingField && activeTab === 'variables'"
+          :variables="variables"
+          :variables-rendered="variablesRendered"
+          :rendering-variables="renderingVariables"
+          @add="addVariable"
+          @load="loadVariables"
+          @toggle-variables="toggleVariables"
+          @remove="removeVariable"
+          @update="updateVariable"
+        />
+
+        <template v-else-if="!editingField && !creatingField && !deletingField && activeTab !== 'active'">
 
           <div class="sidebar-heading">
             <div>
@@ -661,6 +745,11 @@ onBeforeUnmount(() => {
   overflow: auto;
 }
 
+.editor-wrapper.variables-rendered {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
 .sidebar {
   position: relative;
   width: 520px;
@@ -690,7 +779,7 @@ onBeforeUnmount(() => {
   z-index: 5;
   top: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   margin: 0 -14px;
   padding: 9px 8px 0;
   background: #fff;
