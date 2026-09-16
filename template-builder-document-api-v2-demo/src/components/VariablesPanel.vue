@@ -2,11 +2,16 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import type { TemplateVariable, TemplateVariableValue } from '../template-variables';
 
-const props = defineProps<{ variables: TemplateVariable[] }>();
+const props = defineProps<{
+  variables: TemplateVariable[];
+  variablesRendered: boolean;
+  renderingVariables: boolean;
+}>();
 
 const emit = defineEmits<{
   add: [type: TemplateVariable['type']];
   load: [];
+  toggleVariables: [];
   remove: [id: string];
   update: [id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]];
 }>();
@@ -19,6 +24,13 @@ const chooseVariableType = (event: Event) => {
 
 type TextListVariable = Extract<TemplateVariable, { type: 'textList' }>;
 type TableRowsVariable = Extract<TemplateVariable, { type: 'tableRows' }>;
+
+const variableTypeLabel = (variable: TemplateVariable) => {
+  if (variable.type === 'boolean') return 'True/false';
+  if (variable.type === 'textList') return 'Text list';
+  if (variable.type === 'tableRows') return 'Table';
+  return 'Text';
+};
 
 const updateTextListItem = (variable: TextListVariable, index: number, value: string) => {
   const items = [...variable.value];
@@ -94,6 +106,14 @@ onBeforeUnmount(() => {
         <strong>{{ variables.length }} {{ variables.length === 1 ? 'variable' : 'variables' }}</strong>
       </div>
       <div class="header-actions">
+        <button
+          class="render-variables"
+          :class="{ active: variablesRendered }"
+          type="button"
+          :aria-pressed="variablesRendered"
+          :disabled="renderingVariables"
+          @click="emit('toggleVariables')"
+        >{{ variablesRendered ? 'Hide variables' : 'Render variables' }}</button>
         <button class="load-variables" type="button" @click="emit('load')">Load variables</button>
         <select aria-label="Add variable" value="" @change="chooseVariableType">
           <option value="" disabled>Add variable</option>
@@ -118,7 +138,7 @@ onBeforeUnmount(() => {
       <div v-for="variable in filteredVariables" :key="variable.id" class="variable-row" :class="{ 'table-variable': variable.type === 'tableRows' }">
         <div v-if="variable.type === 'tableRows'" class="table-variable-header">
           <label>
-            <span>Variable name</span>
+            <span>{{ variableTypeLabel(variable) }} variable name</span>
             <input
               :value="variable.name"
               type="text"
@@ -131,7 +151,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <label v-else>
-          <span>Variable name</span>
+          <span>{{ variableTypeLabel(variable) }} variable name</span>
           <input
             :value="variable.name"
             type="text"
@@ -194,7 +214,7 @@ onBeforeUnmount(() => {
               <button type="button" aria-label="Remove table row" @click="removeTableRow(variable, rowIndex)">Remove</button>
             </div>
             <label v-for="column in variable.columns" :key="column">
-              <span>{{ column || 'Unnamed column' }}</span>
+              <span>{{ column ? `${column} value` : 'Unnamed column value' }}</span>
               <input
                 :value="row[column]"
                 type="text"
@@ -225,8 +245,10 @@ header strong { color: #303640; font-size: 13px; }
 header select, header button { padding: 7px 10px; color: #fff; background: #2563eb; border: 0; border-radius: 7px; font-size: 11px; font-weight: 750; cursor: pointer; }
 header select { padding-right: 28px; }
 header select:hover, header button:hover { background-color: #1d4ed8; }
-header .load-variables { color: #245fae; background: #fff; border: 1px solid #b9c9df; }
-header .load-variables:hover { color: #1d4ed8; background: #f8fafc; border-color: #8da9cf; }
+header .load-variables, header .render-variables { color: #245fae; background: #fff; border: 1px solid #b9c9df; }
+header .load-variables:hover, header .render-variables:hover { color: #1d4ed8; background: #f8fafc; border-color: #8da9cf; }
+header .render-variables.active { color: #174ea6; background: #fff; border-color: #2563eb; }
+header button:disabled { cursor: wait; opacity: .55; }
 .variable-list { display: flex; flex-direction: column; gap: 10px; }
 .variable-search { width: 100%; margin-bottom: 12px; padding: 9px 11px; color: #252a32; background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; font: inherit; font-size: 12px; }
 .variable-search:focus { border-color: #2563eb; outline: 2px solid #2563eb22; }

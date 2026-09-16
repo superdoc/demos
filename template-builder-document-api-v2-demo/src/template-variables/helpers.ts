@@ -217,7 +217,8 @@ export const evaluateBooleanExpression = (
     let value = equality();
     while (is('&&')) {
       take('&&');
-      value = bool(value) && bool(equality());
+      const right = equality();
+      value = bool(value) && bool(right);
     }
     return value;
   };
@@ -225,7 +226,8 @@ export const evaluateBooleanExpression = (
     let value = and();
     while (is('||')) {
       take('||');
-      value = bool(value) || bool(and());
+      const right = and();
+      value = bool(value) || bool(right);
     }
     return value;
   };

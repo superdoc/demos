@@ -8,7 +8,6 @@ defineProps<{
   ready: boolean;
   mode: DocumentMode;
   variablesRendered: boolean;
-  renderingVariables: boolean;
   fieldExplorerVisible: boolean;
 }>();
 
@@ -17,7 +16,6 @@ const emit = defineEmits<{
   newDocument: [];
   upload: [file: File];
   modeChange: [mode: DocumentMode];
-  toggleVariables: [];
   toggleFieldExplorer: [];
 }>();
 
@@ -49,7 +47,10 @@ const chooseFileAction = (event: Event) => {
   <header class="topbar">
     <div class="ribbon-tabs-row">
       <div class="file-title">
-        <div class="file-name">{{ documentName }}</div>
+        <div class="file-name">
+          {{ documentName }}
+          <span v-if="variablesRendered" class="rendered-label">(rendered)</span>
+        </div>
       </div>
 
       <input
@@ -71,7 +72,7 @@ const chooseFileAction = (event: Event) => {
         <option value="" disabled>File</option>
         <option value="new">New document</option>
         <option value="upload">Upload…</option>
-        <option value="save-as">Save As…</option>
+        <option value="save-as">Save As…{{ variablesRendered ? ' (rendered)' : '' }}</option>
       </select>
 
       <a class="more-demos-button" href="/">Demos</a>
@@ -98,13 +99,6 @@ const chooseFileAction = (event: Event) => {
     </div>
 
     <div class="ribbon-controls-row">
-      <button
-        class="render-variables-toggle"
-        :class="{ active: variablesRendered }"
-        :aria-pressed="variablesRendered"
-        :disabled="!ready || renderingVariables"
-        @click="emit('toggleVariables')"
-      >{{ variablesRendered ? 'Hide variables' : 'Render variables' }}</button>
       <div id="superdoc-toolbar" class="default-toolbar" aria-label="Document toolbar" />
     </div>
   </header>
@@ -153,6 +147,12 @@ const chooseFileAction = (event: Event) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.rendered-label {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .file-menu {
@@ -211,7 +211,6 @@ const chooseFileAction = (event: Event) => {
   font-weight: 700;
 }
 
-.render-variables-toggle,
 .field-explorer-toggle {
   margin-left: 8px;
   padding: 8px 11px;
@@ -224,13 +223,6 @@ const chooseFileAction = (event: Event) => {
   cursor: pointer;
 }
 
-.render-variables-toggle {
-  position: absolute;
-  left: 8px;
-  margin-left: 0;
-}
-
-.render-variables-toggle.active,
 .field-explorer-toggle.active {
   color: #fff;
   background: #2563eb;

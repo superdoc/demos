@@ -480,13 +480,11 @@ onBeforeUnmount(() => {
       :ready="isReady"
       :mode="documentMode"
       :variables-rendered="variablesRendered"
-      :rendering-variables="renderingVariables"
       :field-explorer-visible="fieldExplorerVisible"
       @upload="handleUpload"
       @new-document="handleNewDocument"
       @export="handleExport"
       @mode-change="handleModeChange"
-      @toggle-variables="toggleVariables"
       @toggle-field-explorer="fieldExplorerVisible = !fieldExplorerVisible"
     />
 
@@ -494,7 +492,7 @@ onBeforeUnmount(() => {
     <div class="main">
       <!-- Editor -->
       <div class="editor-container">
-        <div class="editor-wrapper">
+        <div class="editor-wrapper" :class="{ 'variables-rendered': variablesRendered }">
           <div id="superdoc-editor"></div>
         </div>
       </div>
@@ -524,8 +522,11 @@ onBeforeUnmount(() => {
         <VariablesPanel
           v-if="!editingField && !creatingField && !deletingField && activeTab === 'variables'"
           :variables="variables"
+          :variables-rendered="variablesRendered"
+          :rendering-variables="renderingVariables"
           @add="addVariable"
           @load="loadVariables"
+          @toggle-variables="toggleVariables"
           @remove="removeVariable"
           @update="updateVariable"
         />
@@ -742,6 +743,11 @@ onBeforeUnmount(() => {
   border-top: none;
   border-radius: 0 0 8px 8px;
   overflow: auto;
+}
+
+.editor-wrapper.variables-rendered {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
 }
 
 .sidebar {
