@@ -90,14 +90,6 @@ const chooseFileAction = (event: Event) => {
       </label>
 
       <button
-        class="render-variables-toggle"
-        :class="{ active: variablesRendered }"
-        :aria-pressed="variablesRendered"
-        :disabled="!ready || renderingVariables"
-        @click="emit('toggleVariables')"
-      >{{ variablesRendered ? 'Hide variables' : 'Render variables' }}</button>
-
-      <button
         class="field-explorer-toggle"
         :class="{ active: fieldExplorerVisible }"
         :aria-pressed="fieldExplorerVisible"
@@ -106,6 +98,13 @@ const chooseFileAction = (event: Event) => {
     </div>
 
     <div class="ribbon-controls-row">
+      <button
+        class="render-variables-toggle"
+        :class="{ active: variablesRendered }"
+        :aria-pressed="variablesRendered"
+        :disabled="!ready || renderingVariables"
+        @click="emit('toggleVariables')"
+      >{{ variablesRendered ? 'Hide variables' : 'Render variables' }}</button>
       <div id="superdoc-toolbar" class="default-toolbar" aria-label="Document toolbar" />
     </div>
   </header>
@@ -225,6 +224,12 @@ const chooseFileAction = (event: Event) => {
   cursor: pointer;
 }
 
+.render-variables-toggle {
+  position: absolute;
+  left: 8px;
+  margin-left: 0;
+}
+
 .render-variables-toggle.active,
 .field-explorer-toggle.active {
   color: #fff;
@@ -251,6 +256,7 @@ const chooseFileAction = (event: Event) => {
 }
 
 .ribbon-controls-row {
+  position: relative;
   min-width: 0;
   display: flex;
   align-items: center;

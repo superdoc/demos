@@ -9,6 +9,35 @@ export type TemplateVariable = {
   value: boolean;
 });
 
+export type DiscoveredVariable = Pick<TemplateVariable, 'name' | 'type'>;
+
+export const discoverTemplateVariables = (text: string): DiscoveredVariable[] => {
+  const discovered = new Map<string, TemplateVariable['type']>();
+  const interpolationPattern = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+  for (const match of text.matchAll(interpolationPattern)) discovered.set(match[1], 'text');
+
+  const ifPattern = /\{%\s*(?:p\s+)?if\s+([\s\S]*?)\s*%\}/g;
+  for (const ifMatch of text.matchAll(ifPattern)) {
+    const expression = ifMatch[1];
+    const expressionTokens = tokenize(expression);
+    for (const [index, token] of expressionTokens.entries()) {
+      if (token.type !== 'name') continue;
+      const previous = expressionTokens[index - 1];
+      const next = expressionTokens[index + 1];
+      const comparisonValue = next?.type === 'operator' && ['==', '!=', '===', '!=='].includes(next.value as string)
+        ? expressionTokens[index + 2]
+        : previous?.type === 'operator' && ['==', '!=', '===', '!=='].includes(previous.value as string)
+          ? expressionTokens[index - 2]
+          : undefined;
+      const type = comparisonValue?.type === 'value' && typeof comparisonValue.value !== 'boolean' ? 'text' : 'boolean';
+      const name = token.value as string;
+      if (type === 'text' || !discovered.has(name)) discovered.set(name, type);
+    }
+  }
+
+  return Array.from(discovered, ([name, type]) => ({ name, type }));
+};
+
 type Value = string | number | boolean;
 type Token = { type: 'value' | 'name' | 'operator'; value: Value | string };
 
@@ -45,13 +74,17 @@ export const evaluateBooleanExpression = (source: string, variables: ReadonlyMap
     return token;
   };
   const is = (value: string) => tokens[cursor]?.value === value;
-  const bool = (value: Value) => { if (typeof value !== 'boolean') throw new Error('Boolean operators require boolean values.'); return value; };
+  const bool = (value: Value) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.length > 0;
+    return value !== 0;
+  };
   let parseOr: () => Value;
   const primary = (): Value => {
     if (is('(')) { take('('); const value = parseOr(); take(')'); return value; }
     const token = take();
     if (token.type === 'value') return token.value as Value;
-    if (token.type === 'name') { const name = token.value as string; if (!variables.has(name)) throw new Error(`Unknown variable "${name}".`); return variables.get(name)!; }
+    if (token.type === 'name') { const name = token.value as string; return variables.get(name) ?? false; }
     throw new Error(`Unexpected operator "${token.value}".`);
   };
   const not = (): Value => is('!') ? (take('!'), !bool(not())) : primary();
@@ -64,14 +97,14 @@ export const evaluateBooleanExpression = (source: string, variables: ReadonlyMap
 };
 
 export const findInnermostConditional = (text: string) => {
-  const tags = /\{%\s*(if\s+([\s\S]*?)|else|endif)\s*%\}/g;
-  const stack: Array<{ start: number; contentStart: number; expression: string; elseStart?: number; elseEnd?: number }> = [];
+  const tags = /\{%\s*(?:(p)\s+)?(if\s+([\s\S]*?)|else|endif)\s*%\}/g;
+  const stack: Array<{ start: number; contentStart: number; expression: string; paragraphScoped: boolean; elseStart?: number; elseEnd?: number }> = [];
   for (const match of text.matchAll(tags)) {
-    const tag = match[1].trim(); const start = match.index; const end = start + match[0].length;
-    if (tag.startsWith('if ')) { stack.push({ start, contentStart: end, expression: (match[2] ?? '').trim() }); continue; }
+    const tag = match[2].trim(); const start = match.index; const end = start + match[0].length;
+    if (tag.startsWith('if ')) { stack.push({ start, contentStart: end, expression: (match[3] ?? '').trim(), paragraphScoped: match[1] === 'p' }); continue; }
     if (tag === 'else') { const block = stack[stack.length - 1]; if (!block || block.elseStart !== undefined) throw new Error('Unexpected template else tag.'); block.elseStart = start; block.elseEnd = end; continue; }
     const block = stack.pop(); if (!block) throw new Error('Unexpected template endif tag.');
-    return { source: text.slice(block.start, end), expression: block.expression, truthyContent: text.slice(block.contentStart, block.elseStart ?? start), falsyContent: block.elseEnd === undefined ? '' : text.slice(block.elseEnd, start) };
+    return { source: text.slice(block.start, end), expression: block.expression, paragraphScoped: block.paragraphScoped, truthyContent: text.slice(block.contentStart, block.elseStart ?? start), falsyContent: block.elseEnd === undefined ? '' : text.slice(block.elseEnd, start) };
   }
   if (stack.length) throw new Error('Template if tag is missing an endif tag.');
   return null;

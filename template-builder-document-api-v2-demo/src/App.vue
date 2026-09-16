@@ -8,7 +8,7 @@ import FieldCard from './components/FieldCard.vue';
 import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
-import { evaluateBooleanExpression, findInnermostConditional, type TemplateVariable } from './template-logic';
+import { discoverTemplateVariables, evaluateBooleanExpression, findInnermostConditional, type TemplateVariable } from './template-logic';
 
 const documentUrl = `${import.meta.env.BASE_URL}brief-nda.docx`;
 
@@ -211,6 +211,19 @@ const addVariable = (type: TemplateVariable['type']) => {
     : { id: crypto.randomUUID(), type, name: '', value: '' });
 };
 
+const loadVariables = async () => {
+  const text = await superdocInstance.value?.activeEditor?.doc?.getText?.({});
+  if (text === undefined) throw new Error('Document text is unavailable.');
+  const existingNames = new Set(variables.value.map(variable => variable.name.trim()).filter(Boolean));
+  for (const discovered of discoverTemplateVariables(text)) {
+    if (existingNames.has(discovered.name)) continue;
+    variables.value.push(discovered.type === 'boolean'
+      ? { id: crypto.randomUUID(), type: 'boolean', name: discovered.name, value: false }
+      : { id: crypto.randomUUID(), type: 'text', name: discovered.name, value: '' });
+    existingNames.add(discovered.name);
+  }
+};
+
 const removeVariable = (id: string) => {
   variables.value = variables.value.filter(variable => variable.id !== id);
 };
@@ -225,20 +238,56 @@ const updateVariable = (id: string, field: 'name' | 'value', value: string | boo
 
 const escapeRegularExpression = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const replaceConditionalBlock = async (source: string, replacement: string) => {
+const replaceConditionalBlock = async (source: string, replacement: string, paragraphScoped: boolean) => {
   const documentApi = superdocInstance.value?.activeEditor?.doc;
+  const pattern = '\\{%\\s*(?:p\\s+)?(?:if\\s+[^%]*|else|endif)\\s*%\\}';
   const matches = await documentApi?.query?.match?.({
-    select: { type: 'text', pattern: source, mode: 'contains', caseSensitive: true },
+    select: { type: 'text', pattern, mode: 'regex', caseSensitive: true },
     limit: 1000,
   });
   if (!matches) throw new Error('Document query is unavailable.');
-  let count = 0;
-  for (const match of [...matches.items].reverse()) {
+  const stack: Array<{ opening: typeof matches.items[number]; alternate?: typeof matches.items[number] }> = [];
+  let opening: typeof matches.items[number] | undefined;
+  let closing: typeof matches.items[number] | undefined;
+  for (const match of matches.items) {
     if (match.matchKind !== 'text') continue;
-    await documentApi?.replace?.({ target: match.target, text: replacement });
-    count += 1;
+    const tag = match.blocks
+      .map(block => block.text)
+      .join('')
+      .replace(/^\{%\s*(?:p\s+)?/, '')
+      .replace(/\s*%\}$/, '')
+      .trim();
+    if (tag.startsWith('if ')) {
+      stack.push({ opening: match });
+    } else if (tag === 'else') {
+      const current = stack[stack.length - 1];
+      if (current) current.alternate = match;
+    } else if (tag === 'endif') {
+      const current = stack.pop();
+      if (current) {
+        opening = current.opening;
+        closing = match;
+        break;
+      }
+    }
   }
-  return count;
+
+  if (!opening || !closing || opening.matchKind !== 'text' || closing.matchKind !== 'text') {
+    console.error('[Template render] Conditional query matched no document ranges', {
+      paragraphScoped,
+      source,
+      replacement,
+      pattern,
+      matchedTags: matches.items.length,
+      sourceLength: source.length,
+      replacementLength: replacement.length,
+    });
+    return 0;
+  }
+
+  const target = { ...opening.target, end: closing.target.end };
+  await documentApi?.replace?.({ target, text: paragraphScoped ? replacement.trim() : replacement });
+  return 1;
 };
 
 const hideVariables = async (nextMode = modeBeforeVariableRender) => {
@@ -290,8 +339,20 @@ const renderVariables = async () => {
       const block = findInnermostConditional(text);
       if (!block) break;
       const replacement = evaluateBooleanExpression(block.expression, expressionValues) ? block.truthyContent : block.falsyContent;
-      const count = await replaceConditionalBlock(block.source, replacement);
-      if (!count) throw new Error('A conditional template block could not be replaced.');
+      const count = await replaceConditionalBlock(block.source, replacement, block.paragraphScoped);
+      if (!count) {
+        console.error('[Template render] Conditional replacement failed', {
+          expression: block.expression,
+          paragraphScoped: block.paragraphScoped,
+          evaluatedVariables: Object.fromEntries(expressionValues),
+          documentTextLength: text.length,
+        });
+        throw new Error(`Conditional block could not be replaced: ${block.expression}`);
+      }
+      const updatedText = await superdoc.activeEditor?.doc?.getText?.({});
+      if (updatedText === text) {
+        throw new Error(`Conditional block did not change the document: ${block.expression}`);
+      }
     }
     for (const [name, value] of values) {
       const query = `\\{\\{\\s*${escapeRegularExpression(name)}\\s*\\}\\}`;
@@ -516,7 +577,9 @@ onMounted(() => {
       superdocInstance.value = superdoc;
       fieldController.value = new FieldController(superdoc);
       stopFieldSubscription = fieldController.value.subscribe((snapshot) => {
-        fields.value = [...snapshot];
+        const nextFields = [...snapshot];
+        if (JSON.stringify(nextFields) === JSON.stringify(fields.value)) return;
+        fields.value = nextFields;
         console.log(`Field controller: ${snapshot.length} fields`);
       });
       isReady.value = true;
@@ -594,6 +657,7 @@ onBeforeUnmount(() => {
           v-if="!editingField && !creatingField && !deletingField && activeTab === 'variables'"
           :variables="variables"
           @add="addVariable"
+          @load="loadVariables"
           @remove="removeVariable"
           @update="updateVariable"
         />
