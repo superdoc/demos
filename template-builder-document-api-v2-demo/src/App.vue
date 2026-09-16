@@ -9,15 +9,11 @@ import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import {
-  discoverTemplateVariables,
-  evaluateBooleanExpression,
-  findInnermostConditional,
-  findTableRowLoops,
-  parseInterpolation,
-  renderInterpolation,
+  TemplateVariableController,
+  type DocumentMode,
   type TemplateVariable,
   type TemplateVariableValue,
-} from './template-logic';
+} from './template-variable-controller';
 
 const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
@@ -27,6 +23,7 @@ const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
 const superdocInstance = shallowRef<SuperDoc | null>(null);
 const fieldController = shallowRef<FieldController | null>(null);
+const templateVariableController = shallowRef<TemplateVariableController | null>(null);
 const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
 const documentName = ref('parser-test-document.docx');
@@ -51,8 +48,7 @@ let pendingInsertTarget: SelectionTarget | null = null;
 let selectionCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 const SELECTION_CAPTURE_DEBOUNCE_MS = 150;
 let stopFieldSubscription: (() => void) | null = null;
-let variableRenderSnapshot: Blob | null = null;
-let modeBeforeVariableRender: typeof documentMode.value = 'editing';
+let stopTemplateVariableSubscription: (() => void) | null = null;
 
 const sidebarFields = computed(() => fields.value);
 
@@ -214,269 +210,19 @@ const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
   }
 };
 
-const addVariable = (type: TemplateVariable['type']) => {
-  if (type === 'boolean') variables.value.push({ id: crypto.randomUUID(), type, name: '', value: false });
-  else if (type === 'textList') variables.value.push({ id: crypto.randomUUID(), type, name: '', value: [''] });
-  else if (type === 'tableRows') variables.value.push({ id: crypto.randomUUID(), type, name: '', columns: ['column'], value: [{ column: '' }] });
-  else variables.value.push({ id: crypto.randomUUID(), type, name: '', value: '' });
-};
+const addVariable = (type: TemplateVariable["type"]) => templateVariableController.value?.add(type);
 
-const loadVariables = async () => {
-  const text = await superdocInstance.value?.activeEditor?.doc?.getText?.({});
-  if (text === undefined) throw new Error('Document text is unavailable.');
-  const existingNames = new Set(variables.value.map(variable => variable.name.trim()).filter(Boolean));
-  for (const discovered of discoverTemplateVariables(text)) {
-    if (existingNames.has(discovered.name)) continue;
-    if (discovered.type === 'boolean') {
-      variables.value.push({ id: crypto.randomUUID(), type: 'boolean', name: discovered.name, value: false });
-    } else if (discovered.type === 'tableRows') {
-      const emptyRow = Object.fromEntries(discovered.columns.map(column => [column, '']));
-      variables.value.push({ id: crypto.randomUUID(), type: 'tableRows', name: discovered.name, columns: discovered.columns, value: [emptyRow] });
-    } else {
-      variables.value.push({ id: crypto.randomUUID(), type: 'text', name: discovered.name, value: '' });
-    }
-    existingNames.add(discovered.name);
-  }
-};
+const loadVariables = async () => templateVariableController.value?.load();
 
-const removeVariable = (id: string) => {
-  variables.value = variables.value.filter(variable => variable.id !== id);
-};
+const removeVariable = (id: string) => templateVariableController.value?.remove(id);
 
-const updateVariable = (id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]) => {
-  const variable = variables.value.find(candidate => candidate.id === id);
-  if (!variable) return;
-  if (field === 'name' && typeof value === 'string') variable.name = value;
-  if (field === 'value' && variable.type === 'text' && typeof value === 'string') variable.value = value;
-  if (field === 'value' && variable.type === 'boolean' && typeof value === 'boolean') variable.value = value;
-  if (field === 'value' && variable.type === 'textList' && Array.isArray(value)) variable.value = value as string[];
-  if (field === 'value' && variable.type === 'tableRows' && Array.isArray(value)) variable.value = value as Array<Record<string, string>>;
-  if (field === 'columns' && variable.type === 'tableRows' && Array.isArray(value)) {
-    variable.columns = value as string[];
-    variable.value = variable.value.map(row => Object.fromEntries(variable.columns.map(column => [column, row[column] ?? ''])));
-  }
-};
-
-const escapeRegularExpression = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const renderTableRowLoops = async () => {
-  const documentApi = superdocInstance.value?.activeEditor?.doc;
-  if (!documentApi) throw new Error('Document API is unavailable.');
-  const extracted = await documentApi.extract({});
-  const loops = findTableRowLoops(extracted.blocks);
-  if (!loops.length) return;
-  const tableMatches = await documentApi.query.match({
-    select: { type: 'node', nodeType: 'table' },
-    limit: 1000,
-  });
-
-  for (const loop of [...loops].sort((a, b) => b.tableOrdinal - a.tableOrdinal || b.openingRowIndex - a.openingRowIndex)) {
-    const tableMatch = tableMatches.items[loop.tableOrdinal];
-    if (!tableMatch || tableMatch.matchKind !== 'node' || tableMatch.address.nodeType !== 'table') {
-      throw new Error(`Table for row loop "${loop.variableName}" could not be found.`);
-    }
-    const variable = variables.value.find(candidate => candidate.name.trim() === loop.variableName);
-    const rows = variable?.type === 'tableRows' ? variable.value : [];
-    const tableTarget = {
-      kind: 'block' as const,
-      nodeType: 'table' as const,
-      nodeId: tableMatch.address.nodeId,
-    };
-
-    if (!rows.length) {
-      await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: loop.closingRowIndex });
-      for (const prototype of [...loop.prototypeRows].reverse()) {
-        await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: prototype.rowIndex });
-      }
-      await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: loop.openingRowIndex });
-      continue;
-    }
-
-    const outputRowCount = rows.length * loop.prototypeRows.length;
-    const insertedRowCount = outputRowCount - loop.prototypeRows.length;
-    const lastPrototypeRow = loop.prototypeRows[loop.prototypeRows.length - 1]?.rowIndex;
-    if (lastPrototypeRow === undefined) throw new Error(`Table-row loop "${loop.variableName}" has no prototype row.`);
-    if (insertedRowCount > 0) {
-      await documentApi.tables.insertRow({ target: tableTarget, rowIndex: lastPrototypeRow, position: 'below', count: insertedRowCount });
-    }
-
-    for (const [itemIndex, item] of rows.entries()) {
-      for (const [prototypeOffset, prototype] of loop.prototypeRows.entries()) {
-        const rowIndex = loop.prototypeRows[0].rowIndex + itemIndex * loop.prototypeRows.length + prototypeOffset;
-        for (const [columnIndex, template] of prototype.cells.entries()) {
-          const pattern = new RegExp(`\\{\\{\\s*${escapeRegularExpression(loop.alias)}\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');
-          const text = template.replace(pattern, (_, column: string) => item[column] ?? '');
-          await documentApi.tables.setCellText({ target: tableTarget, rowIndex, columnIndex, text });
-        }
-      }
-    }
-
-    await documentApi.tables.deleteRow({
-      target: tableTarget,
-      rowIndex: loop.closingRowIndex + insertedRowCount,
-    });
-    await documentApi.tables.deleteRow({ target: tableTarget, rowIndex: loop.openingRowIndex });
-  }
-};
-
-const replaceConditionalBlock = async (source: string, replacement: string, paragraphScoped: boolean) => {
-  const documentApi = superdocInstance.value?.activeEditor?.doc;
-  const pattern = '\\{%\\s*(?:p\\s+)?(?:if\\s+[^%]*|else|endif)\\s*%\\}';
-  const matches = await documentApi?.query?.match?.({
-    select: { type: 'text', pattern, mode: 'regex', caseSensitive: true },
-    limit: 1000,
-  });
-  if (!matches) throw new Error('Document query is unavailable.');
-  const stack: Array<{ opening: typeof matches.items[number]; alternate?: typeof matches.items[number] }> = [];
-  let opening: typeof matches.items[number] | undefined;
-  let closing: typeof matches.items[number] | undefined;
-  for (const match of matches.items) {
-    if (match.matchKind !== 'text') continue;
-    const tag = match.blocks
-      .map(block => block.text)
-      .join('')
-      .replace(/^\{%\s*(?:p\s+)?/, '')
-      .replace(/\s*%\}$/, '')
-      .trim();
-    if (tag.startsWith('if ')) {
-      stack.push({ opening: match });
-    } else if (tag === 'else') {
-      const current = stack[stack.length - 1];
-      if (current) current.alternate = match;
-    } else if (tag === 'endif') {
-      const current = stack.pop();
-      if (current) {
-        opening = current.opening;
-        closing = match;
-        break;
-      }
-    }
-  }
-
-  if (!opening || !closing || opening.matchKind !== 'text' || closing.matchKind !== 'text') {
-    console.error('[Template render] Conditional query matched no document ranges', {
-      paragraphScoped,
-      source,
-      replacement,
-      pattern,
-      matchedTags: matches.items.length,
-      sourceLength: source.length,
-      replacementLength: replacement.length,
-    });
-    return 0;
-  }
-
-  const target = { ...opening.target, end: closing.target.end };
-  await documentApi?.replace?.({ target, text: paragraphScoped ? replacement.trim() : replacement });
-  return 1;
-};
-
-const hideVariables = async (nextMode = modeBeforeVariableRender) => {
-  const superdoc = superdocInstance.value;
-  if (!superdoc || !variablesRendered.value) return;
-
-  renderingVariables.value = true;
-  superdoc.setDocumentMode('editing');
-  try {
-    if (!variableRenderSnapshot) throw new Error('The original document snapshot is unavailable.');
-    const originalDocument = new File([variableRenderSnapshot], documentName.value, { type: DOCX });
-    variableRenderSnapshot = null;
-    await superdoc.replaceFile(originalDocument);
-    await fieldController.value?.load();
-    variablesRendered.value = false;
-    superdoc.setDocumentMode(nextMode);
-    documentMode.value = nextMode;
-  } finally {
-    renderingVariables.value = false;
-  }
-};
-
-const renderVariables = async () => {
-  const superdoc = superdocInstance.value;
-  if (!superdoc || variablesRendered.value) return;
-
-  const values = new Map(
-    variables.value
-      .filter(variable => variable.type === 'text' || variable.type === 'boolean')
-      .map(variable => [variable.name.trim(), variable.value] as const)
-      .filter(([name]) => name.length > 0),
-  );
-  const expressionValues = new Map(variables.value
-    .filter(variable => variable.type === 'text' || variable.type === 'boolean')
-    .map(variable => [variable.name.trim(), variable.value] as const)
-    .filter(([name]) => name.length > 0));
-  renderingVariables.value = true;
-  modeBeforeVariableRender = documentMode.value;
-  variableRenderSnapshot = await superdoc.ui.document.export({
-    exportType: ['docx'],
-    triggerDownload: false,
-  }) ?? null;
-  if (!variableRenderSnapshot) {
-    renderingVariables.value = false;
-    throw new Error('The document could not be captured before rendering.');
-  }
-  superdoc.setDocumentMode('editing');
-
-  try {
-    await renderTableRowLoops();
-    for (let pass = 0; pass < 1000; pass += 1) {
-      const text = await superdoc.activeEditor?.doc?.getText?.({});
-      if (text === undefined) throw new Error('Document text is unavailable.');
-      const block = findInnermostConditional(text);
-      if (!block) break;
-      const replacement = evaluateBooleanExpression(block.expression, expressionValues) ? block.truthyContent : block.falsyContent;
-      const count = await replaceConditionalBlock(block.source, replacement, block.paragraphScoped);
-      if (!count) {
-        console.error('[Template render] Conditional replacement failed', {
-          expression: block.expression,
-          paragraphScoped: block.paragraphScoped,
-          evaluatedVariables: Object.fromEntries(expressionValues),
-          documentTextLength: text.length,
-        });
-        throw new Error(`Conditional block could not be replaced: ${block.expression}`);
-      }
-      const updatedText = await superdoc.activeEditor?.doc?.getText?.({});
-      if (updatedText === text) {
-        throw new Error(`Conditional block did not change the document: ${block.expression}`);
-      }
-    }
-    const interpolations = await superdoc.activeEditor?.doc?.query?.match?.({
-      select: { type: 'text', pattern: '\\{\\{[^{}]+\\}\\}', mode: 'regex', caseSensitive: true },
-      limit: 1000,
-    });
-    if (!interpolations) throw new Error('Document query is unavailable.');
-    for (const match of [...interpolations.items].reverse()) {
-      if (match.matchKind !== 'text') continue;
-      const source = match.blocks.map(block => block.text).join('');
-      const interpolation = parseInterpolation(source);
-      if (!interpolation) continue;
-      await superdoc.activeEditor?.doc?.replace?.({
-        target: match.target,
-        text: renderInterpolation(interpolation, values),
-      });
-    }
-
-    variablesRendered.value = true;
-    superdoc.setDocumentMode('viewing');
-    documentMode.value = 'viewing';
-  } catch (error) {
-    if (variableRenderSnapshot) {
-      const originalDocument = new File([variableRenderSnapshot], documentName.value, { type: DOCX });
-      variableRenderSnapshot = null;
-      await superdoc.replaceFile(originalDocument);
-      await fieldController.value?.load();
-    }
-    superdoc.setDocumentMode(modeBeforeVariableRender);
-    documentMode.value = modeBeforeVariableRender;
-    console.error('Failed to render variables', error);
-  } finally {
-    renderingVariables.value = false;
-  }
+const updateVariable = (id: string, field: "name" | "value" | "columns", value: TemplateVariableValue | string[]) => {
+  templateVariableController.value?.update(id, field, value);
 };
 
 const toggleVariables = async () => {
-  if (variablesRendered.value) await hideVariables();
-  else await renderVariables();
+  const nextMode = await templateVariableController.value?.toggle(documentMode.value);
+  if (nextMode) documentMode.value = nextMode;
 };
 
 const handleDocumentFieldClick = (event: Event) => {
@@ -582,7 +328,7 @@ const handleExport = async () => {
 };
 
 const handleUpload = async (file: File) => {
-  if (variablesRendered.value) await hideVariables();
+  if (variablesRendered.value) documentMode.value = await templateVariableController.value?.hide() ?? documentMode.value;
   highlightedGroupKeys.value = new Set();
   highlightLockedFields.value = false;
   await superdocInstance.value?.replaceFile(file);
@@ -596,7 +342,7 @@ const handleNewDocument = async () => {
   const superdoc = superdocInstance.value;
   if (!superdoc) return;
 
-  if (variablesRendered.value) await hideVariables();
+  if (variablesRendered.value) documentMode.value = await templateVariableController.value?.hide() ?? documentMode.value;
 
   const blankDocument = await getFileObject(BlankDOCX, 'untitled.docx', DOCX);
   editingFieldId.value = null;
@@ -612,9 +358,10 @@ const handleNewDocument = async () => {
   await fieldController.value?.load();
 };
 
-const handleModeChange = async (mode: 'suggesting' | 'editing' | 'viewing') => {
+const handleModeChange = async (mode: DocumentMode) => {
   if (variablesRendered.value && mode !== 'viewing') {
-    await hideVariables(mode);
+    await templateVariableController.value?.hide(mode);
+    documentMode.value = mode;
     return;
   }
   superdocInstance.value?.setDocumentMode(mode);
@@ -664,11 +411,21 @@ onMounted(() => {
     onReady: async () => {
       superdocInstance.value = superdoc;
       fieldController.value = new FieldController(superdoc);
+      templateVariableController.value = new TemplateVariableController(
+        superdoc,
+        () => documentName.value,
+        async () => { await fieldController.value?.load(); },
+      );
       stopFieldSubscription = fieldController.value.subscribe((snapshot) => {
         const nextFields = [...snapshot];
         if (JSON.stringify(nextFields) === JSON.stringify(fields.value)) return;
         fields.value = nextFields;
         console.log(`Field controller: ${snapshot.length} fields`);
+      });
+      stopTemplateVariableSubscription = templateVariableController.value.subscribe((snapshot) => {
+        variables.value = [...snapshot.variables];
+        variablesRendered.value = snapshot.rendered;
+        renderingVariables.value = snapshot.rendering;
       });
       isReady.value = true;
       console.log('SuperDoc ready');
@@ -687,7 +444,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
   stopFieldSubscription?.();
+  stopTemplateVariableSubscription?.();
   fieldController.value?.destroy();
+  templateVariableController.value?.destroy();
   document.querySelector('#superdoc-editor')?.removeEventListener('click', handleDocumentFieldClick);
   superdocInstance.value?.destroy();
 });

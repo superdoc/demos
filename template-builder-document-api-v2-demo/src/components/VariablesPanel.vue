@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
-import type { TemplateVariable, TemplateVariableValue } from '../template-logic';
+import type { TemplateVariable, TemplateVariableValue } from '../template-variable-controller';
 
 const props = defineProps<{ variables: TemplateVariable[] }>();
 
