@@ -11,7 +11,7 @@
     "@fastify/multipart": "9.2.1",
     "@fastify/websocket": "11.2.0",
     "@hocuspocus/server": "2.15.3",
-    "@superdoc/sdk": "2.11.0",
+    "@superdoc/sdk": "latest",
     "fastify": "5.12.4",
     "openai": "5.19.1"
   }

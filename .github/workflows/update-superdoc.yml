@@ -101,6 +101,7 @@ jobs:
             superdoc-inline-revisions/package.json superdoc-inline-revisions/pnpm-lock.yaml \
             template-builder-document-api-v2-demo/package.json template-builder-document-api-v2-demo/pnpm-lock.yaml \
             canonical-collaboration-demo/client/package.json canonical-collaboration-demo/client/package-lock.json \
+            canonical-collaboration-demo/server/package.json canonical-collaboration-demo/server/package-lock.json \
             dist-landing/index.html
           git commit -m "chore: update SuperDoc to ${resolved}"
           git push --set-upstream origin "$branch"
