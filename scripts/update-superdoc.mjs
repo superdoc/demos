@@ -14,8 +14,8 @@ for (const entry of packages) {
   manifest.dependencies.superdoc = requested;
   await writeFile(entry.manifest, `${JSON.stringify(manifest, null, manifest.name === "@docrag/web" ? "\t" : 2)}\n`);
 
-  const args = entry.manager === "bun"
-    ? ["update", `superdoc@${requested}`]
+  const args = entry.manager === "npm"
+    ? ["install", `superdoc@${requested}`, "--save"]
     : ["update", `superdoc@${requested}`];
   const result = spawnSync(entry.manager, args, { cwd: entry.directory, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
