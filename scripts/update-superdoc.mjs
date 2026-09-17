@@ -36,6 +36,11 @@ for (const entry of packages) {
   const updated = JSON.parse(await readFile(entry.manifest, "utf8"));
   for (const [name, version] of Object.entries(entry.dependencies)) updated.dependencies[name] = version;
   await writeFile(entry.manifest, `${JSON.stringify(updated, null, updated.name === "@docrag/web" ? "\t" : 2)}\n`);
+
+  // Synchronize the restored manifest specifiers into the lockfile for frozen CI installs.
+  const installArgs = entry.manager === "pnpm" ? ["install", "--no-frozen-lockfile"] : ["install"];
+  const installResult = spawnSync(entry.manager, installArgs, { cwd: entry.directory, stdio: "inherit" });
+  if (installResult.status !== 0) process.exit(installResult.status ?? 1);
 }
 
 const resolveInstalledVersion = async (entry, dependency) => {
