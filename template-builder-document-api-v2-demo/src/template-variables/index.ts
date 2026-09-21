@@ -6,10 +6,11 @@ import {
 } from './controller';
 import {
   TemplateVariableRenderer,
+  type TemplateRenderMode,
   type TemplateRenderState,
 } from './renderer';
 
-export type { TemplateVariable, TemplateVariableValue };
+export type { TemplateVariable, TemplateVariableValue, TemplateRenderMode };
 
 export type TemplateVariablesState = TemplateRenderState & {
   variables: readonly TemplateVariable[];
@@ -27,7 +28,12 @@ export class TemplateVariables {
   private readonly renderer: TemplateVariableRenderer;
   private readonly listeners = new Set<TemplateVariablesListener>();
   private variables: readonly TemplateVariable[] = [];
-  private renderState: TemplateRenderState = { rendered: false, rendering: false };
+  private renderState: TemplateRenderState = {
+    rendered: false,
+    rendering: false,
+    mode: null,
+    hiddenControlIds: [],
+  };
   private readonly stopControllerSubscription: () => void;
   private readonly stopRendererSubscription: () => void;
 
@@ -66,6 +72,10 @@ export class TemplateVariables {
     this.controller.remove(id);
   }
 
+  clear(): void {
+    this.controller.clear();
+  }
+
   update(
     id: string,
     field: 'name' | 'value' | 'columns',
@@ -74,8 +84,8 @@ export class TemplateVariables {
     this.controller.update(id, field, value);
   }
 
-  render(): Promise<void> {
-    return this.renderer.render(this.variables);
+  render(mode: TemplateRenderMode = 'final'): Promise<void> {
+    return this.renderer.render(this.variables, mode);
   }
 
   unrender(): Promise<void> {

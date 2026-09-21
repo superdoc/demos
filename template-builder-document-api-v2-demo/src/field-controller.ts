@@ -36,6 +36,7 @@ export class FieldController {
   private readonly listeners = new Set<FieldListener>();
   private readonly overrides = new Map<string, Partial<TemplateField>>();
   private readonly pendingFields = new Map<string, TemplateField>();
+  private readonly hiddenFieldIds = new Set<string>();
   private stopObserving: (() => void) | null = null;
 
   constructor(private readonly superdoc: SuperDoc) {}
@@ -55,11 +56,19 @@ export class FieldController {
   }
 
   async load(): Promise<void> {
+    this.hiddenFieldIds.clear();
     this.overrides.clear();
     this.pendingFields.clear();
     this.replaceFromControls(this.superdoc.ui.contentControls.list());
     await this.migrateLegacyGroups();
     this.replaceFromControls(this.superdoc.ui.contentControls.list());
+  }
+
+  clearList(): void {
+    for (const field of this.fieldState) this.hiddenFieldIds.add(field.id);
+    this.pendingFields.clear();
+    this.fieldState = [];
+    this.emit();
   }
 
   async initialize(): Promise<void> {
@@ -178,9 +187,36 @@ export class FieldController {
     return { field: insertedField, groupTag: grouping.tag, sourceId: field.id };
   }
 
-  async createField(input: NewFieldInput): Promise<TemplateField | null> {
+  async replaceRangeWithFieldCopy(
+    field: TemplateField,
+    trigger: SelectionTarget,
+  ): Promise<InsertedFieldCopy | null> {
     const doc = this.superdoc.activeEditor?.doc;
     if (!doc) return null;
+
+    const result = await doc.replace({ target: trigger, text: '' });
+    if (!result.success) {
+      console.error('Failed to remove the field autocomplete trigger', result.failure);
+      return null;
+    }
+
+    const caret: SelectionTarget = {
+      ...trigger,
+      start: trigger.start,
+      end: trigger.start,
+    };
+    return this.insertCopy(field, caret);
+  }
+
+  async createField(input: NewFieldInput, replaceTarget?: SelectionTarget): Promise<TemplateField | null> {
+    const doc = this.superdoc.activeEditor?.doc;
+    if (!doc) return null;
+    let at: SelectionTarget | undefined;
+    if (replaceTarget) {
+      const replaced = await doc.replace({ target: replaceTarget, text: '' });
+      if (!replaced.success) return null;
+      at = { ...replaceTarget, start: replaceTarget.start, end: replaceTarget.start };
+    }
     const metadata = { ...input.metadata };
     const tag = input.tag?.trim() || JSON.stringify(metadata);
     const common = {
@@ -199,6 +235,7 @@ export class FieldController {
         : await doc.create.contentControl({
             kind: 'inline',
             ...common,
+            ...(at ? { at } : {}),
             content: input.value || input.alias,
           });
     if (!result.success) return null;
@@ -220,6 +257,40 @@ export class FieldController {
           metadata: groupedMetadata,
         };
       }
+    }
+    this.pendingFields.set(field.id, field);
+    this.upsertState(field);
+    return field;
+  }
+
+  async createFieldFromSelection(alias: string, at: SelectionTarget): Promise<TemplateField | null> {
+    const doc = this.superdoc.activeEditor?.doc;
+    if (!doc) return null;
+    const metadata: Record<string, unknown> = { group: 'field', category: 'field' };
+    const result = await doc.create.contentControl({
+      kind: 'inline',
+      controlType: 'richText',
+      at,
+      alias,
+      tag: JSON.stringify(metadata),
+      lockMode: 'unlocked',
+    });
+    if (!result.success) return null;
+
+    let created = await doc.contentControls.get({ target: result.contentControl });
+    let field = this.parseControls([created])[0] || null;
+    if (!field) return null;
+
+    const groupedMetadata = { ...metadata, group: field.id };
+    const groupedTag = JSON.stringify(groupedMetadata);
+    if (await this.updateTagForField(field, groupedTag)) {
+      created = await doc.contentControls.get({ target: result.contentControl });
+      field = {
+        ...(this.parseControls([created])[0] || field),
+        tag: groupedTag,
+        group: field.id,
+        metadata: groupedMetadata,
+      };
     }
     this.pendingFields.set(field.id, field);
     this.upsertState(field);
@@ -288,7 +359,9 @@ export class FieldController {
   }
 
   private replaceFromControls(controls: readonly ContentControlInfo[]): void {
-    const observed = this.parseControls(controls);
+    const observed = this.parseControls(controls).filter((field) => (
+      !this.hiddenFieldIds.has(field.id) && field.metadata.category !== 'conditional-hidden'
+    ));
     const observedIds = new Set(observed.map((field) => field.id));
     for (const id of observedIds) this.pendingFields.delete(id);
     this.fieldState = [

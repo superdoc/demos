@@ -79,6 +79,11 @@ export class TemplateVariableController {
     this.emit();
   }
 
+  clear(): void {
+    this.variableState = [];
+    this.emit();
+  }
+
   update(id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]): void {
     const variable = this.variableState.find(candidate => candidate.id === id);
     if (!variable) return;

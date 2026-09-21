@@ -12,8 +12,16 @@ import {
   renderInterpolation,
 } from './helpers';
 
-export type TemplateRenderState = { rendered: boolean; rendering: boolean };
+export type TemplateRenderMode = 'final' | 'preview';
+export type TemplateRenderState = {
+  rendered: boolean;
+  rendering: boolean;
+  mode: TemplateRenderMode | null;
+  hiddenControlIds: readonly string[];
+};
 type TemplateRenderListener = (state: TemplateRenderState) => void;
+
+type PreviewMarker = { id: string; expression: string };
 
 const MAX_CONDITIONAL_PASSES = 1000;
 
@@ -22,7 +30,10 @@ export class TemplateVariableRenderer {
   // Render state and the original DOCX snapshot live only for the active preview.
   private rendered = false;
   private rendering = false;
+  private mode: TemplateRenderMode | null = null;
   private renderSnapshot: Blob | null = null;
+  private previewMarkers: PreviewMarker[] = [];
+  private hiddenControlIds: string[] = [];
   private readonly listeners = new Set<TemplateRenderListener>();
 
   constructor(
@@ -39,11 +50,12 @@ export class TemplateVariableRenderer {
 
   async render(
     variables: readonly TemplateVariable[],
+    mode: TemplateRenderMode = 'final',
   ): Promise<void> {
     // Rendering is idempotent until the current preview is unrendered.
     if (this.rendered) return;
 
-    await this.renderDocument(variables);
+    await this.renderDocument(variables, mode);
   }
 
   async unrender(): Promise<void> {
@@ -54,6 +66,8 @@ export class TemplateVariableRenderer {
     try {
       await this.restoreDocument();
       this.rendered = false;
+      this.mode = null;
+      this.hiddenControlIds = [];
     } finally {
       this.setRendering(false);
     }
@@ -67,22 +81,27 @@ export class TemplateVariableRenderer {
 
   private async renderDocument(
     variables: readonly TemplateVariable[],
+    mode: TemplateRenderMode,
   ): Promise<void> {
     if (this.rendered) return;
 
     this.setRendering(true);
 
     try {
+      this.hiddenControlIds = [];
       // Capture first so any partial render can be rolled back safely.
       await this.captureDocument();
 
       // Structural loops render first, nested conditions second, and scalar values last.
       await this.renderTableRowLoops(variables);
       const values = this.getScalarValues(variables);
-      await this.renderConditionals(values);
+      this.previewMarkers = [];
+      await this.renderConditionals(values, mode);
       await this.renderInterpolations(values);
+      if (mode === 'preview') await this.wrapPreviewHiddenContent();
 
       this.rendered = true;
+      this.mode = mode;
     } catch (error) {
       // A failed pass restores the source document before surfacing the error.
       if (this.renderSnapshot) await this.restoreDocument();
@@ -127,7 +146,10 @@ export class TemplateVariableRenderer {
     this.renderSnapshot = null;
   }
 
-  private async renderConditionals(values: ReadonlyMap<string, string | boolean>): Promise<void> {
+  private async renderConditionals(
+    values: ReadonlyMap<string, string | boolean>,
+    mode: TemplateRenderMode,
+  ): Promise<void> {
     // Resolve one innermost block per pass so nested conditions remain well-defined.
     for (let pass = 0; pass < MAX_CONDITIONAL_PASSES; pass += 1) {
       const textBeforeRender = await this.getDocumentText();
@@ -136,7 +158,9 @@ export class TemplateVariableRenderer {
 
       const conditionPassed = evaluateBooleanExpression(block.expression, values);
       // Keep the selected branch and remove the directives plus the rejected branch.
-      const replacement = conditionPassed ? block.truthyContent : block.falsyContent;
+      const replacement = mode === 'preview'
+        ? this.createPreviewConditional(block, conditionPassed)
+        : conditionPassed ? block.truthyContent : block.falsyContent;
       const wasReplaced = await this.replaceConditionalBlock(
         block.source,
         replacement,
@@ -151,6 +175,62 @@ export class TemplateVariableRenderer {
     }
 
     throw new Error(`Template exceeds the maximum conditional depth of ${MAX_CONDITIONAL_PASSES}.`);
+  }
+
+  private createPreviewConditional(
+    block: { expression: string; truthyContent: string; falsyContent: string },
+    conditionPassed: boolean,
+  ): string {
+    const hiddenContent = conditionPassed ? block.falsyContent : block.truthyContent;
+    const visibleContent = conditionPassed ? block.truthyContent : block.falsyContent;
+    if (!hiddenContent) return visibleContent;
+
+    const id = crypto.randomUUID();
+    this.previewMarkers.push({ id, expression: block.expression });
+    const hidden = `__SD_PREVIEW_START_${id}__${hiddenContent}__SD_PREVIEW_END_${id}__`;
+    return conditionPassed ? `${visibleContent}${hidden}` : `${hidden}${visibleContent}`;
+  }
+
+  private async wrapPreviewHiddenContent(): Promise<void> {
+    const documentApi = this.superdoc.activeEditor?.doc;
+    if (!documentApi) throw new Error('Document API is unavailable.');
+
+    for (const marker of [...this.previewMarkers].reverse()) {
+      const startText = `__SD_PREVIEW_START_${marker.id}__`;
+      const endText = `__SD_PREVIEW_END_${marker.id}__`;
+      const startMatch = (await documentApi.query.match({
+        select: { type: 'text', pattern: startText, mode: 'contains', caseSensitive: true },
+        limit: 1,
+      })).items[0];
+      const endMatch = (await documentApi.query.match({
+        select: { type: 'text', pattern: endText, mode: 'contains', caseSensitive: true },
+        limit: 1,
+      })).items[0];
+      if (startMatch?.matchKind !== 'text' || endMatch?.matchKind !== 'text') continue;
+      if (startMatch.target.start.kind !== 'text' || endMatch.target.start.kind !== 'text') continue;
+
+      await documentApi.delete({ target: endMatch.target, behavior: 'exact' });
+      await documentApi.delete({ target: startMatch.target, behavior: 'exact' });
+      const sameBlock = startMatch.target.start.blockId === endMatch.target.start.blockId;
+      const hiddenTarget = {
+        kind: 'selection' as const,
+        start: startMatch.target.start,
+        end: {
+          ...endMatch.target.start,
+          offset: endMatch.target.start.offset - (sameBlock ? startText.length : 0),
+        },
+      };
+      const result = await documentApi.create.contentControl({
+        kind: sameBlock ? 'inline' : 'block',
+        controlType: 'richText',
+        at: hiddenTarget,
+        alias: `Hidden: ${marker.expression}`,
+        tag: JSON.stringify({ category: 'conditional-hidden', expression: marker.expression, hidden: true }),
+        lockMode: 'unlocked',
+      });
+      if (!result.success) throw new Error(`Hidden conditional could not be wrapped: ${marker.expression}`);
+      this.hiddenControlIds.push(result.contentControl.nodeId);
+    }
   }
 
   private async getDocumentText(): Promise<string> {
@@ -325,7 +405,12 @@ export class TemplateVariableRenderer {
   }
 
   private state(): TemplateRenderState {
-    return { rendered: this.rendered, rendering: this.rendering };
+    return {
+      rendered: this.rendered,
+      rendering: this.rendering,
+      mode: this.mode,
+      hiddenControlIds: [...this.hiddenControlIds],
+    };
   }
 
   private setRendering(rendering: boolean): void {

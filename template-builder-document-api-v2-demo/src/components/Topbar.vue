@@ -9,6 +9,7 @@ defineProps<{
   mode: DocumentMode;
   variablesRendered: boolean;
   fieldExplorerVisible: boolean;
+  fieldAutofillEnabled: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   upload: [file: File];
   modeChange: [mode: DocumentMode];
   toggleFieldExplorer: [];
+  toggleFieldAutofill: [];
 }>();
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -100,6 +102,16 @@ const chooseFileAction = (event: Event) => {
 
     <div class="ribbon-controls-row">
       <div id="superdoc-toolbar" class="default-toolbar" aria-label="Document toolbar" />
+      <label class="field-autofill-toggle">
+        <input
+          type="checkbox"
+          :checked="fieldAutofillEnabled"
+          :disabled="!ready"
+          @change="emit('toggleFieldAutofill')"
+        >
+        <span class="toggle-track" aria-hidden="true"><span /></span>
+        <span>Autofill</span>
+      </label>
     </div>
   </header>
 </template>
@@ -262,6 +274,51 @@ const chooseFileAction = (event: Event) => {
   width: auto;
   background: #f8f8f8;
 }
+
+.field-autofill-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  margin-left: 10px;
+  color: #303640;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.field-autofill-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.toggle-track {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  background: #aeb7c4;
+  border-radius: 999px;
+  transition: background .15s ease;
+}
+
+.toggle-track span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform .15s ease;
+}
+
+.field-autofill-toggle input:checked + .toggle-track { background: #2563eb; }
+.field-autofill-toggle input:checked + .toggle-track span { transform: translateX(12px); }
+.field-autofill-toggle input:focus-visible + .toggle-track { outline: 2px solid #2563eb55; outline-offset: 2px; }
+.field-autofill-toggle:has(input:disabled) { cursor: default; opacity: .5; }
 
 .default-toolbar :deep(.superdoc-toolbar),
 .default-toolbar :deep(.toolbar) {
