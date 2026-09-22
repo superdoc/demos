@@ -6,13 +6,16 @@ const props = defineProps<{
   variables: TemplateVariable[];
   variablesRendered: boolean;
   renderingVariables: boolean;
+  loadingVariables: boolean;
+  loadError: string;
 }>();
 
 const emit = defineEmits<{
   add: [type: TemplateVariable['type']];
   load: [];
-  toggleVariables: [];
+  render: [];
   remove: [id: string];
+  clear: [];
   update: [id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]];
 }>();
 
@@ -78,6 +81,7 @@ const removeTableRow = (variable: TableRowsVariable, rowIndex: number) => emit(
 
 const searchInput = ref('');
 const searchQuery = ref('');
+const confirmingClear = ref(false);
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 const updateSearch = (event: Event) => {
@@ -93,6 +97,11 @@ const filteredVariables = computed(() => searchQuery.value
   ? props.variables.filter(variable => variable.name.toLocaleLowerCase().includes(searchQuery.value))
   : props.variables);
 
+const clearVariables = () => {
+  emit('clear');
+  confirmingClear.value = false;
+};
+
 onBeforeUnmount(() => {
   if (searchTimer) clearTimeout(searchTimer);
 });
@@ -101,27 +110,42 @@ onBeforeUnmount(() => {
 <template>
   <section class="variables-panel" aria-label="Template variables">
     <header>
-      <div>
+      <div class="header-summary">
         <span>Template data</span>
         <strong>{{ variables.length }} {{ variables.length === 1 ? 'variable' : 'variables' }}</strong>
       </div>
       <div class="header-actions">
         <button
+          class="clear-variables"
+          type="button"
+          :disabled="!variables.length"
+          @click="confirmingClear = true"
+        >Clear</button>
+        <button
           class="render-variables"
           :class="{ active: variablesRendered }"
           type="button"
-          :aria-pressed="variablesRendered"
           :disabled="renderingVariables"
-          @click="emit('toggleVariables')"
-        >{{ variablesRendered ? 'Hide variables' : 'Render variables' }}</button>
-        <button class="load-variables" type="button" @click="emit('load')">Load variables</button>
+          @click="emit('render')"
+        >{{ variablesRendered ? 'Rendered' : 'Render' }}</button>
+        <button class="load-variables" type="button" :disabled="loadingVariables" @click="emit('load')">
+          {{ loadingVariables ? 'Loading…' : 'Load' }}
+        </button>
         <select aria-label="Add variable" value="" @change="chooseVariableType">
-          <option value="" disabled>Add variable</option>
+          <option value="" disabled>Add</option>
           <option value="text">Text</option>
           <option value="boolean">True/false</option>
           <option value="textList">Text list</option>
           <option value="tableRows">Table rows</option>
         </select>
+      </div>
+      <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
+      <div v-if="confirmingClear" class="clear-confirmation" role="alert">
+        <p>Do you want to remove all variables from this list? Variables present in the document will remain in the document.</p>
+        <div>
+          <button type="button" @click="confirmingClear = false">Cancel</button>
+          <button class="confirm-clear" type="button" @click="clearVariables">Remove all</button>
+        </div>
       </div>
     </header>
 
@@ -237,18 +261,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .variables-panel { padding: 16px 1px 0; }
-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-header > div { display: flex; flex-direction: column; gap: 2px; }
+header { display: flex; align-items: flex-start; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.header-summary { display: flex; flex-direction: column; gap: 2px; }
 header span { color: #8a919b; font-size: 9px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 header strong { color: #303640; font-size: 13px; }
 .header-actions { display: flex; flex-direction: row; align-items: center; gap: 7px; }
 header select, header button { padding: 7px 10px; color: #fff; background: #2563eb; border: 0; border-radius: 7px; font-size: 11px; font-weight: 750; cursor: pointer; }
 header select { padding-right: 28px; }
 header select:hover, header button:hover { background-color: #1d4ed8; }
-header .load-variables, header .render-variables { color: #245fae; background: #fff; border: 1px solid #b9c9df; }
-header .load-variables:hover, header .render-variables:hover { color: #1d4ed8; background: #f8fafc; border-color: #8da9cf; }
-header .render-variables.active { color: #174ea6; background: #fff; border-color: #2563eb; }
+header .load-variables, header .render-variables, header .clear-variables { color: #245fae; background: #fff; border: 1px solid #b9c9df; }
+header .load-variables:hover, header .render-variables:hover, header .clear-variables:hover { color: #1d4ed8; background: #f8fafc; border-color: #8da9cf; }
+header .load-variables:disabled { cursor: wait; opacity: .6; }
+.load-error { margin: 0; padding: 8px 10px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; font-size: 11px; line-height: 1.4; }
+header .render-variables.active { color: #fff; background-color: #2563eb; border-color: #2563eb; }
+header .render-variables.active:hover { color: #fff; background: #1d4ed8; border-color: #1d4ed8; }
 header button:disabled { cursor: wait; opacity: .55; }
+.clear-confirmation { width: 100%; padding: 11px; color: #4b5563; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 7px; font-size: 12px; line-height: 1.4; }
+.clear-confirmation div { display: flex; flex-direction: row; gap: 7px; margin-top: 9px; }
+.clear-confirmation button { color: #596273; background: #fff; border: 1px solid #cbd5e1; }
+.clear-confirmation .confirm-clear { color: #fff; background: #b42318; border-color: #b42318; }
 .variable-list { display: flex; flex-direction: column; gap: 10px; }
 .variable-search { width: 100%; margin-bottom: 12px; padding: 9px 11px; color: #252a32; background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; font: inherit; font-size: 12px; }
 .variable-search:focus { border-color: #2563eb; outline: 2px solid #2563eb22; }

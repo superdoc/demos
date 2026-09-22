@@ -283,6 +283,45 @@ export const findInnermostConditional = (text: string) => {
   return null;
 };
 
+export const findTopLevelConditionals = (text: string) => {
+  const ranges: Array<{
+    source: string;
+    openingOrdinal: number;
+    closingOrdinal: number;
+    paragraphScoped: boolean;
+  }> = [];
+  const stack: Array<{ start: number; openingOrdinal: number; paragraphScoped: boolean }> = [];
+  let ordinal = 0;
+
+  for (const match of text.matchAll(CONDITIONAL_TAG_PATTERN)) {
+    const tag = match[2].trim();
+    const currentOrdinal = ordinal++;
+    if (tag.startsWith('if ')) {
+      stack.push({
+        start: match.index,
+        openingOrdinal: currentOrdinal,
+        paragraphScoped: match[1] === 'p',
+      });
+      continue;
+    }
+    if (tag === 'else') continue;
+
+    const opening = stack.pop();
+    if (!opening) throw new Error('Unexpected template endif tag.');
+    if (stack.length) continue;
+    const end = match.index + match[0].length;
+    ranges.push({
+      source: text.slice(opening.start, end),
+      openingOrdinal: opening.openingOrdinal,
+      closingOrdinal: currentOrdinal,
+      paragraphScoped: opening.paragraphScoped,
+    });
+  }
+
+  if (stack.length) throw new Error('A template conditional is missing its endif tag.');
+  return ranges;
+};
+
 export const createTableColumnPattern = (alias: string): RegExp => {
   // Matches {{ alias.column }} placeholders inside a prototype table cell.
   return new RegExp(`\\{\\{\\s*${escapeRegularExpression(alias)}\\.([A-Za-z_][A-Za-z0-9_]*)\\s*\\}\\}`, 'g');

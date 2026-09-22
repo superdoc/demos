@@ -8,6 +8,13 @@ import FieldCard from './components/FieldCard.vue';
 import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
+import FieldAutocomplete from './components/FieldAutocomplete.vue';
+import {
+  AutofillController,
+  type AutofillAdapter,
+  type AutofillField,
+  type AutofillSnapshot,
+} from './autofill-controller';
 import {
   TemplateVariables,
   type TemplateVariable,
@@ -24,15 +31,18 @@ const documentUrl = `${import.meta.env.BASE_URL}parser-test-document.docx`;
 
 const superdocInstance = shallowRef<SuperDoc | null>(null);
 const fieldController = shallowRef<FieldController | null>(null);
+const autofillController = shallowRef<AutofillController | null>(null);
 const templateVars = shallowRef<TemplateVariables | null>(null);
 const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
 const documentName = ref('parser-test-document.docx');
 const documentMode = ref<'suggesting' | 'editing' | 'viewing'>('editing');
-const activeTab = ref<'active' | 'all' | 'clause' | 'variables'>('all');
+const activeTab = ref<'active' | 'all' | 'variables'>('all');
 const variables = ref<TemplateVariable[]>([]);
 const variablesRendered = ref(false);
 const renderingVariables = ref(false);
+const loadingVariables = ref(false);
+const variableLoadError = ref('');
 const editingFieldId = ref<string | null>(null);
 const editingInstanceIds = ref<string[]>([]);
 const activeDocumentFieldId = ref<string | null>(null);
@@ -43,14 +53,20 @@ const isDeletingField = ref(false);
 const highlightedGroupKeys = ref<Set<string>>(new Set());
 const highlightLockedFields = ref(false);
 const fieldExplorerVisible = ref(true);
-const creatingType = ref<'field' | 'clause' | null>(null);
+const fieldAutofillEnabled = ref(false);
+const creatingMode = ref<'inline' | 'block' | null>(null);
+const confirmingFieldClear = ref(false);
 let insertTarget: SelectionTarget | null = null;
 let pendingInsertTarget: SelectionTarget | null = null;
 let selectionCaptureTimer: ReturnType<typeof setTimeout> | null = null;
 const SELECTION_CAPTURE_DEBOUNCE_MS = 150;
 let stopFieldSubscription: (() => void) | null = null;
 let stopTemplateVariableSubscription: (() => void) | null = null;
+let stopSelectionSubscription: (() => void) | null = null;
+let stopAutofillSubscription: (() => void) | null = null;
 let modeBeforeVariableRender: DocumentMode = 'editing';
+let editorElement: Element | null = null;
+const autofill = ref<AutofillSnapshot>({ open: false, query: '', suggestions: [], top: 0, left: 0 });
 
 const sidebarFields = computed(() => fields.value);
 
@@ -104,6 +120,7 @@ const scheduleFieldHighlights = () => {
   void nextTick(() => requestAnimationFrame(applyFieldHighlights));
 };
 
+
 const toggleAllFieldHighlights = () => {
   highlightedGroupKeys.value = highlightAllFields.value
     ? new Set()
@@ -119,14 +136,7 @@ const toggleGroupHighlight = (field: GroupedSidebarField) => {
 
 watch([highlightedGroupKeys, highlightLockedFields, groupedSidebarFields], scheduleFieldHighlights, { deep: true });
 
-const clauseFields = computed(() => groupedSidebarFields.value.filter(field =>
-  field.metadata.category === 'clause'
-  || typeof field.metadata.clauseType === 'string'
-  || field.metadata.group === 'clause'));
-const visibleFields = computed(() => {
-  if (activeTab.value === 'clause') return clauseFields.value;
-  return groupedSidebarFields.value;
-});
+const visibleFields = computed(() => groupedSidebarFields.value);
 const editingField = computed(() => sidebarFields.value.find(field => field.id === editingFieldId.value) || null);
 const editingInstances = computed(() => editingInstanceIds.value
   .map(id => sidebarFields.value.find(field => field.id === id))
@@ -135,17 +145,17 @@ const deletingField = computed(() => sidebarFields.value.find(field => field.id 
 const deletingInstances = computed(() => deletingInstanceIds.value
   .map(id => sidebarFields.value.find(field => field.id === id))
   .filter((field): field is TemplateField => !!field));
-const creatingField = computed<TemplateField | null>(() => creatingType.value ? ({
+const creatingField = computed<TemplateField | null>(() => creatingMode.value ? ({
   id: '',
   alias: '',
-  mode: creatingType.value === 'clause' ? 'block' : 'inline',
-  group: creatingType.value === 'clause' ? 'clause' : 'field',
+  mode: creatingMode.value,
+  group: 'field',
   controlType: 'richText',
   value: '',
   lockMode: 'unlocked',
   metadata: {
-    group: creatingType.value === 'clause' ? 'clause' : 'field',
-    category: creatingType.value === 'clause' ? 'clause' : 'field',
+    group: 'field',
+    category: 'field',
   },
 }) : null);
 
@@ -188,7 +198,7 @@ const closeFieldEditor = () => {
   editingFieldId.value = null;
   editingInstanceIds.value = [];
   editingSource.value = null;
-  creatingType.value = null;
+  creatingMode.value = null;
 };
 
 const openActiveDocumentField = (instanceId: string) => {
@@ -198,11 +208,11 @@ const openActiveDocumentField = (instanceId: string) => {
   editingFieldId.value = group.id;
   editingInstanceIds.value = [...group.instanceIds];
   editingSource.value = 'document';
-  creatingType.value = null;
+  creatingMode.value = null;
   activeTab.value = 'active';
 };
 
-const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
+const selectSidebarTab = (tab: 'active' | 'all' | 'variables') => {
   activeTab.value = tab;
   if (tab === 'active') {
     if (activeDocumentFieldId.value) openActiveDocumentField(activeDocumentFieldId.value);
@@ -214,9 +224,25 @@ const selectSidebarTab = (tab: 'active' | 'all' | 'clause' | 'variables') => {
 
 const addVariable = (type: TemplateVariable["type"]) => templateVars.value?.add(type);
 
-const loadVariables = async () => templateVars.value?.load();
+const loadVariables = async () => {
+  if (!templateVars.value || loadingVariables.value) return;
+  loadingVariables.value = true;
+  variableLoadError.value = '';
+  try {
+    await nextTick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await templateVars.value.load();
+  } catch (error) {
+    variableLoadError.value = error instanceof Error ? error.message : 'Variables could not be loaded.';
+    console.error('[Variable load]', error);
+  } finally {
+    loadingVariables.value = false;
+  }
+};
 
 const removeVariable = (id: string) => templateVars.value?.remove(id);
+
+const clearVariables = () => templateVars.value?.clear();
 
 const updateVariable = (id: string, field: "name" | "value" | "columns", value: TemplateVariableValue | string[]) => {
   templateVars.value?.update(id, field, value);
@@ -230,7 +256,7 @@ const unrenderVariables = async (nextMode = modeBeforeVariableRender) => {
   documentMode.value = nextMode;
 };
 
-const toggleVariables = async () => {
+const renderVariables = async () => {
   if (variablesRendered.value) {
     await unrenderVariables();
     return;
@@ -239,7 +265,7 @@ const toggleVariables = async () => {
   modeBeforeVariableRender = documentMode.value;
   superdocInstance.value?.setDocumentMode('editing');
   try {
-    await templateVars.value?.render();
+    await templateVars.value?.render('final');
     superdocInstance.value?.setDocumentMode('viewing');
     documentMode.value = 'viewing';
   } catch (error) {
@@ -289,7 +315,23 @@ const handleCreateField = async (input: NewFieldInput) => {
     console.error('Failed to create field');
     return;
   }
-  creatingType.value = null;
+  creatingMode.value = null;
+};
+
+const chooseFieldMode = (event: Event) => {
+  const select = event.target as HTMLSelectElement;
+  if (select.value === 'inline' || select.value === 'block') creatingMode.value = select.value;
+  select.value = '';
+};
+
+const loadFields = async () => {
+  confirmingFieldClear.value = false;
+  await fieldController.value?.load();
+};
+
+const clearFieldList = () => {
+  fieldController.value?.clearList();
+  confirmingFieldClear.value = false;
 };
 
 const captureInsertSelection = () => {
@@ -339,6 +381,10 @@ const handleInsertField = async (field: TemplateField) => {
   console.log('Insertion completed', { success });
   if (!success) console.error(`Failed to insert field at the current cursor: ${field.id}`);
   console.groupEnd();
+};
+
+const handleAutocompleteSelect = async (field: AutofillField) => {
+  await autofillController.value?.select(field);
 };
 
 const handleExport = async () => {
@@ -391,6 +437,11 @@ const handleModeChange = async (mode: DocumentMode) => {
   documentMode.value = mode;
 };
 
+const toggleFieldAutofill = () => {
+  fieldAutofillEnabled.value = !fieldAutofillEnabled.value;
+  autofillController.value?.setEnabled(fieldAutofillEnabled.value);
+};
+
 // =============================================================================
 // Lifecycle
 // =============================================================================
@@ -407,6 +458,23 @@ onMounted(() => {
     user: { name: 'Demo User', email: 'demo@example.com' },
     ui: {
       contentControls: true,
+      contextMenu: {
+        sections: [{
+          id: 'template-fields',
+          items: [{
+            id: 'add-field-from-selection',
+            label: 'Add field using selected text',
+            showWhen: ({ hasSelection }) => hasSelection,
+            enabledWhen: ({ hasSelection, isEditable }) => hasSelection && isEditable,
+            onSelect: async ({ context }) => {
+              const target = superdoc.ui.selection.current()?.selectionTarget;
+              const alias = (await context?.selectedTextSettled || '').trim();
+              if (!alias || !target) return;
+              await fieldController.value?.createFieldFromSelection(alias, target);
+            },
+          }],
+        }],
+      },
     },
     modules: {
       toolbar: {
@@ -453,22 +521,47 @@ onMounted(() => {
 
       await fieldController.value.initialize();
 
-      superdoc.ui.selection.observe((snapshot) => {
+      const autofillAdapter: AutofillAdapter = {
+        subscribeToFields: (listener) => fieldController.value!.subscribe(fields => listener(fields)),
+        insertField: async (field, target) => {
+          const source = fieldController.value?.get(field.id);
+          if (!source) return false;
+          return !!await fieldController.value?.replaceRangeWithFieldCopy(source, target);
+        },
+        createField: async (alias, target) => fieldController.value?.createField({
+          alias,
+          value: alias,
+          mode: 'inline',
+          locked: false,
+          metadata: { group: 'field', category: 'field' },
+        }, target) || null,
+      };
+      autofillController.value = new AutofillController(superdoc, autofillAdapter);
+      stopAutofillSubscription = autofillController.value.subscribe((snapshot) => {
+        autofill.value = snapshot;
+      });
+      editorElement = document.querySelector('#superdoc-editor');
+      if (editorElement) autofillController.value.initialize(editorElement);
+      editorElement?.addEventListener('click', handleDocumentFieldClick);
+
+      stopSelectionSubscription = superdoc.ui.selection.observe((snapshot) => {
         if (snapshot.selectionTarget) debounceInsertSelection(snapshot.selectionTarget);
       });
 
     },
   });
-  document.querySelector('#superdoc-editor')?.addEventListener('click', handleDocumentFieldClick);
 });
 
 onBeforeUnmount(() => {
   if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
   stopFieldSubscription?.();
   stopTemplateVariableSubscription?.();
+  stopSelectionSubscription?.();
+  stopAutofillSubscription?.();
+  autofillController.value?.destroy();
   fieldController.value?.destroy();
   templateVars.value?.destroy();
-  document.querySelector('#superdoc-editor')?.removeEventListener('click', handleDocumentFieldClick);
+  editorElement?.removeEventListener('click', handleDocumentFieldClick);
   superdocInstance.value?.destroy();
 });
 </script>
@@ -481,11 +574,13 @@ onBeforeUnmount(() => {
       :mode="documentMode"
       :variables-rendered="variablesRendered"
       :field-explorer-visible="fieldExplorerVisible"
+      :field-autofill-enabled="fieldAutofillEnabled"
       @upload="handleUpload"
       @new-document="handleNewDocument"
       @export="handleExport"
       @mode-change="handleModeChange"
       @toggle-field-explorer="fieldExplorerVisible = !fieldExplorerVisible"
+      @toggle-field-autofill="toggleFieldAutofill"
     />
 
     <!-- Main Content -->
@@ -496,6 +591,15 @@ onBeforeUnmount(() => {
           <div id="superdoc-editor"></div>
         </div>
       </div>
+
+      <FieldAutocomplete
+        v-if="autofill.open"
+        :fields="[...autofill.suggestions]"
+        :query="autofill.query"
+        :top="autofill.top"
+        :left="autofill.left"
+        @select="handleAutocompleteSelect"
+      />
 
       <!-- Field List Sidebar -->
       <aside v-if="fieldExplorerVisible" class="sidebar">
@@ -515,7 +619,6 @@ onBeforeUnmount(() => {
         <div v-if="!creatingField && !deletingField && (!editingField || editingSource === 'document')" class="sidebar-tabs" role="tablist" aria-label="Field views">
           <button :class="{ active: activeTab === 'active' }" @click="selectSidebarTab('active')">Active field</button>
           <button :class="{ active: activeTab === 'all' }" @click="selectSidebarTab('all')">Fields</button>
-          <button :class="{ active: activeTab === 'clause' }" @click="selectSidebarTab('clause')">Clauses</button>
           <button :class="{ active: activeTab === 'variables' }" @click="selectSidebarTab('variables')">Variables</button>
         </div>
 
@@ -524,10 +627,13 @@ onBeforeUnmount(() => {
           :variables="variables"
           :variables-rendered="variablesRendered"
           :rendering-variables="renderingVariables"
+          :loading-variables="loadingVariables"
+          :load-error="variableLoadError"
           @add="addVariable"
           @load="loadVariables"
-          @toggle-variables="toggleVariables"
+          @render="renderVariables"
           @remove="removeVariable"
+          @clear="clearVariables"
           @update="updateVariable"
         />
 
@@ -535,12 +641,29 @@ onBeforeUnmount(() => {
 
           <div class="sidebar-heading">
             <div>
-              <span>{{ activeTab === 'clause' ? 'Clause library' : 'Template fields' }}</span>
+              <span>Template fields</span>
               <strong>{{ visibleFields.length }} {{ visibleFields.length === 1 ? 'field' : 'fields' }}</strong>
             </div>
-            <button class="new-field-button" @click="creatingType = activeTab === 'clause' ? 'clause' : 'field'">
-              {{ activeTab === 'clause' ? 'New clause' : 'New field' }}
-            </button>
+            <div class="sidebar-heading-actions">
+              <button
+                class="field-action-button"
+                :disabled="!visibleFields.length"
+                @click="confirmingFieldClear = true"
+              >Clear</button>
+              <button class="field-action-button" @click="loadFields">Load</button>
+              <select aria-label="Add field" value="" @change="chooseFieldMode">
+                <option value="" disabled>Add</option>
+                <option value="inline">Inline</option>
+                <option value="block">Block</option>
+              </select>
+            </div>
+            <div v-if="confirmingFieldClear" class="field-clear-confirmation" role="alert">
+              <p>Do you want to remove all fields from this list? Fields present in the document will remain in the document.</p>
+              <div>
+                <button type="button" @click="confirmingFieldClear = false">Cancel</button>
+                <button class="confirm-clear" type="button" @click="clearFieldList">Remove all</button>
+              </div>
+            </div>
           </div>
 
           <div v-if="visibleFields.length" class="field-cards">
@@ -578,7 +701,7 @@ onBeforeUnmount(() => {
 
         <FieldEditorPanel
           v-else
-          :key="editingField?.id || `new-${creatingType}`"
+          :key="editingField?.id || `new-${creatingMode}`"
           :field="editingField || creatingField!"
           :instances="editingInstances"
           :creating="!!creatingField"
@@ -779,7 +902,7 @@ onBeforeUnmount(() => {
   z-index: 5;
   top: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   margin: 0 -14px;
   padding: 9px 8px 0;
   background: #fff;
@@ -816,8 +939,9 @@ onBeforeUnmount(() => {
 
 .sidebar-heading {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 10px;
   padding: 16px 1px 12px;
 }
 
@@ -826,6 +950,23 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 2px;
 }
+
+.sidebar-heading > .sidebar-heading-actions {
+  width: 100%;
+  flex-direction: row;
+  gap: 7px;
+}
+
+.sidebar-heading-actions button,
+.sidebar-heading-actions select { padding: 7px 10px; color: #245fae; background: #fff; border: 1px solid #b9c9df; border-radius: 7px; font-size: 11px; font-weight: 750; cursor: pointer; }
+.sidebar-heading-actions select { padding-right: 28px; color: #fff; background-color: #2563eb; border-color: #2563eb; }
+.sidebar-heading-actions button:hover { color: #1d4ed8; background: #f8fafc; border-color: #8da9cf; }
+.sidebar-heading-actions select:hover { background-color: #1d4ed8; }
+.sidebar-heading-actions button:disabled { cursor: default; opacity: .5; }
+.field-clear-confirmation { width: 100%; padding: 11px; color: #4b5563; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 7px; font-size: 12px; line-height: 1.4; }
+.field-clear-confirmation > div { display: flex; flex-direction: row; gap: 7px; margin-top: 9px; }
+.field-clear-confirmation button { padding: 7px 10px; color: #596273; background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 11px; font-weight: 750; cursor: pointer; }
+.field-clear-confirmation .confirm-clear { color: #fff; background: #b42318; border-color: #b42318; }
 
 .sidebar-heading span {
   color: #8a919b;
@@ -839,9 +980,6 @@ onBeforeUnmount(() => {
   color: #303640;
   font-size: 13px;
 }
-
-.new-field-button { padding: 7px 10px; color: #fff; background: #2563eb; border: 0; border-radius: 7px; font-size: 11px; font-weight: 750; cursor: pointer; }
-.new-field-button:hover { background: #1d4ed8; }
 
 .field-cards {
   display: flex;
