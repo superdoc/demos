@@ -360,7 +360,9 @@ export class FieldController {
 
   private replaceFromControls(controls: readonly ContentControlInfo[]): void {
     const observed = this.parseControls(controls).filter((field) => (
-      !this.hiddenFieldIds.has(field.id) && field.metadata.category !== 'conditional-hidden'
+      !this.hiddenFieldIds.has(field.id)
+      && field.metadata.category !== 'conditional-hidden'
+      && field.metadata.variable !== true
     ));
     const observedIds = new Set(observed.map((field) => field.id));
     for (const id of observedIds) this.pendingFields.delete(id);

@@ -18,10 +18,11 @@ export type TemplateRenderState = {
   rendering: boolean;
   mode: TemplateRenderMode | null;
   hiddenControlIds: readonly string[];
+  previewControls: readonly { id: string; raw: string }[];
 };
 type TemplateRenderListener = (state: TemplateRenderState) => void;
 
-type PreviewMarker = { id: string; expression: string };
+type PreviewMarker = { id: string; expression: string; raw: string };
 
 const MAX_CONDITIONAL_PASSES = 1000;
 
@@ -34,6 +35,7 @@ export class TemplateVariableRenderer {
   private renderSnapshot: Blob | null = null;
   private previewMarkers: PreviewMarker[] = [];
   private hiddenControlIds: string[] = [];
+  private previewControls: Array<{ id: string; raw: string }> = [];
   private readonly listeners = new Set<TemplateRenderListener>();
 
   constructor(
@@ -68,6 +70,7 @@ export class TemplateVariableRenderer {
       this.rendered = false;
       this.mode = null;
       this.hiddenControlIds = [];
+      this.previewControls = [];
     } finally {
       this.setRendering(false);
     }
@@ -89,6 +92,7 @@ export class TemplateVariableRenderer {
 
     try {
       this.hiddenControlIds = [];
+      this.previewControls = [];
       // Capture first so any partial render can be rolled back safely.
       await this.captureDocument();
 
@@ -150,35 +154,25 @@ export class TemplateVariableRenderer {
     values: ReadonlyMap<string, string | boolean>,
     mode: TemplateRenderMode,
   ): Promise<void> {
-    // Resolve one innermost block per pass so nested conditions remain well-defined.
     for (let pass = 0; pass < MAX_CONDITIONAL_PASSES; pass += 1) {
       const textBeforeRender = await this.getDocumentText();
       const block = findInnermostConditional(textBeforeRender);
       if (!block) return;
-
       const conditionPassed = evaluateBooleanExpression(block.expression, values);
-      // Keep the selected branch and remove the directives plus the rejected branch.
       const replacement = mode === 'preview'
         ? this.createPreviewConditional(block, conditionPassed)
         : conditionPassed ? block.truthyContent : block.falsyContent;
-      const wasReplaced = await this.replaceConditionalBlock(
-        block.source,
-        replacement,
-        block.paragraphScoped,
-      );
+      const wasReplaced = await this.replaceConditionalBlock(replacement, block.paragraphScoped);
       if (!wasReplaced) throw new Error(`Conditional block could not be replaced: ${block.expression}`);
-
-      const textAfterRender = await this.getDocumentText();
-      if (textAfterRender === textBeforeRender) {
+      if (await this.getDocumentText() === textBeforeRender) {
         throw new Error(`Conditional block did not change the document: ${block.expression}`);
       }
     }
-
     throw new Error(`Template exceeds the maximum conditional depth of ${MAX_CONDITIONAL_PASSES}.`);
   }
 
   private createPreviewConditional(
-    block: { expression: string; truthyContent: string; falsyContent: string },
+    block: { source: string; expression: string; truthyContent: string; falsyContent: string },
     conditionPassed: boolean,
   ): string {
     const hiddenContent = conditionPassed ? block.falsyContent : block.truthyContent;
@@ -186,7 +180,7 @@ export class TemplateVariableRenderer {
     if (!hiddenContent) return visibleContent;
 
     const id = crypto.randomUUID();
-    this.previewMarkers.push({ id, expression: block.expression });
+    this.previewMarkers.push({ id, expression: block.expression, raw: block.source });
     const hidden = `__SD_PREVIEW_START_${id}__${hiddenContent}__SD_PREVIEW_END_${id}__`;
     return conditionPassed ? `${visibleContent}${hidden}` : `${hidden}${visibleContent}`;
   }
@@ -225,19 +219,58 @@ export class TemplateVariableRenderer {
         controlType: 'richText',
         at: hiddenTarget,
         alias: `Hidden: ${marker.expression}`,
-        tag: JSON.stringify({ category: 'conditional-hidden', expression: marker.expression, hidden: true }),
+        tag: JSON.stringify({ category: 'conditional-hidden', expression: marker.expression, hidden: true, raw: marker.raw }),
         lockMode: 'unlocked',
       });
       if (!result.success) throw new Error(`Hidden conditional could not be wrapped: ${marker.expression}`);
       this.hiddenControlIds.push(result.contentControl.nodeId);
+      this.previewControls.push({ id: result.contentControl.nodeId, raw: marker.raw });
     }
   }
 
   private async getDocumentText(): Promise<string> {
-    // Conditional discovery reads the latest text after every document mutation.
     const text = await this.superdoc.activeEditor?.doc?.getText?.({});
     if (text === undefined) throw new Error('Document text is unavailable.');
     return text;
+  }
+
+  private async replaceConditionalBlock(
+    replacement: string,
+    paragraphScoped: boolean,
+  ): Promise<boolean> {
+    const documentApi = this.superdoc.activeEditor?.doc;
+    const matches = await documentApi?.query?.match?.({
+      select: { type: 'text', pattern: CONDITIONAL_QUERY_PATTERN, mode: 'regex', caseSensitive: true },
+      limit: 1000,
+    });
+    if (!matches || !documentApi) throw new Error('Document query is unavailable.');
+
+    const stack: Array<{ opening: typeof matches.items[number]; alternate?: typeof matches.items[number] }> = [];
+    let opening: typeof matches.items[number] | undefined;
+    let closing: typeof matches.items[number] | undefined;
+    for (const match of matches.items) {
+      if (match.matchKind !== 'text') continue;
+      const tag = parseConditionalDirective(match.blocks.map(block => block.text).join(''));
+      if (!tag) continue;
+      if (tag.startsWith('if ')) stack.push({ opening: match });
+      else if (tag === 'else') {
+        const current = stack[stack.length - 1];
+        if (current) current.alternate = match;
+      } else if (tag === 'endif') {
+        const current = stack.pop();
+        if (current) {
+          opening = current.opening;
+          closing = match;
+          break;
+        }
+      }
+    }
+    if (!opening || !closing || opening.matchKind !== 'text' || closing.matchKind !== 'text') return false;
+    const result = await documentApi.replace({
+      target: { ...opening.target, end: closing.target.end },
+      text: paragraphScoped ? replacement.trim() : replacement,
+    });
+    return result.success;
   }
 
   private async renderTableRowLoops(variables: readonly TemplateVariable[]): Promise<void> {
@@ -318,67 +351,6 @@ export class TemplateVariableRenderer {
     }
   }
 
-  private async replaceConditionalBlock(
-    source: string,
-    replacement: string,
-    paragraphScoped: boolean,
-  ): Promise<boolean> {
-    // Query directive ranges so the chosen block can be replaced as one document target.
-    const documentApi = this.superdoc.activeEditor?.doc;
-    const matches = await documentApi?.query?.match?.({
-      select: {
-        type: 'text',
-        pattern: CONDITIONAL_QUERY_PATTERN,
-        mode: 'regex',
-        caseSensitive: true,
-      },
-      limit: 1000,
-    });
-    if (!matches || !documentApi) throw new Error('Document query is unavailable.');
-
-    const stack: Array<{
-      opening: typeof matches.items[number];
-      alternate?: typeof matches.items[number];
-    }> = [];
-    let opening: typeof matches.items[number] | undefined;
-    let closing: typeof matches.items[number] | undefined;
-    // Pair nested directives with a stack and select the first complete inner block.
-    for (const match of matches.items) {
-      if (match.matchKind !== 'text') continue;
-      const tag = parseConditionalDirective(match.blocks.map(block => block.text).join(''));
-      if (!tag) continue;
-
-      if (tag.startsWith('if ')) stack.push({ opening: match });
-      else if (tag === 'else') {
-        const current = stack[stack.length - 1];
-        if (current) current.alternate = match;
-      } else if (tag === 'endif') {
-        const current = stack.pop();
-        if (current) {
-          opening = current.opening;
-          closing = match;
-          break;
-        }
-      }
-    }
-
-    if (!opening || !closing || opening.matchKind !== 'text' || closing.matchKind !== 'text') {
-      console.error('[Template render] Conditional query matched no document ranges', {
-        paragraphScoped,
-        source,
-        replacement,
-      });
-      return false;
-    }
-
-    // Replace the complete if/endif range with only the evaluated branch text.
-    await documentApi.replace({
-      target: { ...opening.target, end: closing.target.end },
-      text: paragraphScoped ? replacement.trim() : replacement,
-    });
-    return true;
-  }
-
   private async renderInterpolations(
     values: ReadonlyMap<string, string | boolean>,
   ): Promise<void> {
@@ -410,6 +382,7 @@ export class TemplateVariableRenderer {
       rendering: this.rendering,
       mode: this.mode,
       hiddenControlIds: [...this.hiddenControlIds],
+      previewControls: [...this.previewControls],
     };
   }
 

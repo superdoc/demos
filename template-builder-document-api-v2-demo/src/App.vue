@@ -14,6 +14,7 @@ import {
   TemplateVariables,
   type TemplateRenderMode,
   type TemplateVariable,
+  type TemplateVariableControl,
   type TemplateVariableValue,
 } from './template-variables';
 
@@ -37,8 +38,12 @@ const activeTab = ref<'active' | 'all' | 'variables'>('all');
 const variables = ref<TemplateVariable[]>([]);
 const variablesRendered = ref(false);
 const renderingVariables = ref(false);
+const loadingVariables = ref(false);
+const variableLoadError = ref('');
 const variableRenderMode = ref<TemplateRenderMode | null>(null);
 const hiddenVariableControlIds = ref<string[]>([]);
+const variableControls = ref<TemplateVariableControl[]>([]);
+const variableSyntaxPopover = ref({ visible: false, raw: '', top: 0, left: 0 });
 const editingFieldId = ref<string | null>(null);
 const editingInstanceIds = ref<string[]>([]);
 const activeDocumentFieldId = ref<string | null>(null);
@@ -61,6 +66,7 @@ let stopTemplateVariableSubscription: (() => void) | null = null;
 let stopSelectionSubscription: (() => void) | null = null;
 let stopAutofillSubscription: (() => void) | null = null;
 let modeBeforeVariableRender: DocumentMode = 'editing';
+let editorElement: Element | null = null;
 const autofill = ref<AutofillSnapshot>({ open: false, query: '', suggestions: [], top: 0, left: 0 });
 
 const sidebarFields = computed(() => fields.value);
@@ -115,20 +121,56 @@ const scheduleFieldHighlights = () => {
   void nextTick(() => requestAnimationFrame(applyFieldHighlights));
 };
 
-const applyHiddenVariableOpacity = () => {
+const applyHiddenVariableOpacity = (): number => {
   document.querySelectorAll('.template-variable-hidden-preview').forEach((element) => {
     element.classList.remove('template-variable-hidden-preview');
   });
+  let appliedCount = 0;
   for (const id of hiddenVariableControlIds.value) {
     const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
     document.querySelectorAll(`[data-sdt-id="${escapedId}"]`).forEach((element) => {
       element.classList.add('template-variable-hidden-preview');
+      appliedCount += 1;
     });
   }
+  return appliedCount;
 };
 
 const scheduleHiddenVariableOpacity = () => {
-  void nextTick(() => requestAnimationFrame(applyHiddenVariableOpacity));
+  void nextTick(() => {
+    let attemptsRemaining = 4;
+    const applyWhenMounted = () => {
+      const appliedCount = applyHiddenVariableOpacity();
+      attemptsRemaining -= 1;
+      if (appliedCount < hiddenVariableControlIds.value.length && attemptsRemaining > 0) {
+        requestAnimationFrame(applyWhenMounted);
+      }
+    };
+    requestAnimationFrame(applyWhenMounted);
+  });
+};
+
+const handleVariableHover = (event: Event) => {
+  if (!variablesRendered.value || !(event.target instanceof Element)) {
+    variableSyntaxPopover.value.visible = false;
+    return;
+  }
+  const controlElement = event.target.closest<HTMLElement>('[data-sdt-id]');
+  const control = variableControls.value.find(candidate => candidate.id === controlElement?.dataset.sdtId);
+  if (!control || !(event instanceof PointerEvent)) {
+    variableSyntaxPopover.value.visible = false;
+    return;
+  }
+  variableSyntaxPopover.value = {
+    visible: true,
+    raw: control.raw,
+    top: event.clientY + 14,
+    left: event.clientX + 14,
+  };
+};
+
+const hideVariableSyntaxPopover = () => {
+  variableSyntaxPopover.value.visible = false;
 };
 
 const toggleAllFieldHighlights = () => {
@@ -234,7 +276,21 @@ const selectSidebarTab = (tab: 'active' | 'all' | 'variables') => {
 
 const addVariable = (type: TemplateVariable["type"]) => templateVars.value?.add(type);
 
-const loadVariables = async () => templateVars.value?.load();
+const loadVariables = async () => {
+  if (!templateVars.value || loadingVariables.value) return;
+  loadingVariables.value = true;
+  variableLoadError.value = '';
+  try {
+    await nextTick();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await templateVars.value.load();
+  } catch (error) {
+    variableLoadError.value = error instanceof Error ? error.message : 'Variables could not be loaded.';
+    console.error('[Variable load]', error);
+  } finally {
+    loadingVariables.value = false;
+  }
+};
 
 const removeVariable = (id: string) => templateVars.value?.remove(id);
 
@@ -518,6 +574,10 @@ onMounted(() => {
         renderingVariables.value = state.rendering;
         variableRenderMode.value = state.mode;
         hiddenVariableControlIds.value = [...state.hiddenControlIds];
+        variableControls.value = [
+          ...state.variableControls,
+          ...state.previewControls.map(control => ({ ...control, alias: '', kind: 'inline' as const })),
+        ];
         scheduleHiddenVariableOpacity();
       });
       isReady.value = true;
@@ -529,8 +589,11 @@ onMounted(() => {
       stopAutofillSubscription = autofillController.value.subscribe((snapshot) => {
         autofill.value = snapshot;
       });
-      const editorElement = document.querySelector('#superdoc-editor');
+      editorElement = document.querySelector('#superdoc-editor');
       if (editorElement) autofillController.value.initialize(editorElement);
+      editorElement?.addEventListener('click', handleDocumentFieldClick);
+      editorElement?.addEventListener('pointermove', handleVariableHover);
+      editorElement?.addEventListener('pointerleave', hideVariableSyntaxPopover);
 
       stopSelectionSubscription = superdoc.ui.selection.observe((snapshot) => {
         if (snapshot.selectionTarget) debounceInsertSelection(snapshot.selectionTarget);
@@ -538,8 +601,6 @@ onMounted(() => {
 
     },
   });
-  const editorElement = document.querySelector('#superdoc-editor');
-  editorElement?.addEventListener('click', handleDocumentFieldClick);
 });
 
 onBeforeUnmount(() => {
@@ -551,8 +612,9 @@ onBeforeUnmount(() => {
   autofillController.value?.destroy();
   fieldController.value?.destroy();
   templateVars.value?.destroy();
-  const editorElement = document.querySelector('#superdoc-editor');
   editorElement?.removeEventListener('click', handleDocumentFieldClick);
+  editorElement?.removeEventListener('pointermove', handleVariableHover);
+  editorElement?.removeEventListener('pointerleave', hideVariableSyntaxPopover);
   superdocInstance.value?.destroy();
 });
 </script>
@@ -592,6 +654,13 @@ onBeforeUnmount(() => {
         @select="handleAutocompleteSelect"
       />
 
+      <div
+        v-if="variableSyntaxPopover.visible"
+        class="variable-syntax-popover"
+        :style="{ top: `${variableSyntaxPopover.top}px`, left: `${variableSyntaxPopover.left}px` }"
+        role="tooltip"
+      >{{ variableSyntaxPopover.raw }}</div>
+
       <!-- Field List Sidebar -->
       <aside v-if="fieldExplorerVisible" class="sidebar">
         <div v-if="activeTab !== 'variables'" class="highlight-toolbar">
@@ -618,6 +687,8 @@ onBeforeUnmount(() => {
           :variables="variables"
           :variables-rendered="variablesRendered"
           :rendering-variables="renderingVariables"
+          :loading-variables="loadingVariables"
+          :load-error="variableLoadError"
           :render-mode="variableRenderMode"
           @add="addVariable"
           @load="loadVariables"
@@ -889,6 +960,21 @@ onBeforeUnmount(() => {
 
 :global([data-sdt-id].template-variable-hidden-preview) {
   opacity: .55;
+}
+
+.variable-syntax-popover {
+  position: fixed;
+  z-index: 10000;
+  max-width: 360px;
+  padding: 8px 10px;
+  color: #f8fafc;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .22);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 .sidebar-tabs {

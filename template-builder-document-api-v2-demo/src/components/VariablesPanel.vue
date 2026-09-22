@@ -6,6 +6,8 @@ const props = defineProps<{
   variables: TemplateVariable[];
   variablesRendered: boolean;
   renderingVariables: boolean;
+  loadingVariables: boolean;
+  loadError: string;
   renderMode: TemplateRenderMode | null;
 }>();
 
@@ -140,7 +142,9 @@ onBeforeUnmount(() => {
           <option value="final">Final</option>
           <option value="preview">Preview</option>
         </select>
-        <button class="load-variables" type="button" @click="emit('load')">Load</button>
+        <button class="load-variables" type="button" :disabled="loadingVariables" @click="emit('load')">
+          {{ loadingVariables ? 'Loading…' : 'Load' }}
+        </button>
         <select aria-label="Add variable" value="" @change="chooseVariableType">
           <option value="" disabled>Add</option>
           <option value="text">Text</option>
@@ -149,6 +153,7 @@ onBeforeUnmount(() => {
           <option value="tableRows">Table rows</option>
         </select>
       </div>
+      <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
       <div v-if="confirmingClear" class="clear-confirmation" role="alert">
         <p>Do you want to remove all variables from this list? Variables present in the document will remain in the document.</p>
         <div>
@@ -280,6 +285,8 @@ header select { padding-right: 28px; }
 header select:hover, header button:hover { background-color: #1d4ed8; }
 header .load-variables, header .render-variables, header .clear-variables { color: #245fae; background: #fff; border: 1px solid #b9c9df; }
 header .load-variables:hover, header .render-variables:hover, header .clear-variables:hover { color: #1d4ed8; background: #f8fafc; border-color: #8da9cf; }
+header .load-variables:disabled { cursor: wait; opacity: .6; }
+.load-error { margin: 0; padding: 8px 10px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; font-size: 11px; line-height: 1.4; }
 header .render-variables.active { color: #fff; background-color: #2563eb; border-color: #2563eb; }
 header .render-variables.active:hover { color: #fff; background: #1d4ed8; border-color: #1d4ed8; }
 header button:disabled { cursor: wait; opacity: .55; }
