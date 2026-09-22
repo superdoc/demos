@@ -96,12 +96,13 @@ export class TemplateVariableRenderer {
       // Capture first so any partial render can be rolled back safely.
       await this.captureDocument();
 
-      // Structural loops render first, nested conditions second, and scalar values last.
-      await this.renderTableRowLoops(variables);
       const values = this.getScalarValues(variables);
+      // Structural loops render first, nested conditions second, and scalar values last.
+      await this.renderTableRowLoops(variables, values);
       this.previewMarkers = [];
       await this.renderConditionals(values, mode);
       await this.renderInterpolations(values);
+      if (mode === 'final') await this.removeBlankVariableControls();
       if (mode === 'preview') await this.wrapPreviewHiddenContent();
 
       this.rendered = true;
@@ -151,6 +152,110 @@ export class TemplateVariableRenderer {
   }
 
   private async renderConditionals(
+    values: ReadonlyMap<string, string | boolean>,
+    mode: TemplateRenderMode,
+  ): Promise<void> {
+    const documentApi = this.superdoc.activeEditor?.doc;
+    if (!documentApi) throw new Error('Document API is unavailable.');
+
+    const controls = (await documentApi.contentControls.list()).items.flatMap((control) => {
+      try {
+        const metadata = JSON.parse(control.properties.tag || '');
+        return metadata?.variable === true && typeof metadata.raw === 'string'
+          ? [{ control, raw: metadata.raw as string, variableType: metadata.variableType as string }]
+          : [];
+      } catch {
+        return [];
+      }
+    });
+    const hasConditionalControls = controls.some(({ raw }) => parseConditionalDirective(raw) !== null);
+    if (!hasConditionalControls) {
+      await this.renderLegacyConditionals(values, mode);
+      return;
+    }
+
+    type PreviewEntry = { id: string; raw: string };
+    type ConditionalFrame = {
+      passed: boolean;
+      inElse: boolean;
+      raw: string;
+      previewEntries: PreviewEntry[];
+    };
+    const stack: ConditionalFrame[] = [];
+    const controlsToDelete: Array<(typeof controls)[number]['control']> = [];
+
+    for (const item of controls) {
+      for (const frame of stack) frame.raw += item.raw;
+      const directive = parseConditionalDirective(item.raw);
+      if (directive?.startsWith('if ')) {
+        stack.push({
+          passed: evaluateBooleanExpression(directive.slice(3).trim(), values),
+          inElse: false,
+          raw: item.raw,
+          previewEntries: [],
+        });
+      } else if (directive === 'else') {
+        const frame = stack[stack.length - 1];
+        if (frame) frame.inElse = true;
+      } else if (directive === 'endif') {
+        const frame = stack.pop();
+        if (frame) {
+          for (const entry of frame.previewEntries) entry.raw = frame.raw;
+        }
+      }
+
+      if (directive) {
+        if (mode === 'final') controlsToDelete.push(item.control);
+        else {
+          const result = await documentApi.contentControls.replaceContent({
+            target: item.control.target,
+            content: '',
+          });
+          if (!result.success) throw new Error(`Conditional directive could not be cleared: ${item.raw}`);
+        }
+        continue;
+      }
+      if (item.variableType !== 'conditional-content') continue;
+
+      const inactiveFrame = [...stack].reverse().find(frame => frame.inElse ? frame.passed : !frame.passed);
+      if (mode === 'preview') {
+        const entry: PreviewEntry = { id: item.control.id, raw: '' };
+        stack[stack.length - 1]?.previewEntries.push(entry);
+        this.previewControls.push(entry);
+        if (inactiveFrame) {
+          this.hiddenControlIds.push(item.control.id);
+        }
+      } else if (inactiveFrame) {
+        controlsToDelete.push(item.control);
+      }
+    }
+
+    for (const control of controlsToDelete.reverse()) {
+      const result = await documentApi.contentControls.delete({ target: control.target });
+      if (!result.success) throw new Error(`Conditional SDT could not be removed: ${control.properties.alias || control.id}`);
+    }
+  }
+
+  private async removeBlankVariableControls(): Promise<void> {
+    const documentApi = this.superdoc.activeEditor?.doc;
+    if (!documentApi) throw new Error('Document API is unavailable.');
+
+    const controls = (await documentApi.contentControls.list()).items;
+    for (const control of [...controls].reverse()) {
+      try {
+        const metadata = JSON.parse(control.properties.tag || '');
+        if (metadata?.variable !== true) continue;
+      } catch {
+        continue;
+      }
+      const content = await documentApi.contentControls.getContent({ target: control.target });
+      if (content.content.trim().length > 0) continue;
+      const result = await documentApi.contentControls.delete({ target: control.target });
+      if (!result.success) throw new Error(`Blank variable SDT could not be removed: ${control.properties.alias || control.id}`);
+    }
+  }
+
+  private async renderLegacyConditionals(
     values: ReadonlyMap<string, string | boolean>,
     mode: TemplateRenderMode,
   ): Promise<void> {
@@ -273,7 +378,10 @@ export class TemplateVariableRenderer {
     return result.success;
   }
 
-  private async renderTableRowLoops(variables: readonly TemplateVariable[]): Promise<void> {
+  private async renderTableRowLoops(
+    variables: readonly TemplateVariable[],
+    values: ReadonlyMap<string, string | boolean>,
+  ): Promise<void> {
     // Extract table coordinates before expanding each {%tr for ... %} loop.
     const documentApi = this.superdoc.activeEditor?.doc;
     if (!documentApi) throw new Error('Document API is unavailable.');
@@ -333,10 +441,14 @@ export class TemplateVariableRenderer {
             + itemIndex * loop.prototypeRows.length
             + prototypeOffset;
           for (const [columnIndex, template] of prototype.cells.entries()) {
-            const text = template.replace(
+            const rowText = template.replace(
               createTableColumnPattern(loop.alias),
               (_, column: string) => item[column] ?? '',
             );
+            const text = rowText.replace(/\{\{[^{}]+\}\}/g, (raw) => {
+              const interpolation = parseInterpolation(raw);
+              return interpolation ? renderInterpolation(interpolation, values) : raw;
+            });
             await documentApi.tables.setCellText({ target: tableTarget, rowIndex, columnIndex, text });
           }
         }

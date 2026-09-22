@@ -151,7 +151,7 @@ const scheduleHiddenVariableOpacity = () => {
 };
 
 const handleVariableHover = (event: Event) => {
-  if (!variablesRendered.value || !(event.target instanceof Element)) {
+  if (variableRenderMode.value !== 'preview' || !(event.target instanceof Element)) {
     variableSyntaxPopover.value.visible = false;
     return;
   }
@@ -575,8 +575,8 @@ onMounted(() => {
         variableRenderMode.value = state.mode;
         hiddenVariableControlIds.value = [...state.hiddenControlIds];
         variableControls.value = [
-          ...state.variableControls,
           ...state.previewControls.map(control => ({ ...control, alias: '', kind: 'inline' as const })),
+          ...state.variableControls,
         ];
         scheduleHiddenVariableOpacity();
       });
