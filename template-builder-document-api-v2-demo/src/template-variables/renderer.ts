@@ -12,30 +12,23 @@ import {
   renderInterpolation,
 } from './helpers';
 
-export type TemplateRenderMode = 'final' | 'preview';
+export type TemplateRenderMode = 'final';
 export type TemplateRenderState = {
   rendered: boolean;
   rendering: boolean;
   mode: TemplateRenderMode | null;
-  hiddenControlIds: readonly string[];
-  previewControls: readonly { id: string; raw: string }[];
 };
 type TemplateRenderListener = (state: TemplateRenderState) => void;
-
-type PreviewMarker = { id: string; expression: string; raw: string };
 
 const MAX_CONDITIONAL_PASSES = 1000;
 
 /** Owns temporary document rendering, snapshots, replacement, and restoration. */
 export class TemplateVariableRenderer {
-  // Render state and the original DOCX snapshot live only for the active preview.
+  // Render state and the original DOCX snapshot live only for the active render.
   private rendered = false;
   private rendering = false;
   private mode: TemplateRenderMode | null = null;
   private renderSnapshot: Blob | null = null;
-  private previewMarkers: PreviewMarker[] = [];
-  private hiddenControlIds: string[] = [];
-  private previewControls: Array<{ id: string; raw: string }> = [];
   private readonly listeners = new Set<TemplateRenderListener>();
 
   constructor(
@@ -43,7 +36,7 @@ export class TemplateVariableRenderer {
     private readonly onDocumentRestored?: () => Promise<void>,
   ) {}
 
-  // Subscribers receive render progress and whether the preview is currently active.
+  // Subscribers receive render progress and whether rendering is currently active.
   subscribe(listener: TemplateRenderListener): () => void {
     this.listeners.add(listener);
     listener(this.state());
@@ -54,14 +47,14 @@ export class TemplateVariableRenderer {
     variables: readonly TemplateVariable[],
     mode: TemplateRenderMode = 'final',
   ): Promise<void> {
-    // Rendering is idempotent until the current preview is unrendered.
+    // Rendering is idempotent until the current render is reverted.
     if (this.rendered) return;
 
     await this.renderDocument(variables, mode);
   }
 
   async unrender(): Promise<void> {
-    // Unrendering replaces the preview with the original DOCX snapshot.
+    // Unrendering replaces the rendered document with the original DOCX snapshot.
     if (!this.rendered) return;
 
     this.setRendering(true);
@@ -69,15 +62,13 @@ export class TemplateVariableRenderer {
       await this.restoreDocument();
       this.rendered = false;
       this.mode = null;
-      this.hiddenControlIds = [];
-      this.previewControls = [];
     } finally {
       this.setRendering(false);
     }
   }
 
   destroy(): void {
-    // Release callbacks and any snapshot retained by an unfinished preview.
+    // Release callbacks and any snapshot retained by an unfinished render.
     this.listeners.clear();
     this.renderSnapshot = null;
   }
@@ -91,19 +82,14 @@ export class TemplateVariableRenderer {
     this.setRendering(true);
 
     try {
-      this.hiddenControlIds = [];
-      this.previewControls = [];
       // Capture first so any partial render can be rolled back safely.
       await this.captureDocument();
 
       const values = this.getScalarValues(variables);
       // Structural loops render first, nested conditions second, and scalar values last.
       await this.renderTableRowLoops(variables, values);
-      this.previewMarkers = [];
-      await this.renderConditionals(values, mode);
+      await this.renderConditionals(values);
       await this.renderInterpolations(values);
-      if (mode === 'final') await this.removeBlankVariableControls();
-      if (mode === 'preview') await this.wrapPreviewHiddenContent();
 
       this.rendered = true;
       this.mode = mode;
@@ -153,120 +139,13 @@ export class TemplateVariableRenderer {
 
   private async renderConditionals(
     values: ReadonlyMap<string, string | boolean>,
-    mode: TemplateRenderMode,
-  ): Promise<void> {
-    const documentApi = this.superdoc.activeEditor?.doc;
-    if (!documentApi) throw new Error('Document API is unavailable.');
-
-    const controls = (await documentApi.contentControls.list()).items.flatMap((control) => {
-      try {
-        const metadata = JSON.parse(control.properties.tag || '');
-        return metadata?.variable === true && typeof metadata.raw === 'string'
-          ? [{ control, raw: metadata.raw as string, variableType: metadata.variableType as string }]
-          : [];
-      } catch {
-        return [];
-      }
-    });
-    const hasConditionalControls = controls.some(({ raw }) => parseConditionalDirective(raw) !== null);
-    if (!hasConditionalControls) {
-      await this.renderLegacyConditionals(values, mode);
-      return;
-    }
-
-    type PreviewEntry = { id: string; raw: string };
-    type ConditionalFrame = {
-      passed: boolean;
-      inElse: boolean;
-      raw: string;
-      previewEntries: PreviewEntry[];
-    };
-    const stack: ConditionalFrame[] = [];
-    const controlsToDelete: Array<(typeof controls)[number]['control']> = [];
-
-    for (const item of controls) {
-      for (const frame of stack) frame.raw += item.raw;
-      const directive = parseConditionalDirective(item.raw);
-      if (directive?.startsWith('if ')) {
-        stack.push({
-          passed: evaluateBooleanExpression(directive.slice(3).trim(), values),
-          inElse: false,
-          raw: item.raw,
-          previewEntries: [],
-        });
-      } else if (directive === 'else') {
-        const frame = stack[stack.length - 1];
-        if (frame) frame.inElse = true;
-      } else if (directive === 'endif') {
-        const frame = stack.pop();
-        if (frame) {
-          for (const entry of frame.previewEntries) entry.raw = frame.raw;
-        }
-      }
-
-      if (directive) {
-        if (mode === 'final') controlsToDelete.push(item.control);
-        else {
-          const result = await documentApi.contentControls.replaceContent({
-            target: item.control.target,
-            content: '',
-          });
-          if (!result.success) throw new Error(`Conditional directive could not be cleared: ${item.raw}`);
-        }
-        continue;
-      }
-      if (item.variableType !== 'conditional-content') continue;
-
-      const inactiveFrame = [...stack].reverse().find(frame => frame.inElse ? frame.passed : !frame.passed);
-      if (mode === 'preview') {
-        const entry: PreviewEntry = { id: item.control.id, raw: '' };
-        stack[stack.length - 1]?.previewEntries.push(entry);
-        this.previewControls.push(entry);
-        if (inactiveFrame) {
-          this.hiddenControlIds.push(item.control.id);
-        }
-      } else if (inactiveFrame) {
-        controlsToDelete.push(item.control);
-      }
-    }
-
-    for (const control of controlsToDelete.reverse()) {
-      const result = await documentApi.contentControls.delete({ target: control.target });
-      if (!result.success) throw new Error(`Conditional SDT could not be removed: ${control.properties.alias || control.id}`);
-    }
-  }
-
-  private async removeBlankVariableControls(): Promise<void> {
-    const documentApi = this.superdoc.activeEditor?.doc;
-    if (!documentApi) throw new Error('Document API is unavailable.');
-
-    const controls = (await documentApi.contentControls.list()).items;
-    for (const control of [...controls].reverse()) {
-      try {
-        const metadata = JSON.parse(control.properties.tag || '');
-        if (metadata?.variable !== true) continue;
-      } catch {
-        continue;
-      }
-      const content = await documentApi.contentControls.getContent({ target: control.target });
-      if (content.content.trim().length > 0) continue;
-      const result = await documentApi.contentControls.delete({ target: control.target });
-      if (!result.success) throw new Error(`Blank variable SDT could not be removed: ${control.properties.alias || control.id}`);
-    }
-  }
-
-  private async renderLegacyConditionals(
-    values: ReadonlyMap<string, string | boolean>,
-    mode: TemplateRenderMode,
   ): Promise<void> {
     for (let pass = 0; pass < MAX_CONDITIONAL_PASSES; pass += 1) {
       const textBeforeRender = await this.getDocumentText();
       const block = findInnermostConditional(textBeforeRender);
       if (!block) return;
       const conditionPassed = evaluateBooleanExpression(block.expression, values);
-      const replacement = mode === 'preview'
-        ? this.createPreviewConditional(block, conditionPassed)
-        : conditionPassed ? block.truthyContent : block.falsyContent;
+      const replacement = conditionPassed ? block.truthyContent : block.falsyContent;
       const wasReplaced = await this.replaceConditionalBlock(replacement, block.paragraphScoped);
       if (!wasReplaced) throw new Error(`Conditional block could not be replaced: ${block.expression}`);
       if (await this.getDocumentText() === textBeforeRender) {
@@ -274,63 +153,6 @@ export class TemplateVariableRenderer {
       }
     }
     throw new Error(`Template exceeds the maximum conditional depth of ${MAX_CONDITIONAL_PASSES}.`);
-  }
-
-  private createPreviewConditional(
-    block: { source: string; expression: string; truthyContent: string; falsyContent: string },
-    conditionPassed: boolean,
-  ): string {
-    const hiddenContent = conditionPassed ? block.falsyContent : block.truthyContent;
-    const visibleContent = conditionPassed ? block.truthyContent : block.falsyContent;
-    if (!hiddenContent) return visibleContent;
-
-    const id = crypto.randomUUID();
-    this.previewMarkers.push({ id, expression: block.expression, raw: block.source });
-    const hidden = `__SD_PREVIEW_START_${id}__${hiddenContent}__SD_PREVIEW_END_${id}__`;
-    return conditionPassed ? `${visibleContent}${hidden}` : `${hidden}${visibleContent}`;
-  }
-
-  private async wrapPreviewHiddenContent(): Promise<void> {
-    const documentApi = this.superdoc.activeEditor?.doc;
-    if (!documentApi) throw new Error('Document API is unavailable.');
-
-    for (const marker of [...this.previewMarkers].reverse()) {
-      const startText = `__SD_PREVIEW_START_${marker.id}__`;
-      const endText = `__SD_PREVIEW_END_${marker.id}__`;
-      const startMatch = (await documentApi.query.match({
-        select: { type: 'text', pattern: startText, mode: 'contains', caseSensitive: true },
-        limit: 1,
-      })).items[0];
-      const endMatch = (await documentApi.query.match({
-        select: { type: 'text', pattern: endText, mode: 'contains', caseSensitive: true },
-        limit: 1,
-      })).items[0];
-      if (startMatch?.matchKind !== 'text' || endMatch?.matchKind !== 'text') continue;
-      if (startMatch.target.start.kind !== 'text' || endMatch.target.start.kind !== 'text') continue;
-
-      await documentApi.delete({ target: endMatch.target, behavior: 'exact' });
-      await documentApi.delete({ target: startMatch.target, behavior: 'exact' });
-      const sameBlock = startMatch.target.start.blockId === endMatch.target.start.blockId;
-      const hiddenTarget = {
-        kind: 'selection' as const,
-        start: startMatch.target.start,
-        end: {
-          ...endMatch.target.start,
-          offset: endMatch.target.start.offset - (sameBlock ? startText.length : 0),
-        },
-      };
-      const result = await documentApi.create.contentControl({
-        kind: sameBlock ? 'inline' : 'block',
-        controlType: 'richText',
-        at: hiddenTarget,
-        alias: `Hidden: ${marker.expression}`,
-        tag: JSON.stringify({ category: 'conditional-hidden', expression: marker.expression, hidden: true, raw: marker.raw }),
-        lockMode: 'unlocked',
-      });
-      if (!result.success) throw new Error(`Hidden conditional could not be wrapped: ${marker.expression}`);
-      this.hiddenControlIds.push(result.contentControl.nodeId);
-      this.previewControls.push({ id: result.contentControl.nodeId, raw: marker.raw });
-    }
   }
 
   private async getDocumentText(): Promise<string> {
@@ -493,8 +315,6 @@ export class TemplateVariableRenderer {
       rendered: this.rendered,
       rendering: this.rendering,
       mode: this.mode,
-      hiddenControlIds: [...this.hiddenControlIds],
-      previewControls: [...this.previewControls],
     };
   }
 

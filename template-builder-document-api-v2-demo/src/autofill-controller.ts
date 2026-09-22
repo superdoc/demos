@@ -1,11 +1,24 @@
 import type { SuperDoc } from 'superdoc';
 import type { SelectionTarget } from 'superdoc/ui';
-import { FieldController, type TemplateField } from './field-controller';
+
+export interface AutofillField {
+  id: string;
+  alias: string;
+  tag?: string;
+  value?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface AutofillAdapter {
+  subscribeToFields(listener: (fields: readonly AutofillField[]) => void): () => void;
+  insertField(field: AutofillField, target: SelectionTarget): Promise<boolean>;
+  createField(alias: string, target: SelectionTarget): Promise<AutofillField | null>;
+}
 
 export interface AutofillSnapshot {
   open: boolean;
   query: string;
-  suggestions: readonly TemplateField[];
+  suggestions: readonly AutofillField[];
   top: number;
   left: number;
 }
@@ -17,7 +30,7 @@ export class AutofillController {
   // Subscribers receive immutable popup snapshots for rendering.
   private readonly listeners = new Set<AutofillListener>();
   // Fields are collapsed to one representative per logical field group.
-  private fields: TemplateField[] = [];
+  private fields: AutofillField[] = [];
   // Snapshot contains all presentation state needed by the Vue popup.
   private snapshot: AutofillSnapshot = { open: false, query: '', suggestions: [], top: 0, left: 0 };
   // Target covers the complete typed token that insertion will replace.
@@ -34,7 +47,7 @@ export class AutofillController {
 
   constructor(
     private readonly superdoc: SuperDoc,
-    private readonly fieldController: FieldController,
+    private readonly adapter: AutofillAdapter,
   ) {}
 
   // Subscribe to popup state changes and immediately receive current state.
@@ -48,7 +61,7 @@ export class AutofillController {
   initialize(editorElement: Element): void {
     this.editorElement = editorElement;
     editorElement.addEventListener('keydown', this.handleKeydown, true);
-    this.stopFields = this.fieldController.subscribe((fields) => {
+    this.stopFields = this.adapter.subscribeToFields((fields) => {
       this.fields = this.groupFields(fields);
       this.refreshSuggestions();
     });
@@ -64,12 +77,12 @@ export class AutofillController {
   }
 
   // Replace the typed token with the field selected from the popup.
-  async select(field: TemplateField): Promise<void> {
+  async select(field: AutofillField): Promise<void> {
     const target = this.target;
     this.close();
     if (!target) return;
-    const insertion = await this.fieldController.replaceRangeWithFieldCopy(field, target);
-    if (!insertion) console.error(`Failed to insert suggested field: ${field.id}`);
+    const inserted = await this.adapter.insertField(field, target);
+    if (!inserted) console.error(`Failed to insert suggested field: ${field.id}`);
   }
 
   // Detach every observer, event listener, timer, and subscriber.
@@ -152,18 +165,12 @@ export class AutofillController {
       field.alias.trim().toLocaleLowerCase() === alias.toLocaleLowerCase());
     this.close();
     if (existing) {
-      const insertion = await this.fieldController.replaceRangeWithFieldCopy(existing, target);
-      if (!insertion) console.error(`Failed to insert existing field: ${existing.id}`);
+      const inserted = await this.adapter.insertField(existing, target);
+      if (!inserted) console.error(`Failed to insert existing field: ${existing.id}`);
       return;
     }
 
-    const created = await this.fieldController.createField({
-      alias,
-      value: alias,
-      mode: 'inline',
-      locked: false,
-      metadata: { group: 'field', category: 'field' },
-    }, target);
+    const created = await this.adapter.createField(alias, target);
     if (!created) console.error(`Failed to create field: ${alias}`);
   }
 
@@ -228,8 +235,8 @@ export class AutofillController {
   }
 
   // Deduplicate copied field instances into logical autocomplete choices.
-  private groupFields(fields: readonly TemplateField[]): TemplateField[] {
-    const groups = new Map<string, TemplateField>();
+  private groupFields(fields: readonly AutofillField[]): AutofillField[] {
+    const groups = new Map<string, AutofillField>();
     for (const field of fields) {
       const group = typeof field.metadata.group === 'string' ? field.metadata.group.trim() : '';
       const key = group && group !== 'field' && group !== 'clause' ? group : field.id;

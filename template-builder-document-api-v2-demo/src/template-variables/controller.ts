@@ -1,11 +1,5 @@
 import type { SuperDoc } from 'superdoc';
-import type { ContentControlInfo } from 'superdoc/ui';
-import {
-  CONDITIONAL_QUERY_PATTERN,
-  discoverTemplateVariables,
-  INTERPOLATION_QUERY_PATTERN,
-  parseConditionalDirective,
-} from './helpers';
+import { discoverTemplateVariables } from './helpers';
 
 export type TemplateVariable = {
   id: string;
@@ -26,21 +20,11 @@ export type TemplateVariable = {
 });
 
 export type TemplateVariableValue = TemplateVariable['value'];
-export type TemplateVariableControl = {
-  id: string;
-  alias: string;
-  raw: string;
-  kind: 'inline' | 'block';
-};
-type TemplateVariableListener = (
-  variables: readonly TemplateVariable[],
-  controls: readonly TemplateVariableControl[],
-) => void;
+type TemplateVariableListener = (variables: readonly TemplateVariable[]) => void;
 
 /** Owns template-variable discovery and CRUD state. */
 export class TemplateVariableController {
   private variableState: TemplateVariable[] = [];
-  private variableControls: TemplateVariableControl[] = [];
   private readonly listeners = new Set<TemplateVariableListener>();
 
   constructor(private readonly superdoc: SuperDoc) {}
@@ -49,13 +33,9 @@ export class TemplateVariableController {
     return this.variableState;
   }
 
-  get controls(): readonly TemplateVariableControl[] {
-    return this.variableControls;
-  }
-
   subscribe(listener: TemplateVariableListener): () => void {
     this.listeners.add(listener);
-    listener(this.variableState, this.variableControls);
+    listener(this.variableState);
     return () => this.listeners.delete(listener);
   }
 
@@ -68,7 +48,6 @@ export class TemplateVariableController {
   }
 
   async load(): Promise<void> {
-    await this.unwrapVariableControls();
     const text = await this.superdoc.activeEditor?.doc?.getText?.({});
     if (text === undefined) throw new Error('Document text is unavailable.');
 
@@ -92,7 +71,6 @@ export class TemplateVariableController {
       }
       existingNames.add(discovered.name);
     }
-    await this.wrapTemplateSyntax();
     this.emit();
   }
 
@@ -129,177 +107,6 @@ export class TemplateVariableController {
   }
 
   private emit(): void {
-    for (const listener of this.listeners) listener(this.variableState, this.variableControls);
+    for (const listener of this.listeners) listener(this.variableState);
   }
-
-  private async wrapTemplateSyntax(): Promise<void> {
-    const documentApi = this.superdoc.activeEditor?.doc;
-    if (!documentApi) throw new Error('Document API is unavailable.');
-
-    const existingControls = (await documentApi.contentControls.list()).items;
-    let nextAlias = existingControls.reduce((highest, control) => {
-      const match = /^variable-(\d+)$/.exec(control.properties.alias || '');
-      return Math.max(highest, match ? Number(match[1]) : 0);
-    }, 0) + 1;
-
-    const matches = await documentApi.query.match({
-      select: {
-        type: 'text',
-        pattern: `(?:${CONDITIONAL_QUERY_PATTERN}|${INTERPOLATION_QUERY_PATTERN})`,
-        mode: 'regex',
-        caseSensitive: true,
-      },
-      limit: 10000,
-    });
-
-    const tokens = matches.items.flatMap((match) => {
-      if (match.matchKind !== 'text') return [];
-      const raw = match.snippet.slice(match.highlightRange.start, match.highlightRange.end);
-      return [{ match, raw, directive: parseConditionalDirective(raw) }];
-    });
-    const extractedBlocks = (await documentApi.extract({})).blocks;
-    const blockIndexes = new Map(extractedBlocks.map((block, index) => [block.nodeId, index]));
-    const blocksById = new Map(extractedBlocks.map(block => [block.nodeId, block]));
-    const segments: Array<{
-      target: typeof tokens[number]['match']['target'];
-      raw: string;
-      kind: 'inline' | 'block';
-      segmentType: 'syntax' | 'conditional-content';
-      alias: string;
-    }> = [];
-    const conditionalKinds: Array<'inline' | 'block'> = [];
-    let previousToken: typeof tokens[number] | undefined;
-
-    for (const token of tokens) {
-      if (previousToken && conditionalKinds.length > 0) {
-        const start = previousToken.match.target.end;
-        const end = token.match.target.start;
-        const sameBlock = start.blockId === end.blockId;
-        const contentKind = conditionalKinds[conditionalKinds.length - 1];
-        if (sameBlock && start.offset < end.offset) {
-          const raw = blocksById.get(start.blockId)?.text.slice(start.offset, end.offset) ?? '';
-          segments.push({
-            target: { kind: 'selection', start, end },
-            raw,
-            kind: contentKind,
-            segmentType: 'conditional-content',
-            alias: `variable-${nextAlias++}`,
-          });
-        } else if (!sameBlock) {
-          const startIndex = blockIndexes.get(start.blockId);
-          const endIndex = blockIndexes.get(end.blockId);
-          if (startIndex !== undefined && endIndex !== undefined && startIndex <= endIndex) {
-            for (let index = startIndex; index <= endIndex; index += 1) {
-              const block = extractedBlocks[index];
-              const segmentStart = index === startIndex ? start.offset : 0;
-              const segmentEnd = index === endIndex ? end.offset : block.text.length;
-              if (segmentStart >= segmentEnd) continue;
-              segments.push({
-                target: {
-                  kind: 'selection',
-                  start: { ...start, blockId: block.nodeId, offset: segmentStart },
-                  end: { ...end, blockId: block.nodeId, offset: segmentEnd },
-                },
-                raw: block.text.slice(segmentStart, segmentEnd),
-                kind: contentKind,
-                segmentType: 'conditional-content',
-                alias: `variable-${nextAlias++}`,
-              });
-            }
-          }
-        }
-      }
-
-      if (token.directive?.startsWith('if ')) {
-        conditionalKinds.push(/^\{%\s*p\s+if\b/.test(token.raw) ? 'block' : 'inline');
-      } else if (token.directive === 'endif') {
-        conditionalKinds.pop();
-      }
-      previousToken = token;
-    }
-
-    // Adjacent inline SDTs must be created from left to right so their shared
-    // boundaries remain outside the previously created control.
-    const candidates = [
-      ...tokens.map(token => ({
-        target: token.match.target,
-        raw: token.raw,
-        kind: (/^\{%\s*p\s+(?:if\b|else\b|endif\b)/.test(token.raw) ? 'block' : 'inline') as 'inline' | 'block',
-        segmentType: 'syntax' as const,
-      })),
-      ...segments.map(segment => ({
-        target: segment.target,
-        raw: segment.raw,
-        kind: segment.kind,
-        segmentType: 'conditional-content' as const,
-      })),
-    ].sort((left, right) => {
-      const leftBlock = blockIndexes.get(left.target.start.blockId) ?? Number.MAX_SAFE_INTEGER;
-      const rightBlock = blockIndexes.get(right.target.start.blockId) ?? Number.MAX_SAFE_INTEGER;
-      return leftBlock - rightBlock || left.target.start.offset - right.target.start.offset;
-    });
-
-    for (const candidate of candidates) {
-      const result = await documentApi.create.contentControl({
-        kind: candidate.kind,
-        controlType: 'richText',
-        at: candidate.target,
-        alias: `variable-${nextAlias++}`,
-        tag: JSON.stringify({
-          variable: true,
-          variableType: candidate.segmentType,
-          raw: candidate.raw,
-          kind: candidate.kind,
-        }),
-        lockMode: 'unlocked',
-      });
-      if (!result.success) {
-        throw new Error(
-          `Variable segment could not be wrapped: ${candidate.raw || 'conditional content'} `
-          + `(${result.failure.code}: ${result.failure.message})`,
-        );
-      }
-    }
-
-    this.variableControls = this.readVariableControls((await documentApi.contentControls.list()).items);
-  }
-
-  private async unwrapVariableControls(): Promise<void> {
-    const documentApi = this.superdoc.activeEditor?.doc;
-    if (!documentApi) throw new Error('Document API is unavailable.');
-
-    const variableControls = (await documentApi.contentControls.list()).items.filter((control) => (
-      this.parseTag(control.properties.tag).variable === true
-    ));
-    for (const control of [...variableControls].reverse()) {
-      const result = await documentApi.contentControls.unwrap({ target: control.target });
-      if (!result.success) {
-        console.warn(`Skipping stale variable control: ${control.properties.alias || control.id}`, result.failure);
-      }
-    }
-  }
-
-  private readVariableControls(controls: readonly ContentControlInfo[]): TemplateVariableControl[] {
-    return controls.flatMap((control) => {
-      const metadata = this.parseTag(control.properties.tag);
-      if (metadata.variable !== true || typeof metadata.raw !== 'string') return [];
-      return [{
-        id: control.id,
-        alias: control.properties.alias || '',
-        raw: metadata.raw,
-        kind: control.kind === 'block' ? 'block' : 'inline',
-      }];
-    });
-  }
-
-  private parseTag(tag?: string): Record<string, unknown> {
-    if (!tag) return {};
-    try {
-      const value = JSON.parse(tag);
-      return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-    } catch {
-      return {};
-    }
-  }
-
 }

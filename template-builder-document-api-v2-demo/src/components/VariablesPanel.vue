@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue';
-import type { TemplateRenderMode, TemplateVariable, TemplateVariableValue } from '../template-variables';
+import type { TemplateVariable, TemplateVariableValue } from '../template-variables';
 
 const props = defineProps<{
   variables: TemplateVariable[];
@@ -8,13 +8,12 @@ const props = defineProps<{
   renderingVariables: boolean;
   loadingVariables: boolean;
   loadError: string;
-  renderMode: TemplateRenderMode | null;
 }>();
 
 const emit = defineEmits<{
   add: [type: TemplateVariable['type']];
   load: [];
-  render: [mode: TemplateRenderMode | 'off'];
+  render: [];
   remove: [id: string];
   clear: [];
   update: [id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]];
@@ -23,12 +22,6 @@ const emit = defineEmits<{
 const chooseVariableType = (event: Event) => {
   const select = event.target as HTMLSelectElement;
   if (select.value === 'text' || select.value === 'boolean' || select.value === 'textList' || select.value === 'tableRows') emit('add', select.value);
-  select.value = '';
-};
-
-const chooseRenderMode = (event: Event) => {
-  const select = event.target as HTMLSelectElement;
-  if (select.value === 'final' || select.value === 'preview' || select.value === 'off') emit('render', select.value);
   select.value = '';
 };
 
@@ -128,20 +121,13 @@ onBeforeUnmount(() => {
           :disabled="!variables.length"
           @click="confirmingClear = true"
         >Clear</button>
-        <select
+        <button
           class="render-variables"
           :class="{ active: variablesRendered }"
-          aria-label="Render variables"
-          value=""
+          type="button"
           :disabled="renderingVariables"
-          :title="renderMode ? `${renderMode === 'final' ? 'Final' : 'Preview'} rendering is active; select Off to restore the template` : undefined"
-          @change="chooseRenderMode"
-        >
-          <option value="" disabled>Render</option>
-          <option value="off">Off</option>
-          <option value="final">Final</option>
-          <option value="preview">Preview</option>
-        </select>
+          @click="emit('render')"
+        >{{ variablesRendered ? 'Rendered' : 'Render' }}</button>
         <button class="load-variables" type="button" :disabled="loadingVariables" @click="emit('load')">
           {{ loadingVariables ? 'Loading…' : 'Load' }}
         </button>

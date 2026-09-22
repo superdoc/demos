@@ -9,12 +9,15 @@ import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import FieldAutocomplete from './components/FieldAutocomplete.vue';
-import { AutofillController, type AutofillSnapshot } from './autofill-controller';
+import {
+  AutofillController,
+  type AutofillAdapter,
+  type AutofillField,
+  type AutofillSnapshot,
+} from './autofill-controller';
 import {
   TemplateVariables,
-  type TemplateRenderMode,
   type TemplateVariable,
-  type TemplateVariableControl,
   type TemplateVariableValue,
 } from './template-variables';
 
@@ -40,10 +43,6 @@ const variablesRendered = ref(false);
 const renderingVariables = ref(false);
 const loadingVariables = ref(false);
 const variableLoadError = ref('');
-const variableRenderMode = ref<TemplateRenderMode | null>(null);
-const hiddenVariableControlIds = ref<string[]>([]);
-const variableControls = ref<TemplateVariableControl[]>([]);
-const variableSyntaxPopover = ref({ visible: false, raw: '', top: 0, left: 0 });
 const editingFieldId = ref<string | null>(null);
 const editingInstanceIds = ref<string[]>([]);
 const activeDocumentFieldId = ref<string | null>(null);
@@ -121,57 +120,6 @@ const scheduleFieldHighlights = () => {
   void nextTick(() => requestAnimationFrame(applyFieldHighlights));
 };
 
-const applyHiddenVariableOpacity = (): number => {
-  document.querySelectorAll('.template-variable-hidden-preview').forEach((element) => {
-    element.classList.remove('template-variable-hidden-preview');
-  });
-  let appliedCount = 0;
-  for (const id of hiddenVariableControlIds.value) {
-    const escapedId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
-    document.querySelectorAll(`[data-sdt-id="${escapedId}"]`).forEach((element) => {
-      element.classList.add('template-variable-hidden-preview');
-      appliedCount += 1;
-    });
-  }
-  return appliedCount;
-};
-
-const scheduleHiddenVariableOpacity = () => {
-  void nextTick(() => {
-    let attemptsRemaining = 4;
-    const applyWhenMounted = () => {
-      const appliedCount = applyHiddenVariableOpacity();
-      attemptsRemaining -= 1;
-      if (appliedCount < hiddenVariableControlIds.value.length && attemptsRemaining > 0) {
-        requestAnimationFrame(applyWhenMounted);
-      }
-    };
-    requestAnimationFrame(applyWhenMounted);
-  });
-};
-
-const handleVariableHover = (event: Event) => {
-  if (variableRenderMode.value !== 'preview' || !(event.target instanceof Element)) {
-    variableSyntaxPopover.value.visible = false;
-    return;
-  }
-  const controlElement = event.target.closest<HTMLElement>('[data-sdt-id]');
-  const control = variableControls.value.find(candidate => candidate.id === controlElement?.dataset.sdtId);
-  if (!control || !(event instanceof PointerEvent)) {
-    variableSyntaxPopover.value.visible = false;
-    return;
-  }
-  variableSyntaxPopover.value = {
-    visible: true,
-    raw: control.raw,
-    top: event.clientY + 14,
-    left: event.clientX + 14,
-  };
-};
-
-const hideVariableSyntaxPopover = () => {
-  variableSyntaxPopover.value.visible = false;
-};
 
 const toggleAllFieldHighlights = () => {
   highlightedGroupKeys.value = highlightAllFields.value
@@ -308,21 +256,16 @@ const unrenderVariables = async (nextMode = modeBeforeVariableRender) => {
   documentMode.value = nextMode;
 };
 
-const renderVariables = async (mode: TemplateRenderMode | 'off') => {
-  if (mode === 'off') {
+const renderVariables = async () => {
+  if (variablesRendered.value) {
     await unrenderVariables();
     return;
   }
 
-  if (variablesRendered.value && variableRenderMode.value === mode) return;
-
-  const baseMode = variablesRendered.value ? modeBeforeVariableRender : documentMode.value;
-  if (variablesRendered.value) await unrenderVariables(baseMode);
-
-  modeBeforeVariableRender = baseMode;
+  modeBeforeVariableRender = documentMode.value;
   superdocInstance.value?.setDocumentMode('editing');
   try {
-    await templateVars.value?.render(mode);
+    await templateVars.value?.render('final');
     superdocInstance.value?.setDocumentMode('viewing');
     documentMode.value = 'viewing';
   } catch (error) {
@@ -440,7 +383,7 @@ const handleInsertField = async (field: TemplateField) => {
   console.groupEnd();
 };
 
-const handleAutocompleteSelect = async (field: TemplateField) => {
+const handleAutocompleteSelect = async (field: AutofillField) => {
   await autofillController.value?.select(field);
 };
 
@@ -572,28 +515,34 @@ onMounted(() => {
         variables.value = [...state.variables];
         variablesRendered.value = state.rendered;
         renderingVariables.value = state.rendering;
-        variableRenderMode.value = state.mode;
-        hiddenVariableControlIds.value = [...state.hiddenControlIds];
-        variableControls.value = [
-          ...state.previewControls.map(control => ({ ...control, alias: '', kind: 'inline' as const })),
-          ...state.variableControls,
-        ];
-        scheduleHiddenVariableOpacity();
       });
       isReady.value = true;
       console.log('SuperDoc ready');
 
       await fieldController.value.initialize();
 
-      autofillController.value = new AutofillController(superdoc, fieldController.value);
+      const autofillAdapter: AutofillAdapter = {
+        subscribeToFields: (listener) => fieldController.value!.subscribe(fields => listener(fields)),
+        insertField: async (field, target) => {
+          const source = fieldController.value?.get(field.id);
+          if (!source) return false;
+          return !!await fieldController.value?.replaceRangeWithFieldCopy(source, target);
+        },
+        createField: async (alias, target) => fieldController.value?.createField({
+          alias,
+          value: alias,
+          mode: 'inline',
+          locked: false,
+          metadata: { group: 'field', category: 'field' },
+        }, target) || null,
+      };
+      autofillController.value = new AutofillController(superdoc, autofillAdapter);
       stopAutofillSubscription = autofillController.value.subscribe((snapshot) => {
         autofill.value = snapshot;
       });
       editorElement = document.querySelector('#superdoc-editor');
       if (editorElement) autofillController.value.initialize(editorElement);
       editorElement?.addEventListener('click', handleDocumentFieldClick);
-      editorElement?.addEventListener('pointermove', handleVariableHover);
-      editorElement?.addEventListener('pointerleave', hideVariableSyntaxPopover);
 
       stopSelectionSubscription = superdoc.ui.selection.observe((snapshot) => {
         if (snapshot.selectionTarget) debounceInsertSelection(snapshot.selectionTarget);
@@ -613,8 +562,6 @@ onBeforeUnmount(() => {
   fieldController.value?.destroy();
   templateVars.value?.destroy();
   editorElement?.removeEventListener('click', handleDocumentFieldClick);
-  editorElement?.removeEventListener('pointermove', handleVariableHover);
-  editorElement?.removeEventListener('pointerleave', hideVariableSyntaxPopover);
   superdocInstance.value?.destroy();
 });
 </script>
@@ -654,13 +601,6 @@ onBeforeUnmount(() => {
         @select="handleAutocompleteSelect"
       />
 
-      <div
-        v-if="variableSyntaxPopover.visible"
-        class="variable-syntax-popover"
-        :style="{ top: `${variableSyntaxPopover.top}px`, left: `${variableSyntaxPopover.left}px` }"
-        role="tooltip"
-      >{{ variableSyntaxPopover.raw }}</div>
-
       <!-- Field List Sidebar -->
       <aside v-if="fieldExplorerVisible" class="sidebar">
         <div v-if="activeTab !== 'variables'" class="highlight-toolbar">
@@ -689,7 +629,6 @@ onBeforeUnmount(() => {
           :rendering-variables="renderingVariables"
           :loading-variables="loadingVariables"
           :load-error="variableLoadError"
-          :render-mode="variableRenderMode"
           @add="addVariable"
           @load="loadVariables"
           @render="renderVariables"
@@ -956,25 +895,6 @@ onBeforeUnmount(() => {
 :global([data-sdt-id].template-field-highlight-locked) {
   background: rgba(239, 68, 68, .22) !important;
   box-shadow: inset 0 0 0 2px rgba(220, 38, 38, .78) !important;
-}
-
-:global([data-sdt-id].template-variable-hidden-preview) {
-  opacity: .55;
-}
-
-.variable-syntax-popover {
-  position: fixed;
-  z-index: 10000;
-  max-width: 360px;
-  padding: 8px 10px;
-  color: #f8fafc;
-  background: #1f2937;
-  border: 1px solid #374151;
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, .22);
-  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  overflow-wrap: anywhere;
-  pointer-events: none;
 }
 
 .sidebar-tabs {

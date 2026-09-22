@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import type { TemplateField } from '../field-controller';
+import type { AutofillField } from '../autofill-controller';
 
 defineProps<{
-  fields: TemplateField[];
+  fields: AutofillField[];
   query: string;
   top: number;
   left: number;
 }>();
 
 const emit = defineEmits<{
-  select: [field: TemplateField];
+  select: [field: AutofillField];
 }>();
 </script>
 
