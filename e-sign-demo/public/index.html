@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>E-Sign Workspace</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="workspace">
+      <section class="workspace-intro">
+        <p>E-SIGNATURE TOOLS</p>
+        <h1>Sign and verify documents</h1>
+        <span>Use a PDF directly, or a DOCX when the conversion service is running.</span>
+      </section>
+
+      <div class="panel-grid">
+        <form id="sign-form" class="panel">
+          <div class="panel-heading">
+            <div class="panel-icon">✎</div>
+            <div>
+              <p>CREATE</p>
+              <h2>Sign a document</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Document</span>
+            <input id="sign-file" type="file" accept=".pdf,.docx" required />
+            <small>PDF or DOCX, up to the configured file-size limit</small>
+          </label>
+
+          <label class="field">
+            <span>API key <small class="inline-help">Optional</small></span>
+            <input id="api-key" type="password" autocomplete="off" placeholder="Bearer token" />
+          </label>
+
+          <div class="field-row">
+            <label class="field">
+              <span>Signer name</span>
+              <input id="signer-name" value="Example Signer" required />
+            </label>
+            <label class="field">
+              <span>Signer email</span>
+              <input id="signer-email" type="email" value="signer@example.invalid" required />
+            </label>
+          </div>
+
+          <label class="checkbox-field">
+            <input id="certificate" type="checkbox" checked />
+            <span><strong>Audit certificate</strong><small>Append a certificate page to the signed PDF</small></span>
+          </label>
+
+          <button type="submit" class="primary-action">Sign document</button>
+          <output id="sign-status" aria-live="polite"></output>
+        </form>
+
+        <form id="verify-form" class="panel">
+          <div class="panel-heading">
+            <div class="panel-icon">✓</div>
+            <div>
+              <p>CHECK</p>
+              <h2>Verify a signed PDF</h2>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Signed document</span>
+            <input id="verify-file" type="file" accept=".pdf" required />
+            <small>Select a PDF produced by this signing service</small>
+          </label>
+
+          <div class="verify-note">
+            <strong>What verification checks</strong>
+            <span>The embedded signer, audit trail, and cryptographic signature are validated against the active key.</span>
+          </div>
+
+          <button type="submit" class="secondary-action">Verify document</button>
+          <output id="verify-status" aria-live="polite"></output>
+          <pre id="verify-result" hidden></pre>
+        </form>
+      </div>
+
+      <section id="signed-result" class="signed-result" hidden>
+        <div class="result-toolbar">
+          <div>
+            <p>SIGNED DOCUMENT</p>
+            <h2>PDF preview</h2>
+          </div>
+          <a id="download" class="download" hidden>Download signed PDF</a>
+        </div>
+        <div class="pdf-viewer">
+          <iframe id="pdf-preview" title="Signed PDF preview"></iframe>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/client.js"></script>
+  </body>
+</html>
