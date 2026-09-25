@@ -13,7 +13,7 @@ import {
   renderInterpolation,
 } from './helpers';
 
-export type TemplateRenderMode = 'final';
+export type TemplateRenderMode = 'final' | 'preview';
 export type TemplateRenderState = {
   rendered: boolean;
   rendering: boolean;
@@ -41,7 +41,7 @@ const MAX_CONDITIONAL_PASSES = 1000;
 
 /** Owns temporary document rendering, snapshots, replacement, and restoration. */
 export class TemplateVariableRenderer {
-  // Render state and the original DOCX snapshot live only for the active render.
+  // Render state and the original DOCX snapshot live only for the active preview.
   private rendered = false;
   private rendering = false;
   private mode: TemplateRenderMode | null = null;
@@ -62,7 +62,7 @@ export class TemplateVariableRenderer {
     private readonly onDocumentRestored?: () => Promise<void>,
   ) {}
 
-  // Subscribers receive render progress and whether rendering is currently active.
+  // Subscribers receive render progress and whether the preview is currently active.
   subscribe(listener: TemplateRenderListener): () => void {
     this.listeners.add(listener);
     listener(this.state());
@@ -73,14 +73,14 @@ export class TemplateVariableRenderer {
     variables: readonly TemplateVariable[],
     mode: TemplateRenderMode = 'final',
   ): Promise<void> {
-    // Rendering is idempotent until the current render is reverted.
+    // Rendering is idempotent until the current preview is unrendered.
     if (this.rendered) return;
 
     await this.renderDocument(variables, mode);
   }
 
   async unrender(): Promise<void> {
-    // Unrendering replaces the rendered document with the original DOCX snapshot.
+    // Unrendering replaces the preview with the original DOCX snapshot.
     if (!this.rendered) return;
 
     this.setRendering(true);
@@ -98,7 +98,7 @@ export class TemplateVariableRenderer {
   }
 
   destroy(): void {
-    // Release callbacks and any snapshot retained by an unfinished render.
+    // Release callbacks and any snapshot retained by an unfinished preview.
     this.listeners.clear();
     this.renderSnapshot = null;
   }
@@ -314,7 +314,9 @@ export class TemplateVariableRenderer {
       const block = findInnermostConditional(textBeforeRender);
       if (!block) return;
       const conditionPassed = evaluateBooleanExpression(block.expression, values);
-      const replacement = conditionPassed ? block.truthyContent : block.falsyContent;
+      const replacement = mode === 'preview'
+        ? this.createPreviewConditional(block, conditionPassed)
+        : conditionPassed ? block.truthyContent : block.falsyContent;
       const wasReplaced = await this.replaceConditionalBlock(replacement, block.paragraphScoped);
       if (!wasReplaced) {
         console.warn('[Variable render] Skipped conditional range that could not be replaced:', {

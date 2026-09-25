@@ -9,11 +9,18 @@ import FieldEditorPanel from './components/FieldEditorPanel.vue';
 import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import FieldAutocomplete from './components/FieldAutocomplete.vue';
-import { AutofillController, type AutofillSnapshot } from './autofill-controller';
+import {
+  AutofillController,
+  type AutofillAdapter,
+  type AutofillField,
+  type AutofillSnapshot,
+} from './autofill-controller';
 import { VariableHighlightController, type VariablePreviewRange } from './template-variables/controllers/highlight';
 import {
   TemplateVariables,
+  type TemplateRenderMode,
   type TemplateVariable,
+  type TemplateVariableControl,
   type TemplateVariableValue,
 } from './template-variables';
 
@@ -70,6 +77,10 @@ let stopAutofillSubscription: (() => void) | null = null;
 let modeBeforeVariableRender: DocumentMode = 'editing';
 let editorElement: Element | null = null;
 const autofill = ref<AutofillSnapshot>({ open: false, query: '', suggestions: [], top: 0, left: 0 });
+
+const hideVariableSyntaxPopover = () => {
+  variableSyntaxPopover.value.visible = false;
+};
 
 const sidebarFields = computed(() => fields.value);
 
@@ -276,7 +287,12 @@ const renderVariables = async (mode: TemplateRenderMode | 'off') => {
     return;
   }
 
-  modeBeforeVariableRender = documentMode.value;
+  if (variablesRendered.value && variableRenderMode.value === mode) return;
+
+  const baseMode = variablesRendered.value ? modeBeforeVariableRender : documentMode.value;
+  if (variablesRendered.value) await unrenderVariables(baseMode);
+
+  modeBeforeVariableRender = baseMode;
   superdocInstance.value?.setDocumentMode('editing');
   try {
     await templateVars.value?.render(mode);
@@ -554,7 +570,6 @@ onMounted(() => {
           ...state.previewControls.map(control => ({ ...control, alias: '', kind: 'inline' as const })),
           ...state.variableControls,
         ];
-        scheduleHiddenVariableOpacity();
       });
       isReady.value = true;
       console.log('SuperDoc ready');
@@ -642,6 +657,13 @@ onBeforeUnmount(() => {
         @select="handleAutocompleteSelect"
       />
 
+      <div
+        v-if="variableSyntaxPopover.visible"
+        class="variable-syntax-popover"
+        :style="{ top: `${variableSyntaxPopover.top}px`, left: `${variableSyntaxPopover.left}px` }"
+        role="tooltip"
+      >{{ variableSyntaxPopover.raw }}</div>
+
       <!-- Field List Sidebar -->
       <aside v-if="fieldExplorerVisible" class="sidebar">
         <div v-if="activeTab !== 'variables'" class="highlight-toolbar">
@@ -671,6 +693,7 @@ onBeforeUnmount(() => {
           :loading-variables="loadingVariables"
           :variables-highlighted="variablesHighlighted"
           :load-error="variableLoadError"
+          :render-mode="variableRenderMode"
           @add="addVariable"
           @load="loadVariables"
           @highlight="toggleVariableHighlights"
@@ -938,6 +961,21 @@ onBeforeUnmount(() => {
 :global([data-sdt-id].template-field-highlight-locked) {
   background: rgba(239, 68, 68, .22) !important;
   box-shadow: inset 0 0 0 2px rgba(220, 38, 38, .78) !important;
+}
+
+.variable-syntax-popover {
+  position: fixed;
+  z-index: 10000;
+  max-width: 360px;
+  padding: 8px 10px;
+  color: #f8fafc;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .22);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+  pointer-events: none;
 }
 
 .sidebar-tabs {

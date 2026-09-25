@@ -27,11 +27,21 @@ export type TemplateVariable = {
 });
 
 export type TemplateVariableValue = TemplateVariable['value'];
-type TemplateVariableListener = (variables: readonly TemplateVariable[]) => void;
+export type TemplateVariableControl = {
+  id: string;
+  alias: string;
+  raw: string;
+  kind: 'inline' | 'block';
+};
+type TemplateVariableListener = (
+  variables: readonly TemplateVariable[],
+  controls: readonly TemplateVariableControl[],
+) => void;
 
 /** Owns template-variable discovery and CRUD state. */
 export class TemplateVariableController {
   private variableState: TemplateVariable[] = [];
+  private variableControls: TemplateVariableControl[] = [];
   private readonly listeners = new Set<TemplateVariableListener>();
 
   constructor(private readonly superdoc: SuperDoc) {}
@@ -40,9 +50,13 @@ export class TemplateVariableController {
     return this.variableState;
   }
 
+  get controls(): readonly TemplateVariableControl[] {
+    return this.variableControls;
+  }
+
   subscribe(listener: TemplateVariableListener): () => void {
     this.listeners.add(listener);
-    listener(this.variableState);
+    listener(this.variableState, this.variableControls);
     return () => this.listeners.delete(listener);
   }
 
@@ -55,6 +69,7 @@ export class TemplateVariableController {
   }
 
   async load(): Promise<void> {
+    await this.unwrapVariableControls();
     const text = await this.superdoc.activeEditor?.doc?.getText?.({});
     if (text === undefined) throw new Error('Document text is unavailable.');
 
@@ -114,7 +129,7 @@ export class TemplateVariableController {
   }
 
   private emit(): void {
-    for (const listener of this.listeners) listener(this.variableState);
+    for (const listener of this.listeners) listener(this.variableState, this.variableControls);
   }
 
   async wrapTemplateSyntax(): Promise<void> {

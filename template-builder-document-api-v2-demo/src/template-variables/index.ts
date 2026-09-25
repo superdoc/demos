@@ -2,6 +2,7 @@ import type { SuperDoc } from 'superdoc';
 import {
   TemplateVariableController,
   type TemplateVariable,
+  type TemplateVariableControl,
   type TemplateVariableValue,
 } from './controllers/variable';
 import {
@@ -10,10 +11,11 @@ import {
   type TemplateRenderState,
 } from './renderer';
 
-export type { TemplateVariable, TemplateVariableValue, TemplateRenderMode };
+export type { TemplateVariable, TemplateVariableControl, TemplateVariableValue, TemplateRenderMode };
 
 export type TemplateVariablesState = TemplateRenderState & {
   variables: readonly TemplateVariable[];
+  variableControls: readonly TemplateVariableControl[];
 };
 
 export type TemplateVariablesOptions = {
@@ -28,6 +30,7 @@ export class TemplateVariables {
   private readonly renderer: TemplateVariableRenderer;
   private readonly listeners = new Set<TemplateVariablesListener>();
   private variables: readonly TemplateVariable[] = [];
+  private variableControls: readonly TemplateVariableControl[] = [];
   private renderState: TemplateRenderState = {
     rendered: false,
     rendering: false,
@@ -42,8 +45,9 @@ export class TemplateVariables {
   constructor(superdoc: SuperDoc, options: TemplateVariablesOptions = {}) {
     this.controller = new TemplateVariableController(superdoc);
     this.renderer = new TemplateVariableRenderer(superdoc, options.onDocumentRestored);
-    this.stopControllerSubscription = this.controller.subscribe((variables) => {
+    this.stopControllerSubscription = this.controller.subscribe((variables, controls) => {
       this.variables = variables;
+      this.variableControls = controls;
       this.emit();
     });
     this.stopRendererSubscription = this.renderer.subscribe((renderState) => {
@@ -53,7 +57,7 @@ export class TemplateVariables {
   }
 
   get state(): TemplateVariablesState {
-    return { variables: this.variables, ...this.renderState };
+    return { variables: this.variables, variableControls: this.variableControls, ...this.renderState };
   }
 
   subscribe(listener: TemplateVariablesListener): () => void {
