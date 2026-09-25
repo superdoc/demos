@@ -1,5 +1,6 @@
 import { DOCX, type SuperDoc } from 'superdoc';
-import type { TemplateVariable } from './controller';
+import type { SelectionTarget, ViewportRect } from 'superdoc/ui';
+import type { TemplateVariable } from './controllers/variable';
 import {
   CONDITIONAL_QUERY_PATTERN,
   createTableColumnPattern,
@@ -19,10 +20,22 @@ export type TemplateRenderState = {
   mode: TemplateRenderMode | null;
   hiddenControlIds: readonly string[];
   previewControls: readonly { id: string; raw: string }[];
+  previewRanges: readonly {
+    target: SelectionTarget;
+    raw: string;
+    outcome: 'rendered' | 'hidden';
+    rects: readonly ViewportRect[];
+  }[];
 };
 type TemplateRenderListener = (state: TemplateRenderState) => void;
-
-type PreviewMarker = { id: string; expression: string; raw: string };
+type PreviewMarker = {
+  id: string;
+  expression: string;
+  raw: string;
+  displayText: string;
+  paragraphScoped: boolean;
+  outcome: 'rendered' | 'hidden';
+};
 
 const MAX_CONDITIONAL_PASSES = 1000;
 
@@ -36,6 +49,12 @@ export class TemplateVariableRenderer {
   private previewMarkers: PreviewMarker[] = [];
   private hiddenControlIds: string[] = [];
   private previewControls: Array<{ id: string; raw: string }> = [];
+  private previewRanges: Array<{
+    target: SelectionTarget;
+    raw: string;
+    outcome: 'rendered' | 'hidden';
+    rects: readonly ViewportRect[];
+  }> = [];
   private readonly listeners = new Set<TemplateRenderListener>();
 
   constructor(
@@ -71,6 +90,8 @@ export class TemplateVariableRenderer {
       this.mode = null;
       this.hiddenControlIds = [];
       this.previewControls = [];
+      this.previewMarkers = [];
+      this.previewRanges = [];
     } finally {
       this.setRendering(false);
     }
@@ -93,17 +114,17 @@ export class TemplateVariableRenderer {
     try {
       this.hiddenControlIds = [];
       this.previewControls = [];
+      this.previewRanges = [];
       // Capture first so any partial render can be rolled back safely.
       await this.captureDocument();
 
       const values = this.getScalarValues(variables);
       // Structural loops render first, nested conditions second, and scalar values last.
       await this.renderTableRowLoops(variables, values);
-      this.previewMarkers = [];
       await this.renderConditionals(values, mode);
-      await this.renderInterpolations(values);
+      await this.renderInterpolations(values, mode);
       if (mode === 'final') await this.removeBlankVariableControls();
-      if (mode === 'preview') await this.wrapPreviewHiddenContent();
+      if (mode === 'preview') await this.resolvePreviewRanges();
 
       this.rendered = true;
       this.mode = mode;
@@ -168,6 +189,35 @@ export class TemplateVariableRenderer {
         return [];
       }
     });
+    const wholeConditionalControls = controls.filter(({ variableType }) => variableType === 'conditional-block');
+    if (wholeConditionalControls.length > 0) {
+      for (const { control, raw } of wholeConditionalControls) {
+        let rendered = raw;
+        for (let pass = 0; pass < MAX_CONDITIONAL_PASSES; pass += 1) {
+          const block = findInnermostConditional(rendered);
+          if (!block) break;
+          const conditionPassed = evaluateBooleanExpression(block.expression, values);
+          const replacement = conditionPassed ? block.truthyContent : block.falsyContent;
+          rendered = rendered.replace(block.source, block.paragraphScoped ? replacement.trim() : replacement);
+        }
+        if (findInnermostConditional(rendered)) {
+          throw new Error(`Conditional control exceeds the maximum depth of ${MAX_CONDITIONAL_PASSES}.`);
+        }
+
+        const replaced = await documentApi.contentControls.replaceContent({
+          target: control.target,
+          content: rendered,
+        });
+        if (!replaced.success) {
+          throw new Error(`Conditional content control could not be rendered: ${control.properties.alias || control.id}`);
+        }
+        const unwrapped = await documentApi.contentControls.unwrap({ target: control.target });
+        if (!unwrapped.success) {
+          throw new Error(`Rendered conditional content control could not be unwrapped: ${control.properties.alias || control.id}`);
+        }
+      }
+      return;
+    }
     const hasConditionalControls = controls.some(({ raw }) => parseConditionalDirective(raw) !== null);
     if (!hasConditionalControls) {
       await this.renderLegacyConditionals(values, mode);
@@ -268,7 +318,21 @@ export class TemplateVariableRenderer {
         ? this.createPreviewConditional(block, conditionPassed)
         : conditionPassed ? block.truthyContent : block.falsyContent;
       const wasReplaced = await this.replaceConditionalBlock(replacement, block.paragraphScoped);
-      if (!wasReplaced) throw new Error(`Conditional block could not be replaced: ${block.expression}`);
+      if (!wasReplaced) {
+        console.warn('[Variable render] Skipped conditional range that could not be replaced:', {
+          expression: block.expression,
+          text: block.source,
+        });
+        const directivesRemoved = await this.removeConditionalDirectives(block.expression);
+        if (!directivesRemoved) {
+          console.warn('[Variable render] Could not remove directives for skipped conditional range:', {
+            expression: block.expression,
+            text: block.source,
+          });
+          return;
+        }
+        continue;
+      }
       if (await this.getDocumentText() === textBeforeRender) {
         throw new Error(`Conditional block did not change the document: ${block.expression}`);
       }
@@ -277,22 +341,44 @@ export class TemplateVariableRenderer {
   }
 
   private createPreviewConditional(
-    block: { source: string; expression: string; truthyContent: string; falsyContent: string },
+    block: {
+      source: string;
+      expression: string;
+      truthyContent: string;
+      falsyContent: string;
+      paragraphScoped: boolean;
+    },
     conditionPassed: boolean,
   ): string {
     const hiddenContent = conditionPassed ? block.falsyContent : block.truthyContent;
     const visibleContent = conditionPassed ? block.truthyContent : block.falsyContent;
-    if (!hiddenContent) return visibleContent;
-
-    const id = crypto.randomUUID();
-    this.previewMarkers.push({ id, expression: block.expression, raw: block.source });
-    const hidden = `__SD_PREVIEW_START_${id}__${hiddenContent}__SD_PREVIEW_END_${id}__`;
-    return conditionPassed ? `${visibleContent}${hidden}` : `${hidden}${visibleContent}`;
+    const mark = (text: string, outcome: 'rendered' | 'hidden') => {
+      if (!text) return '';
+      const id = crypto.randomUUID();
+      this.previewMarkers.push({
+        id,
+        expression: block.expression,
+        raw: block.source,
+        displayText: text,
+        paragraphScoped: block.paragraphScoped,
+        outcome,
+      });
+      return `__SD_PREVIEW_START_${id}__${text}__SD_PREVIEW_END_${id}__`;
+    };
+    const visible = mark(visibleContent, 'rendered');
+    const hidden = mark(hiddenContent, 'hidden');
+    return conditionPassed ? `${visible}${hidden}` : `${hidden}${visible}`;
   }
 
-  private async wrapPreviewHiddenContent(): Promise<void> {
+  private async resolvePreviewRanges(): Promise<void> {
     const documentApi = this.superdoc.activeEditor?.doc;
     if (!documentApi) throw new Error('Document API is unavailable.');
+    const pending: Array<{
+      marker: PreviewMarker;
+      target: SelectionTarget;
+      anchorBlockId: string;
+      anchorOffset: number;
+    }> = [];
 
     for (const marker of [...this.previewMarkers].reverse()) {
       const startText = `__SD_PREVIEW_START_${marker.id}__`;
@@ -319,17 +405,37 @@ export class TemplateVariableRenderer {
           offset: endMatch.target.start.offset - (sameBlock ? startText.length : 0),
         },
       };
-      const result = await documentApi.create.contentControl({
-        kind: sameBlock ? 'inline' : 'block',
-        controlType: 'richText',
-        at: hiddenTarget,
-        alias: `Hidden: ${marker.expression}`,
-        tag: JSON.stringify({ category: 'conditional-hidden', expression: marker.expression, hidden: true, raw: marker.raw }),
-        lockMode: 'unlocked',
+      pending.push({
+        marker,
+        target: hiddenTarget,
+        anchorBlockId: hiddenTarget.start.blockId,
+        anchorOffset: hiddenTarget.start.offset,
       });
-      if (!result.success) throw new Error(`Hidden conditional could not be wrapped: ${marker.expression}`);
-      this.hiddenControlIds.push(result.contentControl.nodeId);
-      this.previewControls.push({ id: result.contentControl.nodeId, raw: marker.raw });
+    }
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    for (const { marker, target: hiddenTarget, anchorBlockId, anchorOffset } of pending) {
+      const refreshedMatches = await documentApi.query.match({
+        select: { type: 'text', pattern: marker.displayText, mode: 'contains', caseSensitive: true },
+        limit: 1000,
+      });
+      const refreshedTarget = refreshedMatches.items
+        .flatMap(match => {
+          if (match.matchKind !== 'text' || match.target.start.kind !== 'text') return [];
+          return [{ target: match.target, start: match.target.start }];
+        })
+        .sort((left, right) => {
+          const leftBlockPenalty = left.start.blockId === anchorBlockId ? 0 : 1_000_000;
+          const rightBlockPenalty = right.start.blockId === anchorBlockId ? 0 : 1_000_000;
+          return leftBlockPenalty + Math.abs(left.start.offset - anchorOffset)
+            - rightBlockPenalty - Math.abs(right.start.offset - anchorOffset);
+        })[0]?.target;
+      const target = refreshedTarget ?? hiddenTarget;
+      const host = this.superdoc.ui.viewport.getHost();
+      const geometry = host
+        ? this.superdoc.ui.viewport.getRect({ target, relativeTo: host })
+        : { found: false, rects: [] as const };
+      this.previewRanges.push({ target, raw: marker.raw, outcome: marker.outcome, rects: geometry.rects });
     }
   }
 
@@ -376,6 +482,48 @@ export class TemplateVariableRenderer {
       text: paragraphScoped ? replacement.trim() : replacement,
     });
     return result.success;
+  }
+
+  private async removeConditionalDirectives(expression: string): Promise<boolean> {
+    const documentApi = this.superdoc.activeEditor?.doc;
+    const matches = await documentApi?.query?.match?.({
+      select: { type: 'text', pattern: CONDITIONAL_QUERY_PATTERN, mode: 'regex', caseSensitive: true },
+      limit: 1000,
+    });
+    if (!matches || !documentApi) return false;
+
+    const stack: Array<{
+      opening: typeof matches.items[number];
+      expression: string;
+      alternate?: typeof matches.items[number];
+    }> = [];
+    for (const match of matches.items) {
+      if (match.matchKind !== 'text') continue;
+      const directive = parseConditionalDirective(match.blocks.map(block => block.text).join(''));
+      if (!directive) continue;
+      if (directive.startsWith('if ')) {
+        stack.push({ opening: match, expression: directive.slice(3).trim() });
+        continue;
+      }
+      if (directive === 'else') {
+        const current = stack[stack.length - 1];
+        if (current) current.alternate = match;
+        continue;
+      }
+      if (directive !== 'endif') continue;
+
+      const current = stack.pop();
+      if (!current || current.expression !== expression) continue;
+      const directives = [current.opening, current.alternate, match].filter(
+        (candidate): candidate is typeof match => candidate !== undefined,
+      );
+      for (const directiveMatch of directives.reverse()) {
+        const result = await documentApi.delete({ target: directiveMatch.target, behavior: 'exact' });
+        if (!result.success) return false;
+      }
+      return true;
+    }
+    return false;
   }
 
   private async renderTableRowLoops(
@@ -465,6 +613,7 @@ export class TemplateVariableRenderer {
 
   private async renderInterpolations(
     values: ReadonlyMap<string, string | boolean>,
+    mode: TemplateRenderMode,
   ): Promise<void> {
     // Query all {{ ... }} candidates before parsing their supported interpolation syntax.
     const documentApi = this.superdoc.activeEditor?.doc;
@@ -482,9 +631,43 @@ export class TemplateVariableRenderer {
     // Replace from the end so earlier document targets remain stable.
     for (const match of [...matches.items].reverse()) {
       if (match.matchKind !== 'text') continue;
-      const interpolation = parseInterpolation(match.blocks.map(block => block.text).join(''));
+      const raw = match.blocks.map(block => block.text).join('');
+      const interpolation = parseInterpolation(raw);
       if (!interpolation) continue;
-      await documentApi.replace({ target: match.target, text: renderInterpolation(interpolation, values) });
+      const rendered = renderInterpolation(interpolation, values);
+      if (mode === 'preview' && values.get(interpolation.name) === '' && rendered === '') {
+        const id = crypto.randomUUID();
+        this.previewMarkers.push({
+          id,
+          expression: interpolation.name,
+          raw,
+          displayText: 'NO CONTENT',
+          paragraphScoped: false,
+          outcome: 'hidden',
+        });
+        await documentApi.replace({
+          target: match.target,
+          text: `__SD_PREVIEW_START_${id}__NO CONTENT__SD_PREVIEW_END_${id}__`,
+        });
+        continue;
+      }
+      if (mode === 'preview') {
+        const id = crypto.randomUUID();
+        this.previewMarkers.push({
+          id,
+          expression: interpolation.name,
+          raw,
+          displayText: rendered,
+          paragraphScoped: false,
+          outcome: 'rendered',
+        });
+        await documentApi.replace({
+          target: match.target,
+          text: `__SD_PREVIEW_START_${id}__${rendered}__SD_PREVIEW_END_${id}__`,
+        });
+        continue;
+      }
+      await documentApi.replace({ target: match.target, text: rendered });
     }
   }
 
@@ -495,6 +678,7 @@ export class TemplateVariableRenderer {
       mode: this.mode,
       hiddenControlIds: [...this.hiddenControlIds],
       previewControls: [...this.previewControls],
+      previewRanges: [...this.previewRanges],
     };
   }
 

@@ -1,3 +1,4 @@
+/** Coordinates template-variable discovery, state, and rendering. */
 import type { SuperDoc } from 'superdoc';
 import type { ContentControlInfo } from 'superdoc/ui';
 import {
@@ -5,7 +6,7 @@ import {
   discoverTemplateVariables,
   INTERPOLATION_QUERY_PATTERN,
   parseConditionalDirective,
-} from './helpers';
+} from '../helpers';
 
 export type TemplateVariable = {
   id: string;
@@ -92,7 +93,6 @@ export class TemplateVariableController {
       }
       existingNames.add(discovered.name);
     }
-    await this.wrapTemplateSyntax();
     this.emit();
   }
 
@@ -132,7 +132,7 @@ export class TemplateVariableController {
     for (const listener of this.listeners) listener(this.variableState, this.variableControls);
   }
 
-  private async wrapTemplateSyntax(): Promise<void> {
+  async wrapTemplateSyntax(): Promise<void> {
     const documentApi = this.superdoc.activeEditor?.doc;
     if (!documentApi) throw new Error('Document API is unavailable.');
 
@@ -154,84 +154,82 @@ export class TemplateVariableController {
 
     const tokens = matches.items.flatMap((match) => {
       if (match.matchKind !== 'text') return [];
+      if (match.target.start.kind !== 'text' || match.target.end.kind !== 'text') return [];
       const raw = match.snippet.slice(match.highlightRange.start, match.highlightRange.end);
-      return [{ match, raw, directive: parseConditionalDirective(raw) }];
+      return [{
+        target: {
+          kind: 'selection' as const,
+          start: match.target.start,
+          end: match.target.end,
+        },
+        raw,
+        directive: parseConditionalDirective(raw),
+      }];
     });
     const extractedBlocks = (await documentApi.extract({})).blocks;
     const blockIndexes = new Map(extractedBlocks.map((block, index) => [block.nodeId, index]));
     const blocksById = new Map(extractedBlocks.map(block => [block.nodeId, block]));
-    const segments: Array<{
-      target: typeof tokens[number]['match']['target'];
+    const conditionalRanges: Array<{
+      target: typeof tokens[number]['target'];
       raw: string;
       kind: 'inline' | 'block';
-      segmentType: 'syntax' | 'conditional-content';
-      alias: string;
     }> = [];
-    const conditionalKinds: Array<'inline' | 'block'> = [];
-    let previousToken: typeof tokens[number] | undefined;
+    const conditionalStack: typeof tokens = [];
 
     for (const token of tokens) {
-      if (previousToken && conditionalKinds.length > 0) {
-        const start = previousToken.match.target.end;
-        const end = token.match.target.start;
-        const sameBlock = start.blockId === end.blockId;
-        const contentKind = conditionalKinds[conditionalKinds.length - 1];
-        if (sameBlock && start.offset < end.offset) {
-          const raw = blocksById.get(start.blockId)?.text.slice(start.offset, end.offset) ?? '';
-          segments.push({
-            target: { kind: 'selection', start, end },
-            raw,
-            kind: contentKind,
-            segmentType: 'conditional-content',
-            alias: `variable-${nextAlias++}`,
-          });
-        } else if (!sameBlock) {
-          const startIndex = blockIndexes.get(start.blockId);
-          const endIndex = blockIndexes.get(end.blockId);
-          if (startIndex !== undefined && endIndex !== undefined && startIndex <= endIndex) {
-            for (let index = startIndex; index <= endIndex; index += 1) {
-              const block = extractedBlocks[index];
-              const segmentStart = index === startIndex ? start.offset : 0;
-              const segmentEnd = index === endIndex ? end.offset : block.text.length;
-              if (segmentStart >= segmentEnd) continue;
-              segments.push({
-                target: {
-                  kind: 'selection',
-                  start: { ...start, blockId: block.nodeId, offset: segmentStart },
-                  end: { ...end, blockId: block.nodeId, offset: segmentEnd },
-                },
-                raw: block.text.slice(segmentStart, segmentEnd),
-                kind: contentKind,
-                segmentType: 'conditional-content',
-                alias: `variable-${nextAlias++}`,
-              });
-            }
-          }
-        }
-      }
-
       if (token.directive?.startsWith('if ')) {
-        conditionalKinds.push(/^\{%\s*p\s+if\b/.test(token.raw) ? 'block' : 'inline');
+        conditionalStack.push(token);
       } else if (token.directive === 'endif') {
-        conditionalKinds.pop();
+        const opening = conditionalStack.pop();
+        if (!opening) continue;
+        if (conditionalStack.length > 0) continue;
+        const startIndex = blockIndexes.get(opening.target.start.blockId);
+        const endIndex = blockIndexes.get(token.target.end.blockId);
+        if (startIndex === undefined || endIndex === undefined || startIndex > endIndex) continue;
+
+        const raw = extractedBlocks
+          .slice(startIndex, endIndex + 1)
+          .map((block, relativeIndex, blocks) => {
+            const start = relativeIndex === 0 ? opening.target.start.offset : 0;
+            const end = relativeIndex === blocks.length - 1 ? token.target.end.offset : block.text.length;
+            return block.text.slice(start, end);
+          })
+          .join('\n');
+        conditionalRanges.push({
+          target: {
+            kind: 'selection',
+            start: opening.target.start,
+            end: token.target.end,
+          },
+          raw,
+          kind: startIndex === endIndex && !/^\{%\s*p\s+if\b/.test(opening.raw) ? 'inline' : 'block',
+        });
       }
-      previousToken = token;
     }
 
-    // Adjacent inline SDTs must be created from left to right so their shared
-    // boundaries remain outside the previously created control.
+    const isInsideConditional = (token: typeof tokens[number]) => conditionalRanges.some((range) => {
+      const tokenBlock = blockIndexes.get(token.target.start.blockId);
+      const startBlock = blockIndexes.get(range.target.start.blockId);
+      const endBlock = blockIndexes.get(range.target.end.blockId);
+      if (tokenBlock === undefined || startBlock === undefined || endBlock === undefined) return false;
+      if (tokenBlock < startBlock || tokenBlock > endBlock) return false;
+      if (tokenBlock === startBlock && token.target.start.offset < range.target.start.offset) return false;
+      if (tokenBlock === endBlock && token.target.end.offset > range.target.end.offset) return false;
+      return true;
+    });
+
     const candidates = [
-      ...tokens.map(token => ({
-        target: token.match.target,
-        raw: token.raw,
-        kind: (/^\{%\s*p\s+(?:if\b|else\b|endif\b)/.test(token.raw) ? 'block' : 'inline') as 'inline' | 'block',
-        segmentType: 'syntax' as const,
+      ...conditionalRanges.map(range => ({
+        target: range.target,
+        raw: range.raw,
+        kind: range.kind,
+        segmentType: 'conditional-block' as const,
       })),
-      ...segments.map(segment => ({
-        target: segment.target,
-        raw: segment.raw,
-        kind: segment.kind,
-        segmentType: 'conditional-content' as const,
+      ...tokens.filter(token => token.directive === null && !isInsideConditional(token)).map(token => ({
+        target: token.target,
+        raw: token.raw,
+        kind: 'inline' as const,
+        segmentType: 'interpolation' as const,
       })),
     ].sort((left, right) => {
       const leftBlock = blockIndexes.get(left.target.start.blockId) ?? Number.MAX_SAFE_INTEGER;
@@ -240,11 +238,12 @@ export class TemplateVariableController {
     });
 
     for (const candidate of candidates) {
-      const result = await documentApi.create.contentControl({
+      const alias = `variable-${nextAlias++}`;
+      const createControl = (target: typeof candidate.target) => documentApi.create.contentControl({
         kind: candidate.kind,
         controlType: 'richText',
-        at: candidate.target,
-        alias: `variable-${nextAlias++}`,
+        at: target,
+        alias,
         tag: JSON.stringify({
           variable: true,
           variableType: candidate.segmentType,
@@ -253,15 +252,53 @@ export class TemplateVariableController {
         }),
         lockMode: 'unlocked',
       });
+
+      let result = await createControl(candidate.target);
+      if (
+        !result.success
+        && result.failure.code === 'CAPABILITY_UNAVAILABLE'
+        && result.failure.message.includes('offsets are outside the paragraph')
+        && candidate.target.start.blockId === candidate.target.end.blockId
+      ) {
+        const block = blocksById.get(candidate.target.start.blockId);
+        const extractedOffset = block
+          ? this.findNearestTextOffset(block.text, candidate.raw, candidate.target.start.offset)
+          : -1;
+        if (block && extractedOffset >= 0) {
+          // Query/extract offsets include tabs, while content-control text
+          // offsets do not. Translate into the API's text-only coordinates.
+          const correctedOffset = block.text.slice(0, extractedOffset).replace(/\t/g, '').length;
+          result = await createControl({
+            kind: 'selection',
+            start: { ...candidate.target.start, offset: correctedOffset },
+            end: { ...candidate.target.end, offset: correctedOffset + candidate.raw.length },
+          });
+        }
+      }
       if (!result.success) {
-        throw new Error(
-          `Variable segment could not be wrapped: ${candidate.raw || 'conditional content'} `
-          + `(${result.failure.code}: ${result.failure.message})`,
-        );
+        console.warn('[Variable load] Skipped variable segment that could not be wrapped:', {
+          text: candidate.raw || 'conditional content',
+          code: result.failure.code,
+          message: result.failure.message,
+        });
+        continue;
       }
     }
 
     this.variableControls = this.readVariableControls((await documentApi.contentControls.list()).items);
+  }
+
+  private findNearestTextOffset(text: string, needle: string, expectedOffset: number): number {
+    let nearestOffset = -1;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (let offset = text.indexOf(needle); offset >= 0; offset = text.indexOf(needle, offset + 1)) {
+      const distance = Math.abs(offset - expectedOffset);
+      if (distance < nearestDistance) {
+        nearestOffset = offset;
+        nearestDistance = distance;
+      }
+    }
+    return nearestOffset;
   }
 
   private async unwrapVariableControls(): Promise<void> {
@@ -277,6 +314,7 @@ export class TemplateVariableController {
         console.warn(`Skipping stale variable control: ${control.properties.alias || control.id}`, result.failure);
       }
     }
+    this.variableControls = [];
   }
 
   private readVariableControls(controls: readonly ContentControlInfo[]): TemplateVariableControl[] {

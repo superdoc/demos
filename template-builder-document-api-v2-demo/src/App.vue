@@ -10,6 +10,7 @@ import FieldDeletePanel from './components/FieldDeletePanel.vue';
 import VariablesPanel from './components/VariablesPanel.vue';
 import FieldAutocomplete from './components/FieldAutocomplete.vue';
 import { AutofillController, type AutofillSnapshot } from './autofill-controller';
+import { VariableHighlightController, type VariablePreviewRange } from './template-variables/controllers/highlight';
 import {
   TemplateVariables,
   type TemplateRenderMode,
@@ -30,6 +31,7 @@ const superdocInstance = shallowRef<SuperDoc | null>(null);
 const fieldController = shallowRef<FieldController | null>(null);
 const autofillController = shallowRef<AutofillController | null>(null);
 const templateVars = shallowRef<TemplateVariables | null>(null);
+const variableHighlightController = shallowRef<VariableHighlightController | null>(null);
 const isReady = ref(false);
 const fields = ref<TemplateField[]>([]);
 const documentName = ref('parser-test-document.docx');
@@ -43,7 +45,9 @@ const variableLoadError = ref('');
 const variableRenderMode = ref<TemplateRenderMode | null>(null);
 const hiddenVariableControlIds = ref<string[]>([]);
 const variableControls = ref<TemplateVariableControl[]>([]);
+const variablePreviewRanges = ref<VariablePreviewRange[]>([]);
 const variableSyntaxPopover = ref({ visible: false, raw: '', top: 0, left: 0 });
+const variablesHighlighted = ref(false);
 const editingFieldId = ref<string | null>(null);
 const editingInstanceIds = ref<string[]>([]);
 const activeDocumentFieldId = ref<string | null>(null);
@@ -292,6 +296,16 @@ const loadVariables = async () => {
   }
 };
 
+const clearVariableHighlights = () => {
+  variableHighlightController.value?.disable();
+  variablesHighlighted.value = false;
+};
+
+const toggleVariableHighlights = async () => {
+  if (!variableHighlightController.value) return;
+  variablesHighlighted.value = await variableHighlightController.value.toggle();
+};
+
 const removeVariable = (id: string) => templateVars.value?.remove(id);
 
 const clearVariables = () => templateVars.value?.clear();
@@ -309,6 +323,7 @@ const unrenderVariables = async (nextMode = modeBeforeVariableRender) => {
 };
 
 const renderVariables = async (mode: TemplateRenderMode | 'off') => {
+  clearVariableHighlights();
   if (mode === 'off') {
     await unrenderVariables();
     return;
@@ -323,6 +338,10 @@ const renderVariables = async (mode: TemplateRenderMode | 'off') => {
   superdocInstance.value?.setDocumentMode('editing');
   try {
     await templateVars.value?.render(mode);
+    if (mode === 'preview') {
+      await variableHighlightController.value?.enable(false);
+      variablesHighlighted.value = true;
+    }
     superdocInstance.value?.setDocumentMode('viewing');
     documentMode.value = 'viewing';
   } catch (error) {
@@ -455,6 +474,7 @@ const handleExport = async () => {
 };
 
 const handleUpload = async (file: File) => {
+  clearVariableHighlights();
   await unrenderVariables();
   highlightedGroupKeys.value = new Set();
   highlightLockedFields.value = false;
@@ -469,6 +489,7 @@ const handleNewDocument = async () => {
   const superdoc = superdocInstance.value;
   if (!superdoc) return;
 
+  clearVariableHighlights();
   await unrenderVariables();
 
   const blankDocument = await getFileObject(BlankDOCX, 'untitled.docx', DOCX);
@@ -558,6 +579,17 @@ onMounted(() => {
     },
     onReady: async () => {
       superdocInstance.value = superdoc;
+      variableHighlightController.value = new VariableHighlightController(superdoc, {
+        onHover: (raw, event) => {
+          variableSyntaxPopover.value = {
+            visible: true,
+            raw,
+            top: event.clientY + 14,
+            left: event.clientX + 14,
+          };
+        },
+        onLeave: hideVariableSyntaxPopover,
+      });
       fieldController.value = new FieldController(superdoc);
       templateVars.value = new TemplateVariables(superdoc, {
         onDocumentRestored: async () => { await fieldController.value?.load(); },
@@ -574,6 +606,8 @@ onMounted(() => {
         renderingVariables.value = state.rendering;
         variableRenderMode.value = state.mode;
         hiddenVariableControlIds.value = [...state.hiddenControlIds];
+        variablePreviewRanges.value = [...state.previewRanges];
+        variableHighlightController.value?.setPreviewRanges(state.previewRanges);
         variableControls.value = [
           ...state.previewControls.map(control => ({ ...control, alias: '', kind: 'inline' as const })),
           ...state.variableControls,
@@ -609,6 +643,7 @@ onBeforeUnmount(() => {
   stopTemplateVariableSubscription?.();
   stopSelectionSubscription?.();
   stopAutofillSubscription?.();
+  variableHighlightController.value?.destroy();
   autofillController.value?.destroy();
   fieldController.value?.destroy();
   templateVars.value?.destroy();
@@ -688,10 +723,12 @@ onBeforeUnmount(() => {
           :variables-rendered="variablesRendered"
           :rendering-variables="renderingVariables"
           :loading-variables="loadingVariables"
+          :variables-highlighted="variablesHighlighted"
           :load-error="variableLoadError"
           :render-mode="variableRenderMode"
           @add="addVariable"
           @load="loadVariables"
+          @highlight="toggleVariableHighlights"
           @render="renderVariables"
           @remove="removeVariable"
           @clear="clearVariables"
