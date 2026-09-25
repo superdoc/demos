@@ -7,13 +7,15 @@ const props = defineProps<{
   variablesRendered: boolean;
   renderingVariables: boolean;
   loadingVariables: boolean;
+  variablesHighlighted: boolean;
   loadError: string;
 }>();
 
 const emit = defineEmits<{
   add: [type: TemplateVariable['type']];
   load: [];
-  render: [];
+  highlight: [];
+  render: [mode: TemplateRenderMode | 'off'];
   remove: [id: string];
   clear: [];
   update: [id: string, field: 'name' | 'value' | 'columns', value: TemplateVariableValue | string[]];
@@ -138,6 +140,13 @@ onBeforeUnmount(() => {
           <option value="textList">Text list</option>
           <option value="tableRows">Table rows</option>
         </select>
+        <button
+          class="highlight-variables"
+          :class="{ active: variablesHighlighted }"
+          type="button"
+          :aria-pressed="variablesHighlighted"
+          @click="emit('highlight')"
+        >Highlight</button>
       </div>
       <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
       <div v-if="confirmingClear" class="clear-confirmation" role="alert">
@@ -275,6 +284,8 @@ header .load-variables:disabled { cursor: wait; opacity: .6; }
 .load-error { margin: 0; padding: 8px 10px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; font-size: 11px; line-height: 1.4; }
 header .render-variables.active { color: #fff; background-color: #2563eb; border-color: #2563eb; }
 header .render-variables.active:hover { color: #fff; background: #1d4ed8; border-color: #1d4ed8; }
+header .highlight-variables.active { color: #713f12; background: #facc15; }
+header .highlight-variables.active:hover { background: #eab308; }
 header button:disabled { cursor: wait; opacity: .55; }
 .clear-confirmation { width: 100%; padding: 11px; color: #4b5563; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 7px; font-size: 12px; line-height: 1.4; }
 .clear-confirmation div { display: flex; flex-direction: row; gap: 7px; margin-top: 9px; }

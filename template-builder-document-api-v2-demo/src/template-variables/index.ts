@@ -3,7 +3,7 @@ import {
   TemplateVariableController,
   type TemplateVariable,
   type TemplateVariableValue,
-} from './controller';
+} from './controllers/variable';
 import {
   TemplateVariableRenderer,
   type TemplateRenderMode,
@@ -32,6 +32,9 @@ export class TemplateVariables {
     rendered: false,
     rendering: false,
     mode: null,
+    hiddenControlIds: [],
+    previewControls: [],
+    previewRanges: [],
   };
   private readonly stopControllerSubscription: () => void;
   private readonly stopRendererSubscription: () => void;

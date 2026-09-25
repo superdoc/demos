@@ -40,7 +40,7 @@ const TABLE_LOOP_END_PATTERN = /^\{%\s*tr\s+endfor\s*%\}$/;
 // Matches inline/paragraph if, else, and endif tags so nested blocks can be paired.
 const CONDITIONAL_TAG_PATTERN = /\{%\s*(?:(p)\s+)?(if\s+([\s\S]*?)|else|endif)\s*%\}/g;
 // Matches one complete conditional directive and captures its contents without delimiters.
-const CONDITIONAL_DIRECTIVE_PATTERN = /^\{%\s*(?:p\s+)?([\s\S]*?)\s*%\}$/;
+const CONDITIONAL_DIRECTIVE_PATTERN = /^\{%\s*(?:p\s+)?((?:(?!%\})[\s\S])*?)\s*%\}$/;
 // Unescapes quotes and slashes accepted inside string literals.
 const ESCAPED_STRING_CHARACTER_PATTERN = /\\(['"\\])/g;
 // Escapes characters that have special meaning when an alias is placed in a regex.
