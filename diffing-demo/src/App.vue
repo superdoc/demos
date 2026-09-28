@@ -31,21 +31,10 @@ const canDiff = computed(() => (
 ));
 
 const replaceAndWaitForSource = async (superdoc: SuperDoc, source: File | Blob) => {
-  let onComplete: (() => void) | null = null;
-  const sourceComplete = new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      if (onComplete) superdoc.off('source:complete', onComplete);
-      reject(new Error('The document took too long to load.'));
-    }, 30_000);
-
-    onComplete = () => {
-      window.clearTimeout(timeout);
-      resolve();
-    };
-    superdoc.once('source:complete', onComplete);
-  });
-
-  await Promise.all([superdoc.replaceFile(source), sourceComplete]);
+  const result = await superdoc.replaceDocument(source);
+  if (!result.ok) {
+    throw new Error(result.detail || result.reason || 'The document could not be loaded.');
+  }
 };
 
 const handleExport = async () => {
