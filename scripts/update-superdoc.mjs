@@ -2,21 +2,42 @@ import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 
 const requested = process.argv[2] || "latest";
+const resolveVersion = (dependency, specifier) => {
+  const result = spawnSync("npm", ["view", `${dependency}@${specifier}`, "version", "--json"], {
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr);
+    process.exit(result.status ?? 1);
+  }
+
+  const resolved = JSON.parse(result.stdout);
+  if (typeof resolved !== "string") {
+    throw new Error(`${dependency}@${specifier} resolved to multiple versions; use an exact version or npm tag`);
+  }
+  return resolved;
+};
+
+const versions = {
+  superdoc: resolveVersion("superdoc", requested),
+  "@superdoc/react": resolveVersion("@superdoc/react", "latest"),
+  "@superdoc/sdk": resolveVersion("@superdoc/sdk", "latest"),
+};
 const packages = [
-  { directory: "rag/apps/web", manifest: "rag/apps/web/package.json", manager: "bun", dependencies: { superdoc: requested } },
-  { directory: "superdoc-inline-revisions", manifest: "superdoc-inline-revisions/package.json", manager: "pnpm", dependencies: { superdoc: requested } },
-  { directory: "template-builder-document-api-v2-demo", manifest: "template-builder-document-api-v2-demo/package.json", manager: "pnpm", dependencies: { superdoc: requested } },
+  { directory: "rag/apps/web", manifest: "rag/apps/web/package.json", manager: "bun", dependencies: { superdoc: versions.superdoc } },
+  { directory: "superdoc-inline-revisions", manifest: "superdoc-inline-revisions/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
+  { directory: "template-builder-document-api-v2-demo", manifest: "template-builder-document-api-v2-demo/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
   {
     directory: "canonical-collaboration-demo/client",
     manifest: "canonical-collaboration-demo/client/package.json",
     manager: "npm",
-    dependencies: { superdoc: requested, "@superdoc/react": "latest" },
+    dependencies: { superdoc: versions.superdoc, "@superdoc/react": versions["@superdoc/react"] },
   },
   {
     directory: "canonical-collaboration-demo/server",
     manifest: "canonical-collaboration-demo/server/package.json",
     manager: "npm",
-    dependencies: { "@superdoc/sdk": "latest" },
+    dependencies: { "@superdoc/sdk": versions["@superdoc/sdk"] },
   },
 ];
 
@@ -27,20 +48,11 @@ for (const entry of packages) {
 
   const dependencySpecs = Object.entries(entry.dependencies).map(([name, version]) => `${name}@${version}`);
   const args = entry.manager === "npm"
-    ? ["install", ...dependencySpecs, "--save"]
+    ? ["install", ...dependencySpecs, "--save-exact"]
     : ["update", ...dependencySpecs];
   const result = spawnSync(entry.manager, args, { cwd: entry.directory, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 
-  // Keep requested tags/ranges in the manifest while lockfiles record exact resolutions.
-  const updated = JSON.parse(await readFile(entry.manifest, "utf8"));
-  for (const [name, version] of Object.entries(entry.dependencies)) updated.dependencies[name] = version;
-  await writeFile(entry.manifest, `${JSON.stringify(updated, null, updated.name === "@docrag/web" ? "\t" : 2)}\n`);
-
-  // Synchronize the restored manifest specifiers into the lockfile for frozen CI installs.
-  const installArgs = entry.manager === "pnpm" ? ["install", "--no-frozen-lockfile"] : ["install"];
-  const installResult = spawnSync(entry.manager, installArgs, { cwd: entry.directory, stdio: "inherit" });
-  if (installResult.status !== 0) process.exit(installResult.status ?? 1);
 }
 
 const resolveInstalledVersion = async (entry, dependency) => {
