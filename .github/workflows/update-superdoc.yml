@@ -87,16 +87,12 @@ jobs:
             dist/
             worker-dist/
           retention-days: 7
-      - name: Create update pull request
+      - name: Commit update to main
         if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           resolved=$(node -p "require('./superdoc-inline-revisions/node_modules/superdoc/package.json').version")
-          branch="automation/superdoc-${resolved}-${GITHUB_RUN_ID}"
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git switch -c "$branch"
           git add rag/apps/web/package.json rag/bun.lock \
             superdoc-inline-revisions/package.json superdoc-inline-revisions/pnpm-lock.yaml \
             template-builder-document-api-v2-demo/package.json template-builder-document-api-v2-demo/pnpm-lock.yaml \
@@ -104,7 +100,4 @@ jobs:
             canonical-collaboration-demo/server/package.json canonical-collaboration-demo/server/package-lock.json \
             dist-landing/index.html
           git commit -m "chore: update SuperDoc to ${resolved}"
-          git push --set-upstream origin "$branch"
-          gh pr create --base main --head "$branch" \
-            --title "chore: update SuperDoc to ${resolved}" \
-            --body "Updates every demo to SuperDoc ${resolved} and synchronizes the gallery version labels. Validation runs on this pull request."
+          git push origin HEAD:main
