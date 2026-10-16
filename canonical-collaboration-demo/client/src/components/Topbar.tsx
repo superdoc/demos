@@ -1,4 +1,6 @@
 import { ChangeEvent, useRef, useState } from 'react';
+import type { SuperDoc } from 'superdoc';
+import { ReferencesToolbar, type ReferencesToolbarProps } from './ReferencesToolbar';
 import type { Room } from '../types';
 
 export type DocumentMode = 'suggesting' | 'editing' | 'viewing';
@@ -8,11 +10,14 @@ type TopbarProps = {
   room?: Room;
   busy: boolean;
   mode: DocumentMode;
+  superdoc?: SuperDoc;
+  connectedUsers: number | null;
   onNewDocument: () => void;
   onUpload: (file: File) => void;
   onDownload: () => void;
   onDelete: () => void;
   onModeChange: (mode: DocumentMode) => void;
+  references: Omit<ReferencesToolbarProps, 'superdoc' | 'room' | 'mode' | 'disabled'>;
 };
 
 export function Topbar({
@@ -20,14 +25,18 @@ export function Topbar({
   room,
   busy,
   mode,
+  superdoc,
+  connectedUsers,
   onNewDocument,
   onUpload,
   onDownload,
   onDelete,
   onModeChange,
+  references,
 }: TopbarProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState('');
+  const [referencesActive, setReferencesActive] = useState(false);
 
   function uploadDocument(file?: File) {
     if (!file) return;
@@ -84,7 +93,7 @@ export function Topbar({
           <select
             aria-label="Document mode"
             value={mode}
-            disabled={!room}
+            disabled={busy || !room}
             onChange={(event) => onModeChange(event.target.value as DocumentMode)}
           >
             <option value="suggesting">Reviewing</option>
@@ -92,10 +101,25 @@ export function Topbar({
             <option value="viewing">Viewing</option>
           </select>
         </label>
+        <span className="connected-users" role="status" title="Browser participants in this document, including you">
+          <span className={`presence-dot${connectedUsers ? ' active' : ''}`} aria-hidden="true" />
+          {connectedUsers === null ? 'Connecting…' : `${connectedUsers} ${connectedUsers === 1 ? 'user' : 'users'} connected`}
+        </span>
       </div>
 
       <div className="ribbon-controls-row">
-        <div id="superdoc-toolbar" className="default-toolbar" aria-label="Document toolbar" />
+        <div id="superdoc-toolbar" className="default-toolbar" aria-label="Document toolbar" hidden={referencesActive}
+          inert={busy || references.fieldCodes} />
+        {referencesActive && <ReferencesToolbar key={`${room?.document_id}:${room?.generation}`}
+          {...references} superdoc={superdoc} room={room} mode={mode} disabled={busy || !room || !superdoc} />}
+        <button type="button" className="toolbar-switch" aria-label={referencesActive ? 'Home' : 'References'}
+          aria-controls={referencesActive ? 'superdoc-toolbar' : undefined}
+          onPointerDown={(event) => event.preventDefault()} onClick={() => setReferencesActive((current) => !current)}>
+          <svg aria-hidden="true" viewBox="0 0 24 24">{referencesActive
+            ? <path d="m3 11 9-8 9 8M5 10v11h5v-6h4v6h5V10" />
+            : <path d="M4 4h7a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4zM14 7a3 3 0 0 1 3-3h4v15h-3a4 4 0 0 0-4 2" />}</svg>
+          {referencesActive ? 'Home' : 'References'}
+        </button>
       </div>
     </header>
   );

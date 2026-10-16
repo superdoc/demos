@@ -12,7 +12,10 @@
     "@fastify/websocket": "11.2.0",
     "@hocuspocus/server": "2.15.3",
     "@superdoc/sdk": "2.15.0",
+    "@xmldom/xmldom": "0.9.12",
+    "citeproc": "2.4.63",
     "fastify": "5.12.4",
+    "jszip": "3.10.1",
     "openai": "5.19.1"
   }
 }

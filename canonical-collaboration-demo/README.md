@@ -129,6 +129,25 @@ A room contains one document with one stable document ID. Creating or uploading 
 
 The chat panel is isolated in `client/src/components/ChatPanel.tsx`. It communicates only through the public HTTP API and can be replaced with another agent interface.
 
+### Insert citations
+
+Choose **References** to switch from the editor toolbar to the References toolbar; **Home** switches back. Place the cursor in document text, or select a passage, then choose **Insert citation**. Choose a saved reference or enter a new source with its type, title, authors, year, publisher, pages, DOI, and URL. The citation is inserted at the cursor or after the selection, using the document's Editing/Reviewing mode. Sources are stored with the document and included in DOCX exports.
+
+The References toolbar also provides:
+
+- **Insert footnote**: inserts a native numbered footnote at the cursor and moves into its body for typing. The editor owns footnote placement and numbering. When the native API rejects a paragraph containing citation fields, the server inserts the note into a revision-checked DOCX snapshot and reloads it while preserving those fields.
+- **Next footnote / Previous footnote**: selects the superscript reference in the main text and centers it in view, following document order and wrapping at either end. Navigation also works in Viewing mode.
+- **Citations**: opens the reference library to the right of the agent panel. Double-click a reference to insert it at the document cursor; keyboard users can press Enter on a reference.
+- **Bibliography style**: applies APA 7, Chicago 18 author-date, or MLA 9 to native citation fields and an existing bibliography, using vendored CSL styles and citeproc-js. Source data and field instructions are retained. This control does not create a bibliography where one is absent.
+
+**Option–F9** toggles a local, read-only field-code view for citations and bibliography. Toggle again to return to the editable document. It does not change the collaborative document or exported field results. Changing bibliography style formats the shared document, preserves pending revisions through a DOCX round-trip, and refuses a snapshot that changed while formatting. Wait for an active agent job to finish before formatting or inserting citations.
+
+Citation source reads and writes use the server's SDK session so saved references remain available after joining or reopening a collaboration room. If another edit changes the document while the menu is open, reopen the menu at the intended cursor position before inserting.
+
+DOCX imports load saved Word bibliography source records into **Existing references**. This includes uncited sources, organization authors, and source catalogs stored in different custom XML parts. Imported references can be reused, and exports retain their original Word source tags and full source metadata. Replacing the document replaces its reference library. The menu can also be opened to browse references before placing a cursor in the document.
+
+Agent tool calls stream live in a separate bubble between the user prompt and the agent response, showing running, completed, or failed status and elapsed tool time. Each saved agent reply retains its own tool-call bubble, newest first. The collapsed bubble shows four complete calls and fades the fifth; clicking expands the full list, and clicking again collapses it. Expanded state is retained when the active job becomes a saved reply. Replies created before tool-call recording was enabled have no recorded trace.
+
 ## Services and ports
 
 `make dev` starts:
@@ -180,11 +199,17 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | `GET` | `/api/rooms/{roomId}/document` | Export and download the current collaborative DOCX |
 | `GET` | `/api/rooms/{roomId}/document/info` | Read document and collaboration metadata |
 | `PATCH` | `/api/rooms/{roomId}/document` | Dispatch one SuperDoc toolkit operation through the backend SDK |
+| `GET` | `/api/rooms/{roomId}/citation-sources` | Read saved citation sources and the server document revision |
+| `POST` | `/api/rooms/{roomId}/citation-sources` | Add a source using `{generation, input}` with SDK source fields and `expectedRevision` |
+| `POST` | `/api/rooms/{roomId}/citations` | Insert a citation using `{generation, input}` with SDK target, source ID, change mode, and `expectedRevision` |
+| `POST` | `/api/rooms/{roomId}/bibliography-style` | Format native citation and bibliography fields using `{generation, style, expectedRevision}` |
+| `POST` | `/api/rooms/{roomId}/footnotes` | Insert a footnote beside existing fields using `{generation, input: {at, changeMode, expectedRevision}}` |
 | `DELETE` | `/api/rooms/{roomId}/document` | Delete the document and room state |
 | `POST` | `/api/rooms/{roomId}/status` | Refresh activity and return current metadata with a stale-generation indicator |
 | `GET` | `/api/rooms/{roomId}/chat` | Read completed agent conversation messages |
 | `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}` | Read job status and result |
+| `GET` | `/api/rooms/{roomId}/jobs/{jobId}/events` | Stream job status and tool-call updates as server-sent events |
 | `DELETE` | `/api/rooms/{roomId}/jobs/{jobId}` | Cancel a queued or running job |
 
 ### End-to-end API example

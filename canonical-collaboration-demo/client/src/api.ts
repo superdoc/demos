@@ -1,4 +1,6 @@
 import type { ChatMessage, Job, Room, RoomStatus } from './types';
+import type { BrowserDocumentApi, TextTarget } from 'superdoc/ui';
+import type { BibliographyStyle, CitationSource, CitationInsertResult } from './references';
 
 type ResponseParser<T> = (response: Response) => Promise<T>;
 
@@ -58,8 +60,8 @@ export class ApiClient {
     return `${this.baseUrl}${this.roomPath(roomId)}/document`;
   }
 
-  getDocumentBlob(roomId: string, signal?: AbortSignal): Promise<Blob> {
-    return this.documentRequest(roomId, 'GET', { signal }, (response) => response.blob());
+  getDocumentBlob(roomId: string, signal?: AbortSignal, fieldCodes = false): Promise<Blob> {
+    return this.request(`${this.roomPath(roomId)}/document${fieldCodes ? '?fieldCodes=true' : ''}`, { signal }, (response) => response.blob());
   }
 
   getRoomStatus(roomId: string, generation?: number): Promise<RoomStatus> {
@@ -82,6 +84,10 @@ export class ApiClient {
     return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`);
   }
 
+  jobEventsUrl(roomId: string, jobId: string): string {
+    return `${this.baseUrl}${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}/events`;
+  }
+
   cancelJob(roomId: string, jobId: string): Promise<Job> {
     return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
@@ -91,6 +97,38 @@ export class ApiClient {
   async getChatHistory(roomId: string): Promise<ChatMessage[]> {
     const history = await this.request<{ messages: ChatMessage[] }>(`${this.roomPath(roomId)}/chat`);
     return history.messages;
+  }
+
+  getCitationSources(roomId: string): Promise<{ items: CitationSource[]; evaluatedRevision: string; bibliographyStyle: BibliographyStyle }> {
+    return this.request(`${this.roomPath(roomId)}/citation-sources`);
+  }
+
+  insertFootnote(room: Room, at: TextTarget, changeMode: 'tracked' | 'direct', expectedRevision: string): ReturnType<BrowserDocumentApi['footnotes']['insert']> {
+    return this.request(`${this.roomPath(room.room_id)}/footnotes`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, input: { at, changeMode, expectedRevision } }),
+    });
+  }
+
+  createCitationSource(room: Room, input: Parameters<BrowserDocumentApi['citations']['sources']['insert']>[0], expectedRevision: string | undefined): ReturnType<BrowserDocumentApi['citations']['sources']['insert']> {
+    return this.request(`${this.roomPath(room.room_id)}/citation-sources`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, input: { ...input, expectedRevision } }),
+    });
+  }
+
+  insertCitation(room: Room, input: Parameters<BrowserDocumentApi['citations']['insert']>[0], changeMode: 'tracked' | 'direct', expectedRevision: string | undefined): Promise<CitationInsertResult> {
+    return this.request(`${this.roomPath(room.room_id)}/citations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, input: { ...input, changeMode, expectedRevision } }),
+    });
+  }
+
+  setBibliographyStyle(room: Room, style: BibliographyStyle, expectedRevision: string): Promise<{ success: boolean; bibliographyStyle: BibliographyStyle }> {
+    return this.request(`${this.roomPath(room.room_id)}/bibliography-style`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, style, expectedRevision }),
+    });
   }
 }
 
