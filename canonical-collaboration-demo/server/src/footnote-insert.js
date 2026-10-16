@@ -14,6 +14,50 @@ const parse = (xml) => new DOMParser().parseFromString(xml, 'application/xml');
 const serializer = new XMLSerializer();
 const nodes = (parent, name) => Array.from(parent.getElementsByTagNameNS(W, name));
 
+function footnoteDocument(xml) {
+  const document = parse(xml);
+  const root = document.documentElement;
+  const elements = (node) => Array.from(node.childNodes).filter((child) => child.nodeType === 1);
+  const children = elements(root);
+  if (root.namespaceURI !== W || root.localName !== 'document' || children.length !== 1
+    || children[0].namespaceURI !== W || children[0].localName !== 'body') return document;
+  const body = children[0];
+  if (!Array.from(body.childNodes).every((child) => child.nodeType === 1
+    ? child.namespaceURI === W && child.localName === 'footnote'
+    : child.nodeType === 8 || !child.textContent?.trim())) return document;
+  // SDK exports can wrap separator-only footnote parts as a main document.
+  const footnotes = word(document, 'footnotes');
+  for (const attribute of Array.from(root.attributes)) {
+    footnotes.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value);
+  }
+  for (const child of Array.from(body.childNodes)) footnotes.appendChild(child);
+  document.replaceChild(footnotes, root);
+  return document;
+}
+
+export async function normalizeFootnoteParts(outputPath) {
+  const zip = await JSZip.loadAsync(await fs.readFile(outputPath));
+  const relationshipFile = zip.file('word/_rels/document.xml.rels');
+  if (!relationshipFile) return;
+  const relationships = parse(await relationshipFile.async('string'));
+  let changed = false;
+  for (const relationship of Array.from(relationships.getElementsByTagNameNS(R, 'Relationship'))) {
+    if (relationship.getAttribute('Type') !== relationshipType || relationship.getAttribute('TargetMode') === 'External') continue;
+    const target = relationship.getAttribute('Target');
+    const partPath = path.posix.normalize(target.startsWith('/') ? target.slice(1) : path.posix.join('word', target));
+    const file = zip.file(partPath);
+    if (!file) continue;
+    const xml = await file.async('string');
+    const original = parse(xml).documentElement;
+    const repaired = footnoteDocument(xml);
+    if (original.localName === 'document' && repaired.documentElement.localName === 'footnotes') {
+      zip.file(partPath, serializer.serializeToString(repaired));
+      changed = true;
+    }
+  }
+  if (changed) await fs.writeFile(outputPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+}
+
 function word(document, name, attributes = {}) {
   const element = document.createElementNS(W, `w:${name}`);
   for (const [key, value] of Object.entries(attributes)) element.setAttributeNS(W, `w:${key}`, String(value));
@@ -100,7 +144,7 @@ function insertReference(paragraph, offset, reference) {
 }
 
 // Preserve native Word fields while working around the plain-run footnote adapter.
-export async function insertFootnoteInSnapshot(outputPath, { at, changeMode = 'direct' }) {
+export async function insertFootnoteInSnapshot(outputPath, { at, content = '', changeMode = 'direct', author = 'Demo user' }) {
   const segment = at?.segments?.[0];
   if (at?.kind !== 'text' || at.segments.length !== 1 || segment.range.start !== segment.range.end
     || (at.story && at.story.storyType !== 'body') || (at.coordinateSpace && at.coordinateSpace !== 'visible')) {
@@ -117,7 +161,7 @@ export async function insertFootnoteInSnapshot(outputPath, { at, changeMode = 'd
   const target = relationship?.getAttribute('Target') || 'footnotes.xml';
   const partPath = path.posix.normalize(target.startsWith('/') ? target.slice(1) : path.posix.join('word', target));
   const existing = zip.file(partPath);
-  const notes = existing ? parse(await existing.async('string')) : parse(`<w:footnotes xmlns:w="${W}" xmlns:w14="${W14}"/>`);
+  const notes = existing ? footnoteDocument(await existing.async('string')) : parse(`<w:footnotes xmlns:w="${W}" xmlns:w14="${W14}"/>`);
   if (notes.documentElement.localName !== 'footnotes') throw new Error('The footnote part is invalid. Reimport the original Word document.');
   if (!existing) {
     for (const [id, type, marker] of [[-1, 'separator', 'separator'], [0, 'continuationSeparator', 'continuationSeparator']]) {
@@ -128,9 +172,11 @@ export async function insertFootnoteInSnapshot(outputPath, { at, changeMode = 'd
   }
   const noteId = String(Math.max(0, ...nodes(notes, 'footnote').map((node) => Number(node.getAttributeNS(W, 'id')) || 0)) + 1);
   let reference = referenceRun(document, 'footnoteReference', noteId);
+  let insertionAttributes;
   if (changeMode === 'tracked') {
     const ids = [...nodes(document, 'ins'), ...nodes(document, 'del')].map((node) => Number(node.getAttributeNS(W, 'id')) || 0);
-    const insertion = word(document, 'ins', { id: Math.max(0, ...ids) + 1, author: 'Demo user', date: new Date().toISOString() });
+    insertionAttributes = { id: Math.max(0, ...ids) + 1, author, date: new Date().toISOString() };
+    const insertion = word(document, 'ins', insertionAttributes);
     insertion.appendChild(reference); reference = insertion;
   }
   insertReference(paragraph, segment.range.start, reference);
@@ -138,6 +184,19 @@ export async function insertFootnoteInSnapshot(outputPath, { at, changeMode = 'd
   const p = word(notes, 'p');
   p.setAttributeNS(W14, 'w14:paraId', randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase());
   const properties = word(notes, 'pPr'); properties.appendChild(word(notes, 'pStyle', { val: 'FootnoteText' })); p.appendChild(properties);
+  if (content) {
+    const container = insertionAttributes ? word(notes, 'ins', insertionAttributes) : p;
+    const run = word(notes, 'r');
+    for (const [index, line] of content.split(/\r\n|\r|\n/).entries()) {
+      if (index) run.appendChild(word(notes, 'br'));
+      const text = word(notes, 't');
+      text.setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+      text.textContent = line;
+      run.appendChild(text);
+    }
+    container.appendChild(run);
+    if (container !== p) p.appendChild(container);
+  }
   note.appendChild(p); notes.documentElement.appendChild(note);
   if (!relationship) {
     relationship = relationships.createElementNS(R, 'Relationship');

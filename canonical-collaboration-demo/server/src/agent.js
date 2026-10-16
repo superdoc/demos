@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { config } from './config.js';
 import { logEvent } from './logging.js';
+import { footnoteTool } from './footnote-tool.js';
+import { citationTool, referenceLibraryContext } from './citation-tool.js';
 
 const maximumTurns = 12;
 
@@ -10,12 +12,15 @@ export function createDocumentAgent(documents) {
 
   async function run(document, prompt, history, isSuggesting, signal, { onToolCall = () => {}, messageId } = {}) {
     const changeMode = isSuggesting ? 'tracked' : 'direct';
+    await document.waitForReferences();
+    const referenceLibrary = referenceLibraryContext(await document.citationSources());
     const messages = [
       {
         role: 'system',
         content: `${toolkit.systemPrompt}\n\nFor this request, every document mutation must use changeMode=${changeMode}. Choose actions that support this change mode.`,
       },
       ...history.map(({ role, content }) => ({ role, content })),
+      { role: 'user', content: `document_reference_library (source metadata for this request):\n${referenceLibrary}` },
       { role: 'user', content: prompt },
     ];
     let fullOutput = '';
@@ -64,7 +69,7 @@ export function createDocumentAgent(documents) {
           args = JSON.parse(call.function.arguments || '{}');
           if (typeof args.action === 'string') toolCall.action = args.action;
           onToolCall({ ...toolCall });
-          if (call.function.name === 'superdoc_perform_action') args.changeMode = changeMode;
+          if (['superdoc_perform_action', footnoteTool.function.name, citationTool.function.name].includes(call.function.name)) args.changeMode = changeMode;
           result = await document.dispatch(call.function.name, args);
         } catch (error) {
           result = { ok: false, error: error instanceof Error ? error.message : String(error) };

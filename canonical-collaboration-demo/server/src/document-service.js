@@ -5,7 +5,9 @@ import { createAgentToolkit, SuperDocClient } from '@superdoc/sdk';
 import { logEvent } from './logging.js';
 import { readCitationImport, preserveCitationImport } from './citation-import.js';
 import { preserveDocxNamespaces, renderReferenceFields } from './reference-rendering.js';
-import { insertFootnoteInSnapshot } from './footnote-insert.js';
+import { insertFootnoteInSnapshot, normalizeFootnoteParts } from './footnote-insert.js';
+import { footnoteTool, footnoteInstructions, footnoteInput } from './footnote-tool.js';
+import { citationTool, citationInstructions, citationInput } from './citation-tool.js';
 
 export class Document {
   #handle;
@@ -53,6 +55,7 @@ export class Document {
 
   async replace(filename, documentPath) {
     this.#requireOpen();
+    await normalizeFootnoteParts(documentPath);
     const importedCitations = await readCitationImport(await fs.readFile(documentPath));
     await this.#handle.replaceFile(documentPath, { timeoutMs: 150_000 });
     this.#importedCitations = importedCitations;
@@ -69,6 +72,8 @@ export class Document {
 
   dispatch(tool, args) {
     this.#requireOpen();
+    if (tool === footnoteTool.function.name) return this.insertFootnote(footnoteInput(args));
+    if (tool === citationTool.function.name) return this.insertCitation(citationInput(args));
     return this.#toolkit.dispatch(this.#handle, tool, args);
   }
 
@@ -96,6 +101,14 @@ export class Document {
   insertCitation(input) {
     this.#requireOpen();
     return this.#referenceMutation(async () => {
+      const catalog = await this.citationSources();
+      if (input.expectedRevision && catalog.evaluatedRevision !== input.expectedRevision) {
+        throw new Error('The document changed. Inspect it again before inserting the citation.');
+      }
+      const available = new Set(catalog.items.map((source) => source.sourceId));
+      if (input.sourceIds.some((id) => !available.has(id))) {
+        throw new Error('A citation source is not in the document reference library. Use a sourceId from the available references.');
+      }
       const sourceIds = input.sourceIds.map((id) => [...this.#citationAliases].find(([, tag]) => tag === id)?.[0] ?? id);
       const result = await this.#handle.citations.insert({ ...input, sourceIds });
       if (!result.success) return result;
@@ -140,6 +153,7 @@ export class Document {
   async #writeSnapshot(outputPath) {
     const result = await this.#handle.save({ out: outputPath, force: true });
     await preserveDocxNamespaces(outputPath, this.path);
+    await normalizeFootnoteParts(outputPath);
     await preserveCitationImport(outputPath, this.#importedCitations, this.#citationAliases);
     return result;
   }
@@ -213,11 +227,15 @@ export class DocumentService {
   }
 
   getToolkit() {
-    return { tools: this.#toolkit.tools, systemPrompt: this.#toolkit.systemPrompt };
+    return {
+      tools: [...this.#toolkit.tools, footnoteTool, citationTool],
+      systemPrompt: `${this.#toolkit.systemPrompt}\n\n${footnoteInstructions}\n\n${citationInstructions}`,
+    };
   }
 
   async open({ id, filename, path, collaboration }) {
     if (this.#documents.has(id)) throw new Error(`Document is already open: ${id}`);
+    await normalizeFootnoteParts(path);
     const importedCitations = await readCitationImport(await fs.readFile(path));
     const handle = await this.#client.open({ doc: path, collaboration }, { timeoutMs: 150_000 });
     const document = new Document({
