@@ -216,6 +216,7 @@ export class RoomStore {
       document_id: room.document.id,
       generation: room.document.generation,
       filename: room.document.filename,
+      field_codes: room.document.fieldCodes,
       last_activity_at: room.lastActivityAt.toISOString(),
       collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };

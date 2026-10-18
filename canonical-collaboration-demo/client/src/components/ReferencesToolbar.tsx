@@ -15,21 +15,44 @@ export type ReferencesToolbarProps = {
   mode: DocumentMode;
   disabled: boolean;
   fieldCodes: boolean;
+  renderingBusy: boolean;
+  citationsHighlighted: boolean;
   citationsOpen: boolean;
   bibliographyStyle: BibliographyStyle;
   pendingBibliographyStyle?: BibliographyStyle;
   footnoteBusy: boolean;
+  bibliographyBusy: boolean;
   onCitationsToggle: () => void;
+  onRenderingToggle: () => void;
+  onHighlightToggle: () => void;
   onStyleChange: (style: BibliographyStyle) => void;
   onBusyChange: (busy: boolean) => void;
   onFootnoteBusyChange: (busy: boolean) => void;
+  onBibliographyBusyChange: (busy: boolean) => void;
   onInserted: () => void;
 };
 
-export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, citationsOpen,
-  bibliographyStyle, pendingBibliographyStyle, footnoteBusy, onCitationsToggle, onStyleChange, onBusyChange, onFootnoteBusyChange, onInserted }: ReferencesToolbarProps) {
+export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, renderingBusy, citationsHighlighted, citationsOpen,
+  bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy, onCitationsToggle, onRenderingToggle, onHighlightToggle, onStyleChange, onBusyChange, onFootnoteBusyChange, onBibliographyBusyChange, onInserted }: ReferencesToolbarProps) {
   const [error, setError] = useState('');
-  const cannotEdit = disabled || fieldCodes || mode === 'viewing' || !superdoc || !room;
+  const cannotEdit = disabled || mode === 'viewing' || !superdoc || !room;
+
+  async function insertBibliography() {
+    if (cannotEdit || mode !== 'editing' || bibliographyBusy) return;
+    setError('');
+    onBibliographyBusyChange(true);
+    try {
+      const { evaluatedRevision } = await api.getCitationSources(room!.room_id);
+      const result = await api.insertBibliography(room!, evaluatedRevision);
+      if (!result.success) throw new Error(result.failure.message);
+      onInserted();
+      if (result.formattingWarning) setError(result.formattingWarning);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      onBibliographyBusyChange(false);
+    }
+  }
 
   async function insertFootnote() {
     const doc = superdoc?.activeEditor?.doc;
@@ -91,7 +114,7 @@ export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, 
           Insert footnote
         </button>
         {footnoteBusy && <span className="visually-hidden" role="status">Inserting footnote…</span>}
-        <FootnoteNavigation superdoc={superdoc} room={room} disabled={disabled || fieldCodes || !superdoc || !room} onError={setError} />
+        <FootnoteNavigation superdoc={superdoc} room={room} fieldCodes={fieldCodes} disabled={disabled || !superdoc || !room} onError={setError} />
         <CitationMenu superdoc={superdoc} room={room} mode={mode} disabled={cannotEdit}
           onBusyChange={onBusyChange} onInserted={onInserted} />
       </div>
@@ -102,6 +125,15 @@ export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, 
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" /></svg>
           Citations
         </button>
+        <button type="button" className="reference-command"
+          disabled={cannotEdit || mode !== 'editing' || bibliographyBusy} aria-busy={bibliographyBusy}
+          title={mode !== 'editing' ? 'Switch the document to Editing to insert a bibliography' : 'Insert a bibliography at the end of the document using the current style'}
+          onPointerDown={(event) => event.preventDefault()} onClick={() => void insertBibliography()}>
+          {bibliographyBusy ? <span className="spinner reference-render-spinner" aria-hidden="true" />
+            : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 3h12v18H4zM8 7h4M8 11h4M8 15h3M20 6v8M16 10h8" /></svg>}
+          Insert bibliography
+        </button>
+        {bibliographyBusy && <span className="visually-hidden" role="status">Inserting bibliography…</span>}
       </div>
       <label className="bibliography-style-select">
         <span>Bibliography style</span>
@@ -117,6 +149,23 @@ export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, 
         </span>}
         </span>
       </label>
+      <button type="button" className={`reference-command${citationsHighlighted ? ' is-active' : ''}`}
+        disabled={!room || !superdoc} aria-pressed={citationsHighlighted}
+        title="Highlight all citations in blue"
+        onPointerDown={(event) => event.preventDefault()} onClick={onHighlightToggle}>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 3 7 7-9 9-7-7zM5 12l-2 7 7-2M3 22h18" /></svg>
+        Highlight citations
+      </button>
+      <button type="button" className={`reference-command${!fieldCodes ? ' is-active' : ''}`}
+        disabled={disabled || !room} aria-pressed={!fieldCodes} aria-keyshortcuts="Alt+F9"
+        aria-busy={renderingBusy}
+        aria-label="Render citations and bibliography"
+        title={fieldCodes ? 'Render citations and bibliography' : 'Show citation and bibliography field codes'}
+        onPointerDown={(event) => event.preventDefault()} onClick={onRenderingToggle}>
+        {renderingBusy ? <span className="spinner reference-render-spinner" aria-hidden="true" />
+          : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6" /></svg>}
+        <span className="reference-command-label">Render citations &amp; bibliography<small>Opt-F9</small></span>
+      </button>
       {error && <p className="reference-status error" role="alert">{error}</p>}
     </div>
   );

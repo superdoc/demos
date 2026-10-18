@@ -11,10 +11,11 @@ type Props = {
   superdoc?: SuperDoc;
   room?: Room;
   disabled: boolean;
+  fieldCodes: boolean;
   onError: (message: string) => void;
 };
 
-export function FootnoteNavigation({ superdoc, room, disabled, onError }: Props) {
+export function FootnoteNavigation({ superdoc, room, disabled, fieldCodes, onError }: Props) {
   const [navigating, setNavigating] = useState(false);
   const [status, setStatus] = useState('');
   const lastReference = useRef<string | undefined>(undefined);
@@ -38,7 +39,7 @@ export function FootnoteNavigation({ superdoc, room, disabled, onError }: Props)
     onError('');
     try {
       const [{ references, blocks }, selection] = await Promise.all([
-        api.getDocumentBlob(room.room_id).then(readFootnoteLocations),
+        api.getDocumentBlob(room.room_id, undefined, fieldCodes).then(readFootnoteLocations),
         doc.selection.current(),
       ]);
       if (!references.length) throw new Error('This document has no footnotes.');

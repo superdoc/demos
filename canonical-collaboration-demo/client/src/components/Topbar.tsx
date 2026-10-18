@@ -1,6 +1,7 @@
-import { ChangeEvent, useRef, useState } from 'react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import type { SuperDoc } from 'superdoc';
 import { ReferencesToolbar, type ReferencesToolbarProps } from './ReferencesToolbar';
+import { TrackedChangeActions } from './TrackedChangeActions';
 import type { Room } from '../types';
 
 export type DocumentMode = 'suggesting' | 'editing' | 'viewing';
@@ -37,6 +38,10 @@ export function Topbar({
   const fileInput = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState('');
   const [referencesActive, setReferencesActive] = useState(false);
+
+  useEffect(() => {
+    if (!room) setReferencesActive(false);
+  }, [room]);
 
   function uploadDocument(file?: File) {
     if (!file) return;
@@ -108,18 +113,20 @@ export function Topbar({
       </div>
 
       <div className="ribbon-controls-row">
-        <div id="superdoc-toolbar" className="default-toolbar" aria-label="Document toolbar" hidden={referencesActive}
-          inert={busy || references.fieldCodes} />
-        {referencesActive && <ReferencesToolbar key={`${room?.document_id}:${room?.generation}`}
+        <div id="superdoc-toolbar" className="default-toolbar" aria-label="Document toolbar" hidden={!!room && referencesActive}
+          inert={busy} />
+        {room && referencesActive && <ReferencesToolbar key={`${room.document_id}:${room.generation}`}
           {...references} superdoc={superdoc} room={room} mode={mode} disabled={busy || !room || !superdoc} />}
-        <button type="button" className="toolbar-switch" aria-label={referencesActive ? 'Home' : 'References'}
+        {room && !referencesActive && <TrackedChangeActions key={`${room.document_id}:${room.generation}`} superdoc={superdoc}
+          disabled={busy || mode === 'viewing'} onUpdated={references.onInserted} />}
+        {room && <button type="button" className="toolbar-switch" aria-label={referencesActive ? 'Home' : 'References'}
           aria-controls={referencesActive ? 'superdoc-toolbar' : undefined}
           onPointerDown={(event) => event.preventDefault()} onClick={() => setReferencesActive((current) => !current)}>
           <svg aria-hidden="true" viewBox="0 0 24 24">{referencesActive
             ? <path d="m3 11 9-8 9 8M5 10v11h5v-6h4v6h5V10" />
             : <path d="M4 4h7a3 3 0 0 1 3 3v14a4 4 0 0 0-4-2H4zM14 7a3 3 0 0 1 3-3h4v15h-3a4 4 0 0 0-4 2" />}</svg>
           {referencesActive ? 'Home' : 'References'}
-        </button>
+        </button>}
       </div>
     </header>
   );

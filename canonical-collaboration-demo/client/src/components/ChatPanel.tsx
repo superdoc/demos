@@ -10,6 +10,7 @@ type ChatPanelProps = {
   width: number;
   onWidthChange: (width: number) => void;
   reservedWidth?: number;
+  onDocumentUpdated?: () => void;
 };
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -59,13 +60,15 @@ function JobStatus({ job }: { job: Job }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0 }: ChatPanelProps) {
+export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string>();
   const historyRef = useRef<HTMLDivElement>(null);
+  const submittedPromptsRef = useRef<string[] | null>(null);
+  const promptNavigationRef = useRef<{ prompts: string[]; index: number; draft: string } | null>(null);
   const resizeStartRef = useRef<{ x: number; width: number } | undefined>(undefined);
   const streamRef = useRef<EventSource | undefined>(undefined);
   const activeJob = jobs.find((job) => !TERMINAL.has(job.status));
@@ -96,7 +99,11 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
 
   async function refreshHistory() {
     try {
-      setMessages(await api.getChatHistory(roomId));
+      const history = await api.getChatHistory(roomId);
+      setMessages(history);
+      if (submittedPromptsRef.current === null) {
+        submittedPromptsRef.current = history.filter((message) => message.role === 'user').map((message) => message.content);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -106,6 +113,8 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
     setJobs([]);
     setMessages([]);
     setError(undefined);
+    submittedPromptsRef.current = null;
+    promptNavigationRef.current = null;
     return () => { streamRef.current?.close(); streamRef.current = undefined; };
   }, [roomId]);
 
@@ -114,6 +123,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
   }, [disabled, roomId]);
 
   async function finishJob(job: Job) {
+    onDocumentUpdated?.();
     if (job.status === 'completed') {
       const history = await api.getChatHistory(roomId);
       setMessages(history);
@@ -171,6 +181,9 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
     const message = prompt.trim();
     if (!message) return;
     setError(undefined);
+    submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
+    submittedPromptsRef.current.push(message);
+    promptNavigationRef.current = null;
     setPrompt('');
     try {
       const job = await api.createJob(roomId, message, isSuggesting);
@@ -182,7 +195,25 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
   }
 
   function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing) return;
+    if ((event.key === 'ArrowUp' || event.key === 'ArrowDown')
+      && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      let navigation = promptNavigationRef.current;
+      if (!navigation) {
+        if (prompt.trim() || event.key === 'ArrowDown') return;
+        const prompts = (submittedPromptsRef.current ?? []).filter((value) => value.trim());
+        if (!prompts.length) return;
+        navigation = { prompts, index: prompts.length, draft: prompt };
+        promptNavigationRef.current = navigation;
+      }
+      event.preventDefault();
+      navigation.index = Math.max(0, Math.min(navigation.prompts.length, navigation.index + (event.key === 'ArrowUp' ? -1 : 1)));
+      setPrompt(navigation.prompts[navigation.index] ?? navigation.draft);
+      if (navigation.index === navigation.prompts.length) promptNavigationRef.current = null;
+      return;
+    }
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) promptNavigationRef.current = null;
+    if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
@@ -249,7 +280,8 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
         <textarea
           id="agent-prompt"
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => { promptNavigationRef.current = null; setPrompt(event.target.value); }}
+          onClick={() => { promptNavigationRef.current = null; }}
           onKeyDown={handlePromptKeyDown}
           placeholder={isSuggesting
             ? 'Enter a prompt for the agent to apply as a suggestion.'

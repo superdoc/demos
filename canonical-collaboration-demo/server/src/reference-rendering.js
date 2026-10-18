@@ -278,7 +278,7 @@ export async function renderReferenceFields(outputPath, { style = 'APA', fieldCo
   for (const field of allFields) {
     const isBibliography = /^\s*BIBLIOGRAPHY\b/i.test(field.instruction);
     if (fieldCodes) replaceCache(field, [plainHtml(`{ ${field.instruction.trim()} }`)], isBibliography);
-    else if (isBibliography && bibliography.length) replaceCache(field, bibliography, true, layout);
+    else if (isBibliography) replaceCache(field, bibliography.length ? bibliography : [''], true, layout);
     else if (rendered.has(field)) replaceCache(field, [rendered.get(field)], false);
   }
   for (const part of parts) zip.file(part.path, serializer.serializeToString(part.document));

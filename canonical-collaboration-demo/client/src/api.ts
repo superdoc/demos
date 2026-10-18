@@ -99,7 +99,7 @@ export class ApiClient {
     return history.messages;
   }
 
-  getCitationSources(roomId: string): Promise<{ items: CitationSource[]; evaluatedRevision: string; bibliographyStyle: BibliographyStyle }> {
+  getCitationSources(roomId: string): Promise<{ items: CitationSource[]; evaluatedRevision: string; bibliographyStyle: BibliographyStyle; fieldCodes: boolean }> {
     return this.request(`${this.roomPath(roomId)}/citation-sources`);
   }
 
@@ -128,6 +128,20 @@ export class ApiClient {
     return this.request(`${this.roomPath(room.room_id)}/bibliography-style`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ generation: room.generation, style, expectedRevision }),
+    });
+  }
+
+  insertBibliography(room: Room, expectedRevision: string): Promise<Awaited<ReturnType<BrowserDocumentApi['citations']['bibliography']['insert']>> & { formattingWarning?: string }> {
+    return this.request(`${this.roomPath(room.room_id)}/bibliographies`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, expectedRevision }),
+    });
+  }
+
+  setReferenceDisplay(room: Room, fieldCodes: boolean, expectedRevision: string): Promise<{ success: boolean; fieldCodes: boolean }> {
+    return this.request(`${this.roomPath(room.room_id)}/reference-display`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, fieldCodes, expectedRevision }),
     });
   }
 }

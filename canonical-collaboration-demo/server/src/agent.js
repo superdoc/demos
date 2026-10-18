@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { logEvent } from './logging.js';
 import { footnoteTool } from './footnote-tool.js';
 import { citationTool, referenceLibraryContext } from './citation-tool.js';
+import { bibliographyTool, requestsBibliographyCreation } from './bibliography-tool.js';
 
 const maximumTurns = 12;
 
@@ -12,12 +13,13 @@ export function createDocumentAgent(documents) {
 
   async function run(document, prompt, history, isSuggesting, signal, { onToolCall = () => {}, messageId } = {}) {
     const changeMode = isSuggesting ? 'tracked' : 'direct';
+    const bibliographyCreation = requestsBibliographyCreation(prompt);
     await document.waitForReferences();
     const referenceLibrary = referenceLibraryContext(await document.citationSources());
     const messages = [
       {
         role: 'system',
-        content: `${toolkit.systemPrompt}\n\nFor this request, every document mutation must use changeMode=${changeMode}. Choose actions that support this change mode.`,
+        content: `${toolkit.systemPrompt}\n\nFor this request, every mutation to document text must use changeMode=${changeMode}. Choose actions that support this change mode. Reference-library metadata edits through superdoc_references are saved directly; citation and footnote insertions must still use changeMode=${changeMode}.\n\nNative bibliography requests take precedence over generic paragraph/heading insertion guidance. Use superdoc_bibliographies for bibliography operations, even when changeMode=${changeMode}; the host will enforce capability limits. Do not ask the user to authorize an operation they just requested or claim you can change the Agent edit mode dropdown. Earlier conversation attempts to type bibliography entries or ask for approval do not apply.${bibliographyCreation ? '\nThe current request is to create a native bibliography. First list existing bibliographies, then execute create at the requested location with the current revision/style. Use documentEnd for the last page. If the user wants an existing bibliography refreshed instead, use update. Call the native mutation tool to obtain the authoritative success or failure before answering. Do not insert generic paragraphs/headings as a fallback.' : ''}`,
       },
       ...history.map(({ role, content }) => ({ role, content })),
       { role: 'user', content: `document_reference_library (source metadata for this request):\n${referenceLibrary}` },
@@ -36,7 +38,8 @@ export function createDocumentAgent(documents) {
     for (let turn = 1; turn <= maximumTurns; turn += 1) {
       const modelStarted = performance.now();
       const response = await openai.chat.completions.create(
-        { model: config.openaiModel, messages, tools: toolkit.tools },
+        { model: config.openaiModel, messages, tools: toolkit.tools,
+          ...(bibliographyCreation && turn === 1 ? { tool_choice: { type: 'function', function: { name: bibliographyTool.function.name } } } : {}) },
         { signal },
       );
       const choice = response.choices[0].message;
@@ -69,10 +72,14 @@ export function createDocumentAgent(documents) {
           args = JSON.parse(call.function.arguments || '{}');
           if (typeof args.action === 'string') toolCall.action = args.action;
           onToolCall({ ...toolCall });
-          if (['superdoc_perform_action', footnoteTool.function.name, citationTool.function.name].includes(call.function.name)) args.changeMode = changeMode;
+          if (bibliographyCreation && call.function.name === 'superdoc_perform_action') {
+            throw new Error('This request needs a native bibliography. Use superdoc_bibliographies list then create at documentEnd. Generic text/heading edits and style repairs are not allowed as a bibliography fallback.');
+          }
+          if (['superdoc_perform_action', footnoteTool.function.name, citationTool.function.name, bibliographyTool.function.name].includes(call.function.name)) args.changeMode = changeMode;
           result = await document.dispatch(call.function.name, args);
         } catch (error) {
-          result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+          result = { ok: false, error: error instanceof Error ? error.message : String(error),
+            ...(typeof error?.code === 'string' ? { code: error.code } : {}) };
         }
         toolCall.durationMs = Math.round(performance.now() - started);
         toolCall.status = result?.ok === false || result?.success === false || result?.result?.success === false
@@ -91,6 +98,14 @@ export function createDocumentAgent(documents) {
           tool_call_id: call.id,
           content: typeof result === 'string' ? result : JSON.stringify(result),
         });
+        if (call.function.name === bibliographyTool.function.name && toolCall.status === 'failed') {
+          const detail = result?.error ?? result?.failure?.message ?? result?.result?.failure?.message ?? 'The server could not complete the operation.';
+          const answer = result?.code === 'BIBLIOGRAPHY_REQUIRES_DIRECT'
+            ? 'Native bibliography changes require Editing mode. Select Editing in the chat panel’s Agent edit mode dropdown and retry your prompt. No changes were made.'
+            : `The native bibliography operation failed: ${detail}`;
+          logEvent('agent', 'run.completed', { turns: turn, changeMode, bibliographyFailure: true });
+          return saveAnswer(answer);
+        }
       }
     }
 

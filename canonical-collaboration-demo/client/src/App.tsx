@@ -7,7 +7,7 @@ import { Topbar, type DocumentMode } from './components/Topbar';
 import type { Room } from './types';
 import type { BibliographyStyle } from './references';
 import { CitationsPanel } from './components/CitationsPanel';
-import { FieldCodesView } from './components/FieldCodesView';
+import { CitationHighlights } from './components/CitationHighlights';
 
 function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room | undefined) {
   if (!currentRoom || !nextRoom) return currentRoom === nextRoom;
@@ -15,7 +15,8 @@ function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room |
     && currentRoom.document_id === nextRoom.document_id
     && currentRoom.generation === nextRoom.generation
     && currentRoom.filename === nextRoom.filename
-    && currentRoom.collaboration_url === nextRoom.collaboration_url;
+    && currentRoom.collaboration_url === nextRoom.collaboration_url
+    && currentRoom.field_codes === nextRoom.field_codes;
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -39,28 +40,53 @@ export default function App() {
   const [bibliographyStyle, setBibliographyStyle] = useState<BibliographyStyle>('APA');
   const [pendingBibliographyStyle, setPendingBibliographyStyle] = useState<BibliographyStyle>();
   const [footnoteBusy, setFootnoteBusy] = useState(false);
+  const [bibliographyBusy, setBibliographyBusy] = useState(false);
   const [referenceBusy, setReferenceBusy] = useState(false);
   const [referenceRefresh, setReferenceRefresh] = useState(0);
   const [fieldCodes, setFieldCodes] = useState(false);
+  const [renderingBusy, setRenderingBusy] = useState(false);
+  const [citationsHighlighted, setCitationsHighlighted] = useState(false);
   const refreshReferences = useCallback(() => setReferenceRefresh((current) => current + 1), []);
+  const toggleReferenceRendering = useCallback(async () => {
+    if (!room || !superdoc || busy || referenceBusy || document.querySelector('.citation-dialog[open]')) return;
+    setRenderingBusy(true);
+    setReferenceBusy(true);
+    setError(undefined);
+    try {
+      const current = await api.getCitationSources(room.room_id);
+      const result = await api.setReferenceDisplay(room, !current.fieldCodes, current.evaluatedRevision);
+      if (!result.success) throw new Error('Could not switch citation display.');
+      setFieldCodes(result.fieldCodes);
+      refreshReferences();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setRenderingBusy(false);
+      setReferenceBusy(false);
+    }
+  }, [room, superdoc, busy, referenceBusy, refreshReferences]);
 
   useEffect(() => {
     const toggle = (event: globalThis.KeyboardEvent) => {
       if (event.altKey && (event.code === 'F9' || event.key === 'F9')) {
         event.preventDefault(); event.stopPropagation();
-        if (!event.repeat && room && !referenceBusy && !document.querySelector('.citation-dialog[open]')) setFieldCodes((current) => !current);
+        if (!event.repeat) void toggleReferenceRendering();
       }
     };
     window.addEventListener('keydown', toggle, true);
     return () => window.removeEventListener('keydown', toggle, true);
-  }, [room, referenceBusy]);
+  }, [toggleReferenceRendering]);
 
   useEffect(() => { setFieldCodes(false); }, [room?.room_id, room?.generation]);
+  useEffect(() => { setCitationsHighlighted(false); }, [room?.room_id, room?.generation]);
 
   useEffect(() => {
     let active = true;
     if (room) api.getCitationSources(room.room_id).then((state) => {
-      if (active) setBibliographyStyle(state.bibliographyStyle || 'APA');
+      if (active) {
+        setBibliographyStyle(state.bibliographyStyle || 'APA');
+        setFieldCodes(state.fieldCodes ?? false);
+      }
     }).catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : String(caught)); });
     return () => { active = false; };
   }, [room?.room_id, room?.generation, referenceRefresh]);
@@ -99,6 +125,7 @@ export default function App() {
         if (!active) return;
         const nextRoom = status.document ?? undefined;
         setRoom((currentRoom) => hasSameDocumentMetadata(currentRoom, nextRoom) ? currentRoom : nextRoom);
+        setFieldCodes(nextRoom?.field_codes ?? false);
         if (status.stale) {
           setError(status.document
             ? 'The document changed on the server. Reload the browser if the editor does not update.'
@@ -162,35 +189,37 @@ export default function App() {
         onDelete={() => void remove()}
         onModeChange={setMode}
         superdoc={superdoc}
-        references={{ fieldCodes, citationsOpen, bibliographyStyle, pendingBibliographyStyle, footnoteBusy,
+        references={{ fieldCodes, renderingBusy, citationsHighlighted, citationsOpen, bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy,
+          onHighlightToggle: () => setCitationsHighlighted((current) => !current),
           onCitationsToggle: () => setCitationsOpen((current) => !current),
+          onRenderingToggle: toggleReferenceRendering,
           onStyleChange: (style) => void changeBibliographyStyle(style),
           onFootnoteBusyChange: (pending) => { setFootnoteBusy(pending); setReferenceBusy(pending); },
+          onBibliographyBusyChange: (pending) => { setBibliographyBusy(pending); setReferenceBusy(pending); },
           onBusyChange: setReferenceBusy, onInserted: refreshReferences }}
       />
 
       {error && <p className="banner error">{error}</p>}
       <section className="workspace">
         <div className="document-pane">
-          {referenceBusy && !pendingBibliographyStyle && !footnoteBusy && <div className="reference-busy-overlay" role="status"><span className="spinner" />Updating references…</div>}
+          {referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !renderingBusy && <div className="reference-busy-overlay" role="status"><span className="spinner" />Updating references…</div>}
           {busy ? (
             <div className="upload-loading" role="status" aria-live="polite">
               <span className="spinner" aria-hidden="true" />
               <span>Preparing document…</span>
             </div>
           ) : room ? (
-            <>
-            <div className="live-document" hidden={fieldCodes} inert={referenceBusy && !pendingBibliographyStyle && !footnoteBusy}>
+            <div className="live-document" inert={referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !renderingBusy}>
             <DocumentEditor
               room={room}
-              mode={pendingBibliographyStyle || footnoteBusy ? 'viewing' : mode}
+              mode={pendingBibliographyStyle || footnoteBusy || bibliographyBusy || renderingBusy ? 'viewing' : mode}
               onActivity={updateRoomActivity}
               onConnectedUsersChange={setConnectedUsers}
               onReady={setSuperdoc}
             />
+            {citationsHighlighted && <CitationHighlights key={`${room.document_id}:${room.generation}`}
+              superdoc={superdoc} refresh={referenceRefresh} fieldCodes={fieldCodes} />}
             </div>
-            {fieldCodes && <FieldCodesView room={room} superdoc={superdoc} refresh={referenceRefresh} />}
-            </>
           ) : (
             <div className="welcome">
               <h2>Upload a DOCX to start this room</h2>
@@ -203,10 +232,11 @@ export default function App() {
           disabled={!room || busy || referenceBusy}
           width={chatWidth}
           onWidthChange={setChatWidth}
+          onDocumentUpdated={refreshReferences}
           reservedWidth={citationsOpen ? 310 : 0}
         />
         {citationsOpen && <CitationsPanel room={room} superdoc={superdoc} mode={mode}
-          disabled={busy || referenceBusy || fieldCodes} refresh={referenceRefresh}
+          disabled={busy || referenceBusy} refresh={referenceRefresh}
           onClose={() => setCitationsOpen(false)} onBusyChange={setReferenceBusy} onInserted={refreshReferences} />}
       </section>
     </main>

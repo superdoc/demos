@@ -110,13 +110,14 @@ function remapInstruction(instruction, aliases) {
 }
 
 // Keep original Word tags and full source XML when exporting SDK-hydrated references.
-export async function preserveCitationImport(outputPath, imported, aliases) {
-  if (!imported.records.length) return;
+export async function preserveCitationImport(outputPath, imported, aliases, { removedTags = new Set(), canonical = false } = {}) {
+  if (!imported.records.length && !removedTags.size && !canonical) return;
   const zip = await JSZip.loadAsync(await fs.readFile(outputPath));
   const existing = await catalogs(zip);
   let primary = existing[0];
   if (!primary) {
-    const document = parse(imported.template);
+    if (!imported.records.length) return;
+    const document = parse(imported.template || `<b:Sources xmlns:b="${bibliographyNS}" StyleName="${imported.style || 'APA'}"/>`);
     primary = { document, root: document.documentElement };
     for (const source of children(primary.root, bibliographyNS, 'Source')) primary.root.removeChild(source);
     let index = 1;
@@ -147,7 +148,7 @@ export async function preserveCitationImport(outputPath, imported, aliases) {
   for (const catalog of existing) {
     for (const source of children(catalog.root, bibliographyNS, 'Source')) {
       const tag = text(source, 'Tag');
-      if (aliases.has(tag) || originalTags.has(tag)) catalog.root.removeChild(source);
+      if (canonical || aliases.has(tag) || originalTags.has(tag) || removedTags.has(tag)) catalog.root.removeChild(source);
     }
     if (catalog !== primary) zip.file(catalog.path, serializer.serializeToString(catalog.document));
   }
@@ -170,4 +171,77 @@ export async function preserveCitationImport(outputPath, imported, aliases) {
     zip.file(file.name, serializer.serializeToString(document));
   }
   await fs.writeFile(outputPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+}
+
+function sourceIsCited(document, tag) {
+  const instructions = Array.from(document.getElementsByTagNameNS(wordNS, 'fldSimple')).map((field) => field.getAttributeNS(wordNS, 'instr'));
+  const stack = [];
+  for (const node of Array.from(document.getElementsByTagNameNS(wordNS, '*'))) {
+    if (node.localName === 'fldChar') {
+      const type = node.getAttributeNS(wordNS, 'fldCharType');
+      if (type === 'begin') stack.push('');
+      else if (type === 'end' && stack.length) instructions.push(stack.pop());
+    } else if (node.localName === 'instrText' && stack.length) stack[stack.length - 1] += node.textContent;
+  }
+  return instructions.some((instruction) => {
+    const tokens = instruction.match(/"[^"]*"|\S+/g) ?? [];
+    return /^CITATION$/i.test(tokens[0] ?? '') && tokens.some((token, index) =>
+      (index === 1 || tokens[index - 1] === '\\m') && token.replace(/^"|"$/g, '') === tag);
+  });
+}
+
+export async function mutateReferenceSnapshot(outputPath, { action, sourceId, type, fields = {} }) {
+  const imported = await readCitationImport(await fs.readFile(outputPath));
+  const previous = imported.records.find((record) => record.tag === sourceId);
+  if (action !== 'create' && !previous) throw new Error('Reference not found. Read the current reference library.');
+  if (action === 'delete') {
+    const zip = await JSZip.loadAsync(await fs.readFile(outputPath));
+    for (const file of zip.file(/^word\/(?!_rels\/).*\.xml$/)) {
+      const xml = await file.async('string');
+      if (/CITATION/i.test(xml) && sourceIsCited(parse(xml), sourceId)) throw new Error('This reference is still cited in the document. Remove its citation fields before deleting the saved source.');
+    }
+    imported.records = imported.records.filter((record) => record.tag !== sourceId);
+    await preserveCitationImport(outputPath, imported, new Map(), { removedTags: new Set([sourceId]) });
+    return { sourceId };
+  }
+
+  const tag = previous?.tag ?? `ref_${randomUUID().replaceAll('-', '')}`;
+  const document = parse(previous?.xml || `<b:Source xmlns:b="${bibliographyNS}"/>`);
+  const root = document.documentElement;
+  function set(parent, name, value) {
+    for (const old of children(parent, bibliographyNS, name)) parent.removeChild(old);
+    if (value === undefined || value === '') return;
+    const child = element(document, bibliographyNS, `b:${name}`);
+    if (typeof value === 'string') child.textContent = value;
+    parent.appendChild(child);
+    return child;
+  }
+  set(root, 'Tag', tag);
+  if (type || !previous) {
+    const wordType = Object.entries(sourceTypes).find(([, value]) => value === type)?.[0];
+    set(root, 'SourceType', wordType || 'Misc');
+  }
+  if (!previous) set(root, 'Guid', `{${randomUUID().toUpperCase()}}`);
+  for (const [xmlName, fieldName] of Object.entries(fieldNames)) {
+    if (fieldName in fields) set(root, xmlName, fields[fieldName]);
+  }
+  for (const [fieldName, role] of [['authors', 'Author'], ['editor', 'Editor'], ['translator', 'Translator']]) {
+    if (!(fieldName in fields) && !(fieldName === 'authors' && 'corporateAuthor' in fields)) continue;
+    const author = children(root, bibliographyNS, 'Author')[0] || set(root, 'Author', true);
+    const container = set(author, role, true);
+    if (fieldName === 'authors' && fields.corporateAuthor) set(container, 'Corporate', fields.corporateAuthor);
+    else {
+      const list = set(container, 'NameList', true);
+      for (const person of fields[fieldName] ?? []) {
+        const node = element(document, bibliographyNS, 'b:Person');
+        for (const name of ['first', 'middle', 'last']) if (person[name]) set(node, name[0].toUpperCase() + name.slice(1), person[name]);
+        list.appendChild(node);
+      }
+    }
+  }
+  const record = { tag, xml: serializer.serializeToString(root) };
+  if (previous) imported.records = imported.records.map((item) => item.tag === tag ? record : item);
+  else imported.records.push(record);
+  await preserveCitationImport(outputPath, imported, new Map());
+  return { sourceId: tag };
 }

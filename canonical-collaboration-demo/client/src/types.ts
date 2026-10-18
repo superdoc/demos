@@ -3,6 +3,7 @@ export type Room = {
   document_id: string;
   generation: number;
   filename: string;
+  field_codes?: boolean;
   last_activity_at: string;
   collaboration_url: string;
 };

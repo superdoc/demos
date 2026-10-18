@@ -106,6 +106,38 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     }
   }
 
+  async function referenceDisplay(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, fieldCodes, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before switching reference display.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (typeof fieldCodes !== 'boolean' || typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('Reference display mode and document revision are required.');
+    try {
+      const result = await room.document.setReferenceDisplay(fieldCodes, expectedRevision);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function insertBibliography(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before inserting a bibliography.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('A document revision is required.');
+    try {
+      const result = await room.document.dispatch('superdoc_bibliographies', {
+        action: 'create', position: 'documentEnd', changeMode: 'direct', expectedRevision,
+      });
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
   async function getRoomStatus(request) {
     return rooms.status(request.params.roomId, request.body?.generation);
   }
@@ -177,6 +209,8 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     { url: `${roomPath}/citation-sources`, method: 'POST', handler: mutateCitation },
     { url: `${roomPath}/citations`, method: 'POST', handler: mutateCitation },
     { url: `${roomPath}/bibliography-style`, method: 'POST', handler: bibliographyStyle },
+    { url: `${roomPath}/bibliographies`, method: 'POST', handler: insertBibliography },
+    { url: `${roomPath}/reference-display`, method: 'POST', handler: referenceDisplay },
     // Delete the room's document and associated ephemeral state.
     { url: `${roomPath}/document`, method: 'DELETE', handler: deleteDocument },
     // Refresh room activity and reconcile document generation metadata.
