@@ -1,0 +1,12 @@
+export type { DocumentMode, ContainerResolver, ReferenceTransport } from './types';
+export * from './native/references';
+export { readFootnoteLocations } from './workarounds/footnotes';
+export { applyFootnoteReviewLabel } from './workarounds/footnote-review-labels';
+export { installTrackedReplacementCaretRepair } from './workarounds/tracked-replacement-caret';
+export { CitationDeletion } from './components/CitationDeletion';
+export { BibliographyDeletion } from './components/BibliographyDeletion';
+export { FootnoteHighlights } from './components/FootnoteHighlights';
+export { FootnoteNavigation } from './components/FootnoteNavigation';
+export { FootnoteReviewLabels } from './components/FootnoteReviewLabels';
+export { TrackedReplacementCaret } from './components/TrackedReplacementCaret';
+export { CitationHighlights } from './components/CitationHighlights';

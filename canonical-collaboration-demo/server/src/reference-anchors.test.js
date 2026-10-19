@@ -5,12 +5,12 @@ import os from 'node:os';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { DOMParser } from '@xmldom/xmldom';
-import { readParagraphPosition, resolveReferenceAnchor, verifyInsertedReference } from './reference-anchors.js';
-import { insertFootnoteInSnapshot } from './footnote-insert.js';
-import { insertCitationInSnapshot } from './citation-insert.js';
-import { renderReferenceFields } from './reference-rendering.js';
-import { citationInput } from './citation-tool.js';
-import { footnoteInput } from './footnote-tool.js';
+import { readParagraphPosition, resolveReferenceAnchor, verifyInsertedReference } from './reference-integration/workarounds/reference-anchors.js';
+import { insertFootnoteInSnapshot } from './reference-integration/workarounds/footnote-insert.js';
+import { insertCitationInSnapshot } from './reference-integration/workarounds/citation-insert.js';
+import { renderReferenceFields } from './reference-integration/workarounds/reference-rendering.js';
+import { citationInput } from './reference-integration/tools/citation-tool.js';
+import { footnoteInput } from './reference-integration/tools/footnote-tool.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';

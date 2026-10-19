@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { referenceAnchorSchema, validateReferenceAnchor } from './reference-anchor-contract.js';
-import { citationTool, citationInput } from './citation-tool.js';
-import { footnoteTool, footnoteInput } from './footnote-tool.js';
-import { toolErrorResult } from './tool-errors.js';
+import { referenceAnchorSchema, validateReferenceAnchor } from './reference-integration/tools/reference-anchor-contract.js';
+import { citationTool, citationInput } from './reference-integration/tools/citation-tool.js';
+import { footnoteTool, footnoteInput } from './reference-integration/tools/footnote-tool.js';
+import { toolErrorResult } from './reference-integration/agent/tool-errors.js';
 
 test('strict schemas require the fields for each anchor kind and prohibit unrelated fields', () => {
   assert.equal(citationTool.function.strict, true);

@@ -179,7 +179,11 @@ Bibliography creation writes a native Word field into a revision-checked DOCX sn
 
 Agent tool calls stream live in a separate bubble between the user prompt and the agent response, showing running, completed, or failed status and elapsed tool time. Each saved agent reply retains its own tool-call bubble, newest first. The collapsed bubble shows four complete calls and fades the fifth; clicking expands the full list, and clicking again collapses it. Expanded state is retained when the active job becomes a saved reply. Replies created before tool-call recording was enabled have no recorded trace.
 
-Reviewing-mode typing includes an isolated selection workaround for replacements following earlier tracked deletions in a paragraph. Before native typing begins, it reapplies the selected range in visible coordinates using the public selection API, preventing replacement letters from splitting around deleted text. The implementation lives in `client/src/workarounds/tracked-replacement-caret.ts`, with React lifecycle wiring in `components/TrackedReplacementCaret.tsx`. Native typing retains revision creation and undo. Verify the guards with `node --test tests/tracked-replacement-caret.test.mjs`.
+Reviewing-mode typing includes an isolated selection workaround for replacements following earlier tracked deletions in a paragraph. Before native typing begins, it reapplies the selected range in visible coordinates using the public selection API, preventing replacement letters from splitting around deleted text. The implementation lives in `client/src/reference-integration/workarounds/tracked-replacement-caret.ts`, with portable React lifecycle wiring in `client/src/reference-integration/components/TrackedReplacementCaret.tsx`. Native typing retains revision creation and undo. Verify the guards with `node --test tests/tracked-replacement-caret.test.mjs`.
+
+## Customer reference integration
+
+The citation/footnote tools and compatibility fixes are isolated in portable server and browser modules. See [the integration guide](docs/customer-integration.md), [workaround inventory](docs/reference-integration.md), and [agent guidance](AGENTS.md). The customer’s agent can integrate the source with its existing agent loop through `createReferenceAgentAdapter`, retaining native API calls, custom tools, and compatibility fixes together. The demo uses this same adapter.
 
 ## Services and ports
 
@@ -328,8 +332,10 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 - Fastify and Hocuspocus setup, health and collaboration routes, hooks, cleanup, and shutdown: `server/src/server.js`
 - Room, document, chat, status, and job routes: `server/src/rooms/routes.js`
 - Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms/store.js`
-- Shared SDK client, document objects, and document operations: `server/src/document-service.js`
-- OpenAI calls, system prompt, and SuperDoc tool dispatch: `server/src/agent.js`
+- Demo SDK startup and document registration: `server/src/document-service.js`
+- Portable document operations, tools, agent policy, and workarounds: `server/src/reference-integration/`
+- Demo OpenAI/model/logging injection: `server/src/agent.js`
+- Portable browser adapters and injected demo transport: `client/src/reference-integration/`, `client/src/reference-transport.ts`
 - In-memory queue, cancellation, and job state: `server/src/job-service.js`
 - Browser API and room-status client: `client/src/api.ts`
 - Replaceable agent UI: `client/src/components/ChatPanel.tsx`

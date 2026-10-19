@@ -1,7 +1,7 @@
-import { citationTool } from './citation-tool.js';
-import { footnoteTool } from './footnote-tool.js';
-import { referenceTool } from './reference-tool.js';
-import { bibliographyTool } from './bibliography-tool.js';
+import { citationTool } from '../tools/citation-tool.js';
+import { footnoteTool } from '../tools/footnote-tool.js';
+import { referenceTool } from '../tools/reference-tool.js';
+import { bibliographyTool } from '../tools/bibliography-tool.js';
 
 const quote = (value) => typeof value === 'string' && value ? JSON.stringify(value) : '(unspecified)';
 function location(anchor) {

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import JSZip from 'jszip';
 import { DOMParser } from '@xmldom/xmldom';
-import { validateReferenceAnchor } from './reference-anchor-contract.js';
+import { validateReferenceAnchor } from '../tools/reference-anchor-contract.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';

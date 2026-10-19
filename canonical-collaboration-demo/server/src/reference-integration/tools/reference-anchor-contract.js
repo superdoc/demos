@@ -1,4 +1,4 @@
-import { ToolInputError } from './tool-errors.js';
+import { ToolInputError } from '../agent/tool-errors.js';
 
 const text = { type: 'string', minLength: 1 };
 const object = (properties) => ({ type: 'object', additionalProperties: false, properties, required: Object.keys(properties) });

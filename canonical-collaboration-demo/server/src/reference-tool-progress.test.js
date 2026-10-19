@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createReferenceProgress } from './reference-tool-progress.js';
-import { createRunProgress } from './agent-run-progress.js';
+import { createReferenceProgress } from './reference-integration/agent/reference-tool-progress.js';
+import { createRunProgress } from './reference-integration/agent/agent-run-progress.js';
 
 test('source receipts supply titles for later citation reports; failures cannot become completed entries', () => {
   const describe = createReferenceProgress({ items: [] });

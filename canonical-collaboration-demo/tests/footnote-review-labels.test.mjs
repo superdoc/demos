@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyFootnoteReviewLabel } from '../client/src/footnote-review-labels.ts';
+import { applyFootnoteReviewLabel } from '../client/src/reference-integration/workarounds/footnote-review-labels.ts';
 
 test('footnote caption correction preserves IDs, native type, and decisions', () => {
   const comment = { commentId: 'native-id', trackedChange: true, trackedChangeDisplayType: 'tableInsert',

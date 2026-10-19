@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import JSZip from 'jszip';
-import { readCitationImport, preserveCitationImport } from './citation-import.js';
+import { readCitationImport, preserveCitationImport } from './reference-integration/workarounds/citation-import.js';
 import { DocumentService } from './document-service.js';
 
 const bibliographyNS = 'http://schemas.openxmlformats.org/officeDocument/2006/bibliography';

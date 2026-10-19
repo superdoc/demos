@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { installTrackedReplacementCaretRepair } from '../client/src/workarounds/tracked-replacement-caret.ts';
+import { installTrackedReplacementCaretRepair } from '../client/src/reference-integration/workarounds/tracked-replacement-caret.ts';
 
 const story = { kind: 'story', storyType: 'body' };
 const point = (offset, blockId = 'paragraph') => ({ kind: 'text', blockId, offset, story });

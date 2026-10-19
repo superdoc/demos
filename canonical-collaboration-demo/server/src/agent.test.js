@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createDocumentAgent } from './agent.js';
-import { citationTool, citationInput } from './citation-tool.js';
-import { footnoteTool } from './footnote-tool.js';
-import { createRunProgress } from './agent-run-progress.js';
+import { citationTool, citationInput } from './reference-integration/tools/citation-tool.js';
+import { footnoteTool } from './reference-integration/tools/footnote-tool.js';
+import { createRunProgress } from './reference-integration/agent/agent-run-progress.js';
 
 function harness(responses) {
   const requests = [];
