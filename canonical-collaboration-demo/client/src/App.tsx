@@ -10,6 +10,7 @@ import { CitationsPanel } from './components/CitationsPanel';
 import { CitationHighlights } from './components/CitationHighlights';
 import { FootnoteHighlights } from './components/FootnoteHighlights';
 import { FootnoteReviewLabels } from './components/FootnoteReviewLabels';
+import { TrackedReplacementCaret } from './components/TrackedReplacementCaret';
 import { BibliographyDeletion } from './components/BibliographyDeletion';
 import { CitationDeletion } from './components/CitationDeletion';
 
@@ -243,6 +244,7 @@ export default function App() {
               onReady={setSuperdoc}
             />
             <FootnoteReviewLabels superdoc={superdoc} />
+            <TrackedReplacementCaret superdoc={superdoc} mode={mode} disabled={busy || referenceBusy} />
             <CitationDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}
               onBusyChange={onCitationDeletionBusy} onUpdated={refreshReferences} onError={setError} />
             <BibliographyDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}

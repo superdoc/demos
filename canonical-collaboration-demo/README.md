@@ -179,6 +179,8 @@ Bibliography creation writes a native Word field into a revision-checked DOCX sn
 
 Agent tool calls stream live in a separate bubble between the user prompt and the agent response, showing running, completed, or failed status and elapsed tool time. Each saved agent reply retains its own tool-call bubble, newest first. The collapsed bubble shows four complete calls and fades the fifth; clicking expands the full list, and clicking again collapses it. Expanded state is retained when the active job becomes a saved reply. Replies created before tool-call recording was enabled have no recorded trace.
 
+Reviewing-mode typing includes an isolated selection workaround for replacements following earlier tracked deletions in a paragraph. Before native typing begins, it reapplies the selected range in visible coordinates using the public selection API, preventing replacement letters from splitting around deleted text. The implementation lives in `client/src/workarounds/tracked-replacement-caret.ts`, with React lifecycle wiring in `components/TrackedReplacementCaret.tsx`. Native typing retains revision creation and undo. Verify the guards with `node --test tests/tracked-replacement-caret.test.mjs`.
+
 ## Services and ports
 
 `make dev` starts:
