@@ -8,6 +8,9 @@ import type { Room } from './types';
 import type { BibliographyStyle } from './references';
 import { CitationsPanel } from './components/CitationsPanel';
 import { CitationHighlights } from './components/CitationHighlights';
+import { FootnoteHighlights } from './components/FootnoteHighlights';
+import { BibliographyDeletion } from './components/BibliographyDeletion';
+import { CitationDeletion } from './components/CitationDeletion';
 
 function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room | undefined) {
   if (!currentRoom || !nextRoom) return currentRoom === nextRoom;
@@ -34,6 +37,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<DocumentMode>('editing');
   const [chatWidth, setChatWidth] = useState(360);
+  const [agentOpen, setAgentOpen] = useState(true);
   const [connectedUsers, setConnectedUsers] = useState<number | null>(null);
   const [superdoc, setSuperdoc] = useState<SuperDoc>();
   const [citationsOpen, setCitationsOpen] = useState(false);
@@ -41,12 +45,28 @@ export default function App() {
   const [pendingBibliographyStyle, setPendingBibliographyStyle] = useState<BibliographyStyle>();
   const [footnoteBusy, setFootnoteBusy] = useState(false);
   const [bibliographyBusy, setBibliographyBusy] = useState(false);
+  const [bibliographyDeletionBusy, setBibliographyDeletionBusy] = useState(false);
+  const [citationDeletionBusy, setCitationDeletionBusy] = useState(false);
+  const [citationInsertionBusy, setCitationInsertionBusy] = useState(false);
   const [referenceBusy, setReferenceBusy] = useState(false);
   const [referenceRefresh, setReferenceRefresh] = useState(0);
   const [fieldCodes, setFieldCodes] = useState(false);
   const [renderingBusy, setRenderingBusy] = useState(false);
   const [citationsHighlighted, setCitationsHighlighted] = useState(false);
+  const [footnotesHighlighted, setFootnotesHighlighted] = useState(false);
   const refreshReferences = useCallback(() => setReferenceRefresh((current) => current + 1), []);
+  const onBibliographyDeletionBusy = useCallback((pending: boolean) => {
+    setBibliographyDeletionBusy(pending);
+    setReferenceBusy(pending);
+  }, []);
+  const onCitationDeletionBusy = useCallback((pending: boolean) => {
+    setCitationDeletionBusy(pending);
+    setReferenceBusy(pending);
+  }, []);
+  const onCitationInsertionBusy = useCallback((pending: boolean) => {
+    setCitationInsertionBusy(pending);
+    setReferenceBusy(pending);
+  }, []);
   const toggleReferenceRendering = useCallback(async () => {
     if (!room || !superdoc || busy || referenceBusy || document.querySelector('.citation-dialog[open]')) return;
     setRenderingBusy(true);
@@ -79,6 +99,7 @@ export default function App() {
 
   useEffect(() => { setFieldCodes(false); }, [room?.room_id, room?.generation]);
   useEffect(() => { setCitationsHighlighted(false); }, [room?.room_id, room?.generation]);
+  useEffect(() => { setFootnotesHighlighted(false); }, [room?.room_id, room?.generation]);
 
   useEffect(() => {
     let active = true;
@@ -174,7 +195,7 @@ export default function App() {
   }
 
   return (
-    <main>
+    <main className={citationInsertionBusy || renderingBusy ? 'is-loading-references' : undefined}>
       <Topbar
         roomId={roomId}
         room={room}
@@ -189,8 +210,11 @@ export default function App() {
         onDelete={() => void remove()}
         onModeChange={setMode}
         superdoc={superdoc}
-        references={{ fieldCodes, renderingBusy, citationsHighlighted, citationsOpen, bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy,
+        agentOpen={agentOpen}
+        onAgentToggle={() => setAgentOpen((current) => !current)}
+        references={{ fieldCodes, renderingBusy, citationsHighlighted, footnotesHighlighted, citationsOpen, bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy,
           onHighlightToggle: () => setCitationsHighlighted((current) => !current),
+          onFootnoteHighlightToggle: () => setFootnotesHighlighted((current) => !current),
           onCitationsToggle: () => setCitationsOpen((current) => !current),
           onRenderingToggle: toggleReferenceRendering,
           onStyleChange: (style) => void changeBibliographyStyle(style),
@@ -202,23 +226,29 @@ export default function App() {
       {error && <p className="banner error">{error}</p>}
       <section className="workspace">
         <div className="document-pane">
-          {referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !renderingBusy && <div className="reference-busy-overlay" role="status"><span className="spinner" />Updating references…</div>}
+          {referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !bibliographyDeletionBusy && !citationDeletionBusy && !citationInsertionBusy && !renderingBusy && <div className="reference-busy-overlay" role="status"><span className="spinner" />Updating references…</div>}
           {busy ? (
             <div className="upload-loading" role="status" aria-live="polite">
               <span className="spinner" aria-hidden="true" />
               <span>Preparing document…</span>
             </div>
           ) : room ? (
-            <div className="live-document" inert={referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !renderingBusy}>
+            <div className="live-document" inert={referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !bibliographyDeletionBusy && !citationDeletionBusy && !citationInsertionBusy && !renderingBusy}>
             <DocumentEditor
               room={room}
-              mode={pendingBibliographyStyle || footnoteBusy || bibliographyBusy || renderingBusy ? 'viewing' : mode}
+              mode={pendingBibliographyStyle || footnoteBusy || bibliographyBusy || bibliographyDeletionBusy || citationDeletionBusy || citationInsertionBusy || renderingBusy ? 'viewing' : mode}
               onActivity={updateRoomActivity}
               onConnectedUsersChange={setConnectedUsers}
               onReady={setSuperdoc}
             />
+            <CitationDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}
+              onBusyChange={onCitationDeletionBusy} onUpdated={refreshReferences} onError={setError} />
+            <BibliographyDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}
+              onBusyChange={onBibliographyDeletionBusy} onUpdated={refreshReferences} onError={setError} />
             {citationsHighlighted && <CitationHighlights key={`${room.document_id}:${room.generation}`}
               superdoc={superdoc} refresh={referenceRefresh} fieldCodes={fieldCodes} />}
+            {footnotesHighlighted && <FootnoteHighlights key={`${room.document_id}:${room.generation}`}
+              superdoc={superdoc} room={room} refresh={referenceRefresh} fieldCodes={fieldCodes} />}
             </div>
           ) : (
             <div className="welcome">
@@ -228,6 +258,7 @@ export default function App() {
           )}
         </div>
         <ChatPanel
+          hidden={!agentOpen}
           roomId={roomId}
           disabled={!room || busy || referenceBusy}
           width={chatWidth}
@@ -237,7 +268,8 @@ export default function App() {
         />
         {citationsOpen && <CitationsPanel room={room} superdoc={superdoc} mode={mode}
           disabled={busy || referenceBusy} refresh={referenceRefresh}
-          onClose={() => setCitationsOpen(false)} onBusyChange={setReferenceBusy} onInserted={refreshReferences} />}
+          onClose={() => setCitationsOpen(false)} onBusyChange={setReferenceBusy}
+          onInsertionBusyChange={onCitationInsertionBusy} onInserted={refreshReferences} />}
       </section>
     </main>
   );

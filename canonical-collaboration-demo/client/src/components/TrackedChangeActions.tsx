@@ -31,18 +31,17 @@ export function TrackedChangeActions({ superdoc, disabled, onUpdated }: {
 
   return (
     <div className="tracked-change-actions" role="group" aria-label="Tracked changes">
+      <span className="tracked-change-label">Tracked changes</span>
       <button type="button" className="tracked-change-command accept-all" disabled={disabled || !!pending || !superdoc}
-        aria-busy={pending === 'accept'} title="Accept all tracked changes in the document"
+        aria-busy={pending === 'accept'} aria-label="Accept all tracked changes" title="Accept all tracked changes in the document"
         onPointerDown={(event) => event.preventDefault()} onClick={() => void decideAll('accept')}>
-        {pending === 'accept' ? <span className="spinner" aria-hidden="true" />
-          : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6" /></svg>}
+        {pending === 'accept' && <span className="spinner" aria-hidden="true" />}
         Accept all
       </button>
       <button type="button" className="tracked-change-command reject-all" disabled={disabled || !!pending || !superdoc}
-        aria-busy={pending === 'reject'} title="Reject all tracked changes in the document"
+        aria-busy={pending === 'reject'} aria-label="Reject all tracked changes" title="Reject all tracked changes in the document"
         onPointerDown={(event) => event.preventDefault()} onClick={() => void decideAll('reject')}>
-        {pending === 'reject' ? <span className="spinner" aria-hidden="true" />
-          : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>}
+        {pending === 'reject' && <span className="spinner" aria-hidden="true" />}
         Reject all
       </button>
       {error && <p className="reference-status error" role="alert">{error}</p>}

@@ -13,6 +13,8 @@ type TopbarProps = {
   mode: DocumentMode;
   superdoc?: SuperDoc;
   connectedUsers: number | null;
+  agentOpen: boolean;
+  onAgentToggle: () => void;
   onNewDocument: () => void;
   onUpload: (file: File) => void;
   onDownload: () => void;
@@ -28,6 +30,8 @@ export function Topbar({
   mode,
   superdoc,
   connectedUsers,
+  agentOpen,
+  onAgentToggle,
   onNewDocument,
   onUpload,
   onDownload,
@@ -119,6 +123,12 @@ export function Topbar({
           {...references} superdoc={superdoc} room={room} mode={mode} disabled={busy || !room || !superdoc} />}
         {room && !referencesActive && <TrackedChangeActions key={`${room.document_id}:${room.generation}`} superdoc={superdoc}
           disabled={busy || mode === 'viewing'} onUpdated={references.onInserted} />}
+        {room && !referencesActive && <button type="button" className={`reference-command agent-toggle${agentOpen ? ' is-active' : ''}`}
+          aria-expanded={agentOpen} aria-controls="agent-panel"
+          onPointerDown={(event) => event.preventDefault()} onClick={onAgentToggle}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4zM8 9h8M8 13h5" /></svg>
+          Agent
+        </button>}
         {room && <button type="button" className="toolbar-switch" aria-label={referencesActive ? 'Home' : 'References'}
           aria-controls={referencesActive ? 'superdoc-toolbar' : undefined}
           onPointerDown={(event) => event.preventDefault()} onClick={() => setReferencesActive((current) => !current)}>

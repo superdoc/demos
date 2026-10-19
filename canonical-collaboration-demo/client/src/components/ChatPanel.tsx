@@ -5,6 +5,7 @@ import type { ChatMessage, Job } from '../types';
 import { ToolCallsBubble } from './ToolCallsBubble';
 
 type ChatPanelProps = {
+  hidden?: boolean;
   roomId: string;
   disabled: boolean;
   width: number;
@@ -60,7 +61,7 @@ function JobStatus({ job }: { job: Job }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated }: ChatPanelProps) {
+export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -95,7 +96,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
   useLayoutEffect(() => {
     const history = historyRef.current;
     if (history) history.scrollTop = history.scrollHeight;
-  }, [jobs, messages]);
+  }, [jobs, messages, hidden]);
 
   async function refreshHistory() {
     try {
@@ -219,7 +220,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
   }
 
   return (
-    <aside className="chat-panel" aria-label="Agent chat" style={{ width }}>
+    <aside id="agent-panel" className="chat-panel" aria-label="Agent chat" hidden={hidden} style={{ width }}>
       <div
         className="chat-resize-handle"
         role="separator"

@@ -17,6 +17,7 @@ export type ReferencesToolbarProps = {
   fieldCodes: boolean;
   renderingBusy: boolean;
   citationsHighlighted: boolean;
+  footnotesHighlighted: boolean;
   citationsOpen: boolean;
   bibliographyStyle: BibliographyStyle;
   pendingBibliographyStyle?: BibliographyStyle;
@@ -25,6 +26,7 @@ export type ReferencesToolbarProps = {
   onCitationsToggle: () => void;
   onRenderingToggle: () => void;
   onHighlightToggle: () => void;
+  onFootnoteHighlightToggle: () => void;
   onStyleChange: (style: BibliographyStyle) => void;
   onBusyChange: (busy: boolean) => void;
   onFootnoteBusyChange: (busy: boolean) => void;
@@ -32,8 +34,8 @@ export type ReferencesToolbarProps = {
   onInserted: () => void;
 };
 
-export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, renderingBusy, citationsHighlighted, citationsOpen,
-  bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy, onCitationsToggle, onRenderingToggle, onHighlightToggle, onStyleChange, onBusyChange, onFootnoteBusyChange, onBibliographyBusyChange, onInserted }: ReferencesToolbarProps) {
+export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, renderingBusy, citationsHighlighted, footnotesHighlighted, citationsOpen,
+  bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy, onCitationsToggle, onRenderingToggle, onHighlightToggle, onFootnoteHighlightToggle, onStyleChange, onBusyChange, onFootnoteBusyChange, onBibliographyBusyChange, onInserted }: ReferencesToolbarProps) {
   const [error, setError] = useState('');
   const cannotEdit = disabled || mode === 'viewing' || !superdoc || !room;
 
@@ -105,26 +107,23 @@ export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, 
 
   return (
     <div className="references-toolbar" role="toolbar" aria-label="References toolbar">
-      <div className="reference-group">
-        <button type="button" className="reference-command" disabled={cannotEdit} aria-busy={footnoteBusy}
-          onPointerDown={(event) => event.preventDefault()} onClick={() => void insertFootnote()}>
-          <span className="footnote-command-icon" aria-hidden="true">
-            {footnoteBusy ? <span className="spinner" /> : <>a<sup>1</sup></>}
-          </span>
-          Insert footnote
-        </button>
-        {footnoteBusy && <span className="visually-hidden" role="status">Inserting footnote…</span>}
+      <div className="reference-group reference-insert-group">
+        <div className="reference-insert-actions" role="group" aria-label="Insert">
+          <span className="reference-insert-label">Insert</span>
+          <button type="button" className="reference-command" disabled={cannotEdit} aria-busy={footnoteBusy}
+            onPointerDown={(event) => event.preventDefault()} onClick={() => void insertFootnote()}>
+            <span className="footnote-command-icon" aria-hidden="true">
+              {footnoteBusy ? <span className="spinner" /> : <>a<sup>1</sup></>}
+            </span>
+            <span className="insert-action-label"><span className="insert-action-full">Insert footnote</span><span className="insert-action-short">Footnote</span></span>
+          </button>
+          {footnoteBusy && <span className="visually-hidden" role="status">Inserting footnote…</span>}
+          <CitationMenu superdoc={superdoc} room={room} mode={mode} disabled={cannotEdit}
+            onBusyChange={onBusyChange} onInserted={onInserted} />
+        </div>
         <FootnoteNavigation superdoc={superdoc} room={room} fieldCodes={fieldCodes} disabled={disabled || !superdoc || !room} onError={setError} />
-        <CitationMenu superdoc={superdoc} room={room} mode={mode} disabled={cannotEdit}
-          onBusyChange={onBusyChange} onInserted={onInserted} />
       </div>
       <div className="reference-group">
-        <button type="button" className={`reference-command${citationsOpen ? ' is-active' : ''}`}
-          disabled={disabled || !room} aria-expanded={citationsOpen} aria-controls="citations-panel"
-          onPointerDown={(event) => event.preventDefault()} onClick={onCitationsToggle}>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" /></svg>
-          Citations
-        </button>
         <button type="button" className="reference-command"
           disabled={cannotEdit || mode !== 'editing' || bibliographyBusy} aria-busy={bibliographyBusy}
           title={mode !== 'editing' ? 'Switch the document to Editing to insert a bibliography' : 'Insert a bibliography at the end of the document using the current style'}
@@ -135,37 +134,56 @@ export function ReferencesToolbar({ superdoc, room, mode, disabled, fieldCodes, 
         </button>
         {bibliographyBusy && <span className="visually-hidden" role="status">Inserting bibliography…</span>}
       </div>
-      <label className="bibliography-style-select">
-        <span>Bibliography style</span>
-        <span className="bibliography-style-control" aria-busy={!!pendingBibliographyStyle}>
-        <select aria-label="Bibliography style" value={pendingBibliographyStyle ?? bibliographyStyle} disabled={disabled || mode === 'viewing' || !room}
-          title={bibliographyStyle === 'Chicago' ? 'Chicago author–date' : bibliographyStyle}
-          onChange={(event) => onStyleChange(event.target.value as BibliographyStyle)}>
-          <option value="APA">APA</option><option value="Chicago">Chicago</option><option value="MLA">MLA</option>
-        </select>
-        {pendingBibliographyStyle && <span className="bibliography-style-progress" role="status">
-          <span className="spinner" aria-hidden="true" />
-          <span className="visually-hidden">Updating bibliography style…</span>
-        </span>}
-        </span>
-      </label>
-      <button type="button" className={`reference-command${citationsHighlighted ? ' is-active' : ''}`}
-        disabled={!room || !superdoc} aria-pressed={citationsHighlighted}
-        title="Highlight all citations in blue"
-        onPointerDown={(event) => event.preventDefault()} onClick={onHighlightToggle}>
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 3 7 7-9 9-7-7zM5 12l-2 7 7-2M3 22h18" /></svg>
-        Highlight citations
-      </button>
-      <button type="button" className={`reference-command${!fieldCodes ? ' is-active' : ''}`}
-        disabled={disabled || !room} aria-pressed={!fieldCodes} aria-keyshortcuts="Alt+F9"
-        aria-busy={renderingBusy}
-        aria-label="Render citations and bibliography"
-        title={fieldCodes ? 'Render citations and bibliography' : 'Show citation and bibliography field codes'}
-        onPointerDown={(event) => event.preventDefault()} onClick={onRenderingToggle}>
-        {renderingBusy ? <span className="spinner reference-render-spinner" aria-hidden="true" />
-          : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6" /></svg>}
-        <span className="reference-command-label">Render citations &amp; bibliography<small>Opt-F9</small></span>
-      </button>
+      <div className="reference-display-controls">
+        <label className="bibliography-style-select">
+          <span>Bibliography style</span>
+          <span className="bibliography-style-control" aria-busy={!!pendingBibliographyStyle}>
+          <select aria-label="Bibliography style" value={pendingBibliographyStyle ?? bibliographyStyle} disabled={disabled || mode === 'viewing' || !room}
+            title={bibliographyStyle === 'Chicago' ? 'Chicago author–date' : bibliographyStyle}
+            onChange={(event) => onStyleChange(event.target.value as BibliographyStyle)}>
+            <option value="APA">APA</option><option value="Chicago">Chicago</option><option value="MLA">MLA</option>
+          </select>
+          {pendingBibliographyStyle && <span className="bibliography-style-progress" role="status">
+            <span className="spinner" aria-hidden="true" />
+            <span className="visually-hidden">Updating bibliography style…</span>
+          </span>}
+          </span>
+        </label>
+        <div className="reference-highlight-group" role="group" aria-label="Highlight">
+          <span className="reference-highlight-label">Highlight</span>
+          <button type="button" className={`reference-command${citationsHighlighted ? ' is-active' : ''}`}
+            disabled={!room || !superdoc} aria-pressed={citationsHighlighted}
+            title="Highlight all citations in blue"
+            onPointerDown={(event) => event.preventDefault()} onClick={onHighlightToggle}>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 3 7 7-9 9-7-7zM5 12l-2 7 7-2M3 22h18" /></svg>
+            Citations
+          </button>
+          <button type="button" className={`reference-command${footnotesHighlighted ? ' is-active' : ''}`}
+            disabled={!room || !superdoc} aria-pressed={footnotesHighlighted}
+            title="Highlight all footnote references in blue"
+            onPointerDown={(event) => event.preventDefault()} onClick={onFootnoteHighlightToggle}>
+            <span className="footnote-command-icon" aria-hidden="true">a<sup>1</sup></span>
+            Footnotes
+          </button>
+        </div>
+        <button type="button" className={`reference-command${!fieldCodes ? ' is-active' : ''}`}
+          disabled={disabled || !room} aria-pressed={!fieldCodes} aria-keyshortcuts="Alt+F9"
+          aria-busy={renderingBusy}
+          aria-label="Render citations and bibliography"
+          title={fieldCodes ? 'Render citations and bibliography' : 'Show citation and bibliography field codes'}
+          onPointerDown={(event) => event.preventDefault()} onClick={onRenderingToggle}>
+          {renderingBusy ? <span className="spinner reference-render-spinner" aria-hidden="true" />
+            : <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM14 3v5h5M8 12h8M8 16h6" /></svg>}
+          <span className="reference-command-label">Render citations &amp; bibliography<small>Opt-F9</small></span>
+        </button>
+        <button type="button" className={`reference-command${citationsOpen ? ' is-active' : ''}`}
+          disabled={disabled || !room} aria-expanded={citationsOpen} aria-controls="citations-panel"
+          onPointerDown={(event) => event.preventDefault()} onClick={onCitationsToggle}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h4" /></svg>
+          Citations
+        </button>
+
+      </div>
       {error && <p className="reference-status error" role="alert">{error}</p>}
     </div>
   );

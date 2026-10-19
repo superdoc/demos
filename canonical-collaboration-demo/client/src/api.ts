@@ -124,6 +124,13 @@ export class ApiClient {
     });
   }
 
+  removeCitation(room: Room, input: { target: Parameters<BrowserDocumentApi['citations']['remove']>[0]['target']; instruction: string; displayText: string; changeMode: 'direct' | 'tracked'; expectedRevision: string }): Promise<{ success: boolean; caret: { blockId: string; offset: number } }> {
+    return this.request(`${this.roomPath(room.room_id)}/citations`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, input }),
+    });
+  }
+
   setBibliographyStyle(room: Room, style: BibliographyStyle, expectedRevision: string): Promise<{ success: boolean; bibliographyStyle: BibliographyStyle }> {
     return this.request(`${this.roomPath(room.room_id)}/bibliography-style`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -134,6 +141,13 @@ export class ApiClient {
   insertBibliography(room: Room, expectedRevision: string): Promise<Awaited<ReturnType<BrowserDocumentApi['citations']['bibliography']['insert']>> & { formattingWarning?: string }> {
     return this.request(`${this.roomPath(room.room_id)}/bibliographies`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ generation: room.generation, expectedRevision }),
+    });
+  }
+
+  removeEmptyBibliography(room: Room, bibliographyId: string, expectedRevision: string): Promise<{ success: boolean; removed: boolean; caret?: { blockId: string; offset: number } }> {
+    return this.request(`${this.roomPath(room.room_id)}/bibliographies/${encodeURIComponent(bibliographyId)}/empty`, {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ generation: room.generation, expectedRevision }),
     });
   }

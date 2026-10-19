@@ -74,7 +74,7 @@ function referenceRun(document, name, noteId) {
   return run;
 }
 
-function insertReference(paragraph, offset, reference) {
+export function insertReference(paragraph, offset, reference, label = 'footnote') {
   const leaves = [];
   let position = 0;
   let fieldDepth = 0;
@@ -104,7 +104,7 @@ function insertReference(paragraph, offset, reference) {
     for (const child of Array.from(node.childNodes)) visit(child);
   }
   visit(paragraph);
-  if (offset < 0 || offset > position) throw new Error('The footnote position changed. Place the cursor again.');
+  if (offset < 0 || offset > position) throw new Error(`The ${label} position changed. Place the cursor again.`);
   if (offset === position) { paragraph.appendChild(reference); return; }
   if (offset === 0) {
     const first = Array.from(paragraph.childNodes).find((node) => !(node.namespaceURI === W && node.localName === 'pPr'));
@@ -113,9 +113,9 @@ function insertReference(paragraph, offset, reference) {
   }
   const leaf = leaves.find((item) => offset < item.end) ?? leaves.at(-1);
   if (!leaf) { paragraph.appendChild(reference); return; }
-  if (leaf.fieldDepth) throw new Error('Place the cursor outside the citation or bibliography field to add a footnote.');
+  if (leaf.fieldDepth) throw new Error(`Place the cursor outside the citation or bibliography field to add a ${label}.`);
   const run = leaf.node.parentNode;
-  if (run.namespaceURI !== W || run.localName !== 'r') throw new Error('This location cannot contain a footnote.');
+  if (run.namespaceURI !== W || run.localName !== 'r') throw new Error(`This location cannot contain a ${label}.`);
   const left = run.cloneNode(false);
   const right = run.cloneNode(false);
   let passed = false;
@@ -136,6 +136,13 @@ function insertReference(paragraph, offset, reference) {
     } else (passed ? right : left).appendChild(child.cloneNode(true));
   }
   const parent = run.parentNode;
+  if (reference.namespaceURI === W && reference.localName === 'ins') {
+    for (let ancestor = parent; ancestor && ancestor !== paragraph; ancestor = ancestor.parentNode) {
+      if (ancestor.namespaceURI === W && ['ins', 'del', 'moveFrom', 'moveTo'].includes(ancestor.localName)) {
+        throw new Error(`Accept or reject the existing tracked change before adding a tracked ${label} here.`);
+      }
+    }
+  }
   const hasContent = (element) => Array.from(element.childNodes).some((child) => child.nodeType === 1 && child.localName !== 'rPr');
   if (hasContent(left)) parent.insertBefore(left, run);
   parent.insertBefore(reference, run);

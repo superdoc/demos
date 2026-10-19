@@ -11,6 +11,8 @@ import { citationTool, citationInstructions, citationInput, referenceLibraryCont
 import { referenceTool, referenceInstructions, referenceInput } from './reference-tool.js';
 import { bibliographyTool, bibliographyInstructions, bibliographyInput } from './bibliography-tool.js';
 import { removeBibliographyInSnapshot } from './bibliography-remove.js';
+import { removeCitationInSnapshot } from './citation-remove.js';
+import { insertCitationInSnapshot } from './citation-insert.js';
 
 export class Document {
   #handle;
@@ -18,7 +20,6 @@ export class Document {
   #onClose;
   #closed = false;
   #importedCitations;
-  #citationAliases = new Map();
   #referenceQueue = Promise.resolve();
   #referencePending = 0;
   #bibliographyStyle;
@@ -48,16 +49,6 @@ export class Document {
     return result;
   }
 
-  async initializeCitationSources() {
-    // A reload can retain SDK source metadata whose IDs no longer resolve in V2.
-    this.#citationAliases.clear();
-    for (const source of this.#importedCitations.records) {
-      const result = await this.#handle.citations.sources.insert({ type: source.type, fields: source.fields });
-      if (!result.success) throw new Error(`Could not import reference "${source.tag}": ${result.failure.message}`);
-      this.#citationAliases.set(result.source.sourceId, source.tag);
-    }
-  }
-
   async replace(filename, documentPath) {
     this.#requireOpen();
     await normalizeFootnoteParts(documentPath);
@@ -66,7 +57,6 @@ export class Document {
     this.#importedCitations = importedCitations;
     this.#bibliographyStyle = importedCitations.style;
     this.#fieldCodes = false;
-    await this.initializeCitationSources();
     const previousPath = this.path;
     this.filename = filename;
     this.path = documentPath;
@@ -144,21 +134,22 @@ export class Document {
       const catalog = await this.#readBibliographies();
       if (catalog.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed. Read list again before editing bibliographies.');
       const target = catalog.items.find((item) => item.bibliographyId === input.bibliographyId)?.address;
+      if (input.action === 'delete' && input.onlyIfEmpty && !target) return { success: true, removed: false };
       if (input.action !== 'create' && !target) throw new Error('Bibliography not found. Read list for current bibliography IDs.');
       if (input.action === 'delete') {
         const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'superdoc-bibliography-'));
         try {
           const snapshot = path.join(directory, 'document.docx');
           await this.#writeSnapshot(snapshot);
-          await removeBibliographyInSnapshot(snapshot, input.bibliographyId);
+          const removal = await removeBibliographyInSnapshot(snapshot, input.bibliographyId, { onlyIfEmpty: input.onlyIfEmpty });
+          if (!removal.removed) return { success: true, removed: false };
           const current = await this.citationSources();
           if (current.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed during bibliography deletion. Read list and try again.');
           const bytes = await fs.readFile(snapshot);
           const imported = await readCitationImport(bytes);
           await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
           this.#importedCitations = imported;
-          await this.initializeCitationSources();
-          return { success: true, action: input.action, deletedBibliographyId: input.bibliographyId, ...await this.#readBibliographies() };
+          return { success: true, action: input.action, ...removal, deletedBibliographyId: input.bibliographyId, ...await this.#readBibliographies() };
         } finally {
           await fs.rm(directory, { recursive: true, force: true });
         }
@@ -218,7 +209,6 @@ export class Document {
         const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
         this.#importedCitations = imported;
-        await this.initializeCitationSources();
         return { ...await libraryResult(sourceId), ...(input.action === 'delete' ? { deletedSourceId: sourceId } : {}) };
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
@@ -230,27 +220,73 @@ export class Document {
     this.#requireOpen();
     return this.#referenceMutation(async () => {
       const catalog = await this.citationSources();
-      if (input.expectedRevision && catalog.evaluatedRevision !== input.expectedRevision) {
+      if (typeof input.expectedRevision !== 'string' || catalog.evaluatedRevision !== input.expectedRevision) {
         throw new Error('The document changed. Inspect it again before inserting the citation.');
       }
       const available = new Set(catalog.items.map((source) => source.sourceId));
-      if (input.sourceIds.some((id) => !available.has(id))) {
+      if (!Array.isArray(input.sourceIds) || !input.sourceIds.length || input.sourceIds.some((id) => !available.has(id))) {
         throw new Error('A citation source is not in the document reference library. Use a sourceId from the available references.');
       }
-      const sourceIds = input.sourceIds.map((id) => [...this.#citationAliases].find(([, tag]) => tag === id)?.[0] ?? id);
-      const result = await this.#handle.citations.insert({ ...input, sourceIds });
-      if (!result.success) return result;
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'superdoc-citation-insert-'));
       try {
-        await this.#applyReferenceStyle(this.#bibliographyStyle);
-      } catch (error) {
-        return { ...result, formattingWarning: `Citation inserted. Formatting could not finish: ${error.message}` };
+        const snapshot = path.join(directory, 'document.docx');
+        await this.#writeSnapshot(snapshot);
+        const inserted = await insertCitationInSnapshot(snapshot, input);
+        await renderReferenceFields(snapshot, { style: this.#bibliographyStyle, fieldCodes: this.#fieldCodes });
+        const current = await this.citationSources();
+        if (current.evaluatedRevision !== catalog.evaluatedRevision) throw new Error('The document changed during citation insertion. Try again.');
+        const bytes = await fs.readFile(snapshot);
+        const imported = await readCitationImport(bytes);
+        await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
+        this.#importedCitations = imported;
+        // A post-insertion lookup failure must not invite a duplicate insertion.
+        try {
+          let offset = 0;
+          let page;
+          do {
+            page = await this.#handle.citations.list({ limit: 100, offset });
+            const citation = page.items.find((item) => item.instruction.trim() === inserted.instruction
+              && item.address.story?.storyType === 'body'
+              && item.address.anchor.start.blockId === inserted.blockId
+              && item.address.anchor.start.offset === inserted.offset);
+            if (citation) return { success: true, citation: citation.address };
+            offset += page.items.length;
+          } while (page.items.length && offset < page.total);
+          return { success: true, formattingWarning: 'Citation inserted. Its address could not be refreshed; inspect the document before editing again.' };
+        } catch {
+          return { success: true, formattingWarning: 'Citation inserted. Re-inspect the document before editing again.' };
+        }
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true });
       }
-      return result;
     });
   }
 
   setBibliographyStyle(style, expectedRevision) {
     return this.#referenceMutation(() => this.#applyReferenceStyle(style, expectedRevision));
+  }
+
+  removeCitation(input) {
+    this.#requireOpen();
+    return this.#referenceMutation(async () => {
+      const start = await this.citationSources();
+      if (start.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed. Try deleting the citation again.');
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'superdoc-citation-delete-'));
+      try {
+        const snapshot = path.join(directory, 'document.docx');
+        await this.#writeSnapshot(snapshot);
+        const result = await removeCitationInSnapshot(snapshot, input);
+        const current = await this.citationSources();
+        if (current.evaluatedRevision !== start.evaluatedRevision) throw new Error('The document changed during citation deletion. Try again.');
+        const bytes = await fs.readFile(snapshot);
+        const imported = await readCitationImport(bytes);
+        await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
+        this.#importedCitations = imported;
+        return result;
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true });
+      }
+    });
   }
 
   setReferenceDisplay(fieldCodes, expectedRevision) {
@@ -274,7 +310,6 @@ export class Document {
         const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
         this.#importedCitations = imported;
-        await this.initializeCitationSources();
         return result;
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
@@ -286,7 +321,7 @@ export class Document {
     const result = await this.#handle.save({ out: outputPath, force: true });
     await preserveDocxNamespaces(outputPath, this.path);
     await normalizeFootnoteParts(outputPath);
-    await preserveCitationImport(outputPath, this.#importedCitations, this.#citationAliases, { canonical: true });
+    await preserveCitationImport(outputPath, this.#importedCitations, new Map(), { canonical: true });
     return result;
   }
 
@@ -308,7 +343,6 @@ export class Document {
       this.#importedCitations = imported;
       this.#bibliographyStyle = style;
       this.#fieldCodes = fieldCodes;
-      await this.initializeCitationSources();
       return { success: true, bibliographyStyle: style, fieldCodes };
     } finally {
       await fs.rm(directory, { recursive: true, force: true });
@@ -379,12 +413,6 @@ export class DocumentService {
       importedCitations,
       onClose: (documentId) => this.#documents.delete(documentId),
     });
-    try {
-      await document.initializeCitationSources();
-    } catch (error) {
-      await handle.close({ discard: true });
-      throw error;
-    }
     this.#documents.set(id, document);
     logEvent('document-service', 'document.opened', { documentId: id, documents: this.#documents.size });
     return document;

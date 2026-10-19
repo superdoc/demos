@@ -21,7 +21,7 @@ const editorModules: SuperDocEditorProps['modules'] = {
   },
 };
 const editorUi: SuperDocEditorProps['ui'] = {
-  toolbar: { container: '#superdoc-toolbar', excludeItems: ['ruler'] },
+  toolbar: { container: '#superdoc-toolbar', excludeItems: ['ruler'], responsiveTo: 'container', overflow: 'menu' },
   loading: false,
 };
 export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActivity, onConnectedUsersChange, onReady }: DocumentEditorProps) {

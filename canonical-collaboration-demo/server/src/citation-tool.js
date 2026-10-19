@@ -34,6 +34,7 @@ export function citationInput(args) {
       coordinateSpace: 'visible',
     },
     sourceIds: [args.sourceId],
+    author: 'Assistant',
     changeMode: args.changeMode ?? 'direct',
     expectedRevision: args.expectedRevision,
   };

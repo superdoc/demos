@@ -138,6 +138,38 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     }
   }
 
+  async function removeEmptyBibliography(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before deleting a bibliography.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('A document revision is required.');
+    try {
+      const result = await room.document.manageBibliographies({
+        action: 'delete', bibliographyId: request.params.bibliographyId, changeMode: 'direct', onlyIfEmpty: true, expectedRevision,
+      });
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function removeCitation(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, input } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before deleting a citation.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (!input || typeof input.expectedRevision !== 'string' || !input.expectedRevision.trim()) throw app.httpErrors.badRequest('A current citation and document revision are required.');
+    try {
+      const result = await room.document.removeCitation(input);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
   async function getRoomStatus(request) {
     return rooms.status(request.params.roomId, request.body?.generation);
   }
@@ -208,8 +240,10 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     { url: `${roomPath}/footnotes`, method: 'POST', handler: insertFootnote },
     { url: `${roomPath}/citation-sources`, method: 'POST', handler: mutateCitation },
     { url: `${roomPath}/citations`, method: 'POST', handler: mutateCitation },
+    { url: `${roomPath}/citations`, method: 'DELETE', handler: removeCitation },
     { url: `${roomPath}/bibliography-style`, method: 'POST', handler: bibliographyStyle },
     { url: `${roomPath}/bibliographies`, method: 'POST', handler: insertBibliography },
+    { url: `${roomPath}/bibliographies/:bibliographyId/empty`, method: 'DELETE', handler: removeEmptyBibliography },
     { url: `${roomPath}/reference-display`, method: 'POST', handler: referenceDisplay },
     // Delete the room's document and associated ephemeral state.
     { url: `${roomPath}/document`, method: 'DELETE', handler: deleteDocument },

@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import type { SuperDoc } from 'superdoc';
 import type { BrowserDocumentApi, TextTarget } from 'superdoc/ui';
 import type { DocumentMode } from './Topbar';
@@ -31,14 +31,16 @@ function referenceText(fields: Source['fields']) {
   ].filter(Boolean).join(' · ');
 }
 
-export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onInserted }: {
+export function CitationMenu({ superdoc, room, mode, disabled, referenceOnly = false, onBusyChange, onInserted }: {
   superdoc?: SuperDoc;
   room?: Room;
   mode: DocumentMode;
   disabled: boolean;
+  referenceOnly?: boolean;
   onBusyChange: (busy: boolean) => void;
   onInserted: () => void;
 }) {
+  const titleId = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const target = useRef<TextTarget | undefined>(undefined);
@@ -53,6 +55,7 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const successNotice = referenceOnly ? 'Reference added.' : 'Citation inserted.';
   const sourceFields: Source['fields'] = {
     ...Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value])),
     authors: authors.split('\n').map((name) => name.trim()).filter(Boolean).map((last) => ({ last })),
@@ -60,19 +63,21 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
 
   async function open() {
     const doc = superdoc?.activeEditor?.doc;
-    if (!doc || !room || pending) return;
+    if (!room || pending || (!referenceOnly && !doc)) return;
     setPending(true);
     setError('');
     setNotice('');
     target.current = undefined;
     try {
-      target.current = await citationTarget(superdoc!);
-      browserRevision.current = (await doc.citations.sources.list({ limit: 1 })).evaluatedRevision;
+      if (!referenceOnly) {
+        target.current = await citationTarget(superdoc!);
+        browserRevision.current = (await doc!.citations.sources.list({ limit: 1 })).evaluatedRevision;
+      }
       const { items: references, evaluatedRevision } = await api.getCitationSources(room.room_id);
       revision.current = evaluatedRevision;
       setSources(references);
       setSelected([]);
-      setNewReference(references.length === 0);
+      setNewReference(referenceOnly || references.length === 0);
       setFields({});
       setAuthors('');
       setSourceType('website');
@@ -86,18 +91,18 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
 
   function close() {
     dialog.current?.close();
-    button.current?.focus();
+    window.requestAnimationFrame(() => button.current?.focus());
   }
 
   async function insert(event: FormEvent) {
     event.preventDefault();
     const doc = superdoc?.activeEditor?.doc;
-    if (!doc || !room || !target.current || pending || mode === 'viewing') return;
+    if (!room || pending || mode === 'viewing' || (!referenceOnly && (!doc || !target.current))) return;
     setPending(true);
     onBusyChange(true);
     setError('');
     try {
-      if ((await doc.citations.sources.list({ limit: 1 })).evaluatedRevision !== browserRevision.current) {
+      if (!referenceOnly && (await doc!.citations.sources.list({ limit: 1 })).evaluatedRevision !== browserRevision.current) {
         throw new Error('Document revision changed.');
       }
       let sourceIds = selected;
@@ -107,6 +112,12 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
           revision.current,
         );
         if (!result.success) throw new Error(result.failure.message);
+        if (referenceOnly) {
+          close();
+          setNotice(successNotice);
+          onInserted();
+          return;
+        }
         sourceIds = [result.source.sourceId];
         setSelected(sourceIds);
         setSources((current) => [...current, {
@@ -117,15 +128,24 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
         revision.current = updatedSources.evaluatedRevision;
       }
       const result = await api.insertCitation(room,
-        { at: target.current, sourceIds },
+        { at: target.current!, sourceIds },
         mode === 'suggesting' ? 'tracked' : 'direct', revision.current,
       );
       if (!result.success) throw new Error(result.failure.message);
       close();
-      setNotice(result.formattingWarning || 'Citation inserted.');
+      setNotice(result.formattingWarning || successNotice);
       onInserted();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
+      if (referenceOnly && /revision|document changed/i.test(message)) {
+        try {
+          revision.current = (await api.getCitationSources(room.room_id)).evaluatedRevision;
+          setError('The document changed. Review your details and click Add reference again.');
+        } catch {
+          setError('Could not refresh the reference library. Close this form and try again.');
+        }
+        return;
+      }
       setError(/revision/i.test(message)
         ? 'The document changed while this menu was open. Close it, place your cursor again, and reopen Insert citation. Your saved references will be available.'
         : /text-range-in-field/i.test(message)
@@ -146,25 +166,26 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
   }
 
   return (
-    <div className="citation-control">
-      <button ref={button} className="reference-command" type="button" disabled={disabled || pending}
+    <div className={referenceOnly ? 'add-reference-control' : 'citation-control'}>
+      <button ref={button} className={referenceOnly ? 'add-reference-button' : 'reference-command'} type="button" disabled={disabled || pending}
         aria-haspopup="dialog" onPointerDown={(event) => event.preventDefault()} onClick={() => void open()}>
-        <span aria-hidden="true">❞</span> Insert citation
+        {referenceOnly ? <><span aria-hidden="true">＋</span> Add reference</> : <><span aria-hidden="true">❞</span>
+          <span className="insert-action-label"><span className="insert-action-full">Insert citation</span><span className="insert-action-short">Citation</span></span></>}
       </button>
       <span className="visually-hidden" role="status">{notice}</span>
-      {notice && notice !== 'Citation inserted.' && <div className="citation-notice" role="alert">{notice}</div>}
-      <dialog ref={dialog} className="citation-dialog" aria-labelledby="citation-title"
+      {notice && notice !== successNotice && <div className="citation-notice" role="alert">{notice}</div>}
+      <dialog ref={dialog} className="citation-dialog" aria-labelledby={titleId}
         onCancel={(event) => { event.preventDefault(); if (!pending) close(); }}>
         <form onSubmit={(event) => void insert(event)}>
           <header className="citation-header">
-            <div><h2 id="citation-title">Insert citation</h2><p>Add a reference at your cursor, or after selected text.</p></div>
-            <button type="button" className="citation-close" aria-label="Close citation menu" disabled={pending} onClick={close}>×</button>
+            <div><h2 id={titleId}>{referenceOnly ? 'Add reference' : 'Insert citation'}</h2><p>{referenceOnly ? 'Save a source to the document’s reference library.' : 'Add a reference at your cursor, or after selected text.'}</p></div>
+            <button type="button" className="citation-close" aria-label={referenceOnly ? 'Close add reference form' : 'Close citation menu'} disabled={pending} onClick={close}>×</button>
           </header>
           <fieldset disabled={pending} className="citation-body">
-            <div className="citation-tabs" role="group" aria-label="Reference selection">
+            {!referenceOnly && <div className="citation-tabs" role="group" aria-label="Reference selection">
               <button type="button" aria-pressed={!newReference} onClick={() => setNewReference(false)} disabled={!sources.length}>Existing references ({sources.length})</button>
               <button type="button" aria-pressed={newReference} onClick={() => setNewReference(true)}>New reference</button>
-            </div>
+            </div>}
             {newReference ? <>
               <div className="citation-fields">
                 <label className="citation-field">Source type
@@ -195,10 +216,10 @@ export function CitationMenu({ superdoc, room, mode, disabled, onBusyChange, onI
           </fieldset>
           {error && <p className="citation-error error" role="alert">{error}</p>}
           <footer className="citation-footer">
-            <span>{!target.current ? 'Place the cursor in the document before inserting a citation.'
+            <span>{referenceOnly ? 'Save to the reference library without inserting a citation.' : !target.current ? 'Place the cursor in the document before inserting a citation.'
               : mode === 'suggesting' ? 'Insert as a tracked suggestion' : 'Insert directly into the document'}</span>
             <button type="button" className="citation-cancel" disabled={pending} onClick={close}>Cancel</button>
-            <button type="submit" disabled={pending || !target.current || (newReference ? !fields.title?.trim() : !selected.length)}>{pending ? 'Inserting…' : 'Insert citation'}</button>
+            <button type="submit" disabled={pending || (!referenceOnly && !target.current) || (newReference ? !fields.title?.trim() : !selected.length)}>{referenceOnly ? (pending ? 'Adding…' : 'Add reference') : (pending ? 'Inserting…' : 'Insert citation')}</button>
           </footer>
         </form>
       </dialog>
