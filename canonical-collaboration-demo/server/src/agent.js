@@ -4,18 +4,23 @@ import { logEvent } from './logging.js';
 import { footnoteTool } from './footnote-tool.js';
 import { citationTool, referenceLibraryContext } from './citation-tool.js';
 import { bibliographyTool, requestsBibliographyCreation } from './bibliography-tool.js';
+import { parseToolArguments, toolErrorResult } from './tool-errors.js';
+import { createRunProgress, toolFailed } from './agent-run-progress.js';
+import { createReferenceProgress } from './reference-tool-progress.js';
 
 const maximumTurns = 12;
 
-export function createDocumentAgent(documents) {
-  const openai = new OpenAI();
+export function createDocumentAgent(documents, { client = new OpenAI() } = {}) {
+  const openai = client;
   const toolkit = documents.getToolkit();
 
   async function run(document, prompt, history, isSuggesting, signal, { onToolCall = () => {}, messageId } = {}) {
     const changeMode = isSuggesting ? 'tracked' : 'direct';
     const bibliographyCreation = requestsBibliographyCreation(prompt);
     await document.waitForReferences();
-    const referenceLibrary = referenceLibraryContext(await document.citationSources());
+    const catalog = await document.citationSources();
+    const referenceLibrary = referenceLibraryContext(catalog);
+    const progress = createRunProgress(createReferenceProgress(catalog));
     const messages = [
       {
         role: 'system',
@@ -38,7 +43,7 @@ export function createDocumentAgent(documents) {
     for (let turn = 1; turn <= maximumTurns; turn += 1) {
       const modelStarted = performance.now();
       const response = await openai.chat.completions.create(
-        { model: config.openaiModel, messages, tools: toolkit.tools,
+        { model: config.openaiModel, reasoning_effort: 'low', messages, tools: toolkit.tools,
           ...(bibliographyCreation && turn === 1 ? { tool_choice: { type: 'function', function: { name: bibliographyTool.function.name } } } : {}) },
         { signal },
       );
@@ -69,7 +74,7 @@ export function createDocumentAgent(documents) {
         };
         toolCalls.push(toolCall);
         try {
-          args = JSON.parse(call.function.arguments || '{}');
+          args = parseToolArguments(call.function.arguments);
           if (typeof args.action === 'string') toolCall.action = args.action;
           onToolCall({ ...toolCall });
           if (bibliographyCreation && call.function.name === 'superdoc_perform_action') {
@@ -78,12 +83,11 @@ export function createDocumentAgent(documents) {
           if (['superdoc_perform_action', footnoteTool.function.name, citationTool.function.name, bibliographyTool.function.name].includes(call.function.name)) args.changeMode = changeMode;
           result = await document.dispatch(call.function.name, args);
         } catch (error) {
-          result = { ok: false, error: error instanceof Error ? error.message : String(error),
-            ...(typeof error?.code === 'string' ? { code: error.code } : {}) };
+          result = toolErrorResult(error);
         }
         toolCall.durationMs = Math.round(performance.now() - started);
-        toolCall.status = result?.ok === false || result?.success === false || result?.result?.success === false
-          || result?.status === 'failed' || Boolean(result?.error) ? 'failed' : 'completed';
+        toolCall.status = toolFailed(result) ? 'failed' : 'completed';
+        const outcome = progress.record({ tool: call.function.name, args, result });
         onToolCall({ ...toolCall });
         logEvent('agent', 'tool.completed', {
           tool: call.function.name,
@@ -98,18 +102,22 @@ export function createDocumentAgent(documents) {
           tool_call_id: call.id,
           content: typeof result === 'string' ? result : JSON.stringify(result),
         });
+        if (outcome.repeatedFailure) {
+          logEvent('agent', 'run.repeated_failure', { turns: turn, changeMode, tool: call.function.name });
+          return saveAnswer(progress.interruptionReport('repeated_failure'));
+        }
         if (call.function.name === bibliographyTool.function.name && toolCall.status === 'failed') {
           const detail = result?.error ?? result?.failure?.message ?? result?.result?.failure?.message ?? 'The server could not complete the operation.';
           const answer = result?.code === 'BIBLIOGRAPHY_REQUIRES_DIRECT'
-            ? 'Native bibliography changes require Editing mode. Select Editing in the chat panel’s Agent edit mode dropdown and retry your prompt. No changes were made.'
+            ? 'Native bibliography changes require Editing mode. Select Editing in the chat panel’s Agent edit mode dropdown and retry the remaining bibliography operation.'
             : `The native bibliography operation failed: ${detail}`;
           logEvent('agent', 'run.completed', { turns: turn, changeMode, bibliographyFailure: true });
-          return saveAnswer(answer);
+          return saveAnswer(progress.interruptionReport('tool_failure', answer));
         }
       }
     }
 
-    const answer = fullOutput || 'The agent reached its turn limit.';
+    const answer = progress.interruptionReport('turn_limit');
     logEvent('agent', 'run.turn_limit', { turns: maximumTurns, changeMode });
     return saveAnswer(answer);
   }

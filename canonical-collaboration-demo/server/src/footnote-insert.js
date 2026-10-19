@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import JSZip from 'jszip';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
+import { readParagraphPosition } from './reference-anchors.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
@@ -75,35 +76,7 @@ function referenceRun(document, name, noteId) {
 }
 
 export function insertReference(paragraph, offset, reference, label = 'footnote') {
-  const leaves = [];
-  let position = 0;
-  let fieldDepth = 0;
-  function visit(node) {
-    if (node.nodeType !== 1) return;
-    if (node.namespaceURI === W) {
-      if (node.localName === 'del') return;
-      if (node.localName === 'fldSimple') {
-        fieldDepth++;
-        for (const child of Array.from(node.childNodes)) visit(child);
-        fieldDepth--;
-        return;
-      }
-      if (node.localName === 'fldChar') {
-        const type = node.getAttributeNS(W, 'fldCharType');
-        if (type === 'begin') fieldDepth++;
-        else if (type === 'end') fieldDepth--;
-        return;
-      }
-      if (node.localName === 't' || ['tab', 'br', 'cr', 'footnoteReference', 'endnoteReference', 'drawing', 'pict'].includes(node.localName)) {
-        const length = node.localName === 't' ? node.textContent.length : 1;
-        leaves.push({ node, start: position, end: position + length, fieldDepth });
-        position += length;
-        return;
-      }
-    }
-    for (const child of Array.from(node.childNodes)) visit(child);
-  }
-  visit(paragraph);
+  const { leaves, length: position } = readParagraphPosition(paragraph);
   if (offset < 0 || offset > position) throw new Error(`The ${label} position changed. Place the cursor again.`);
   if (offset === position) { paragraph.appendChild(reference); return; }
   if (offset === 0) {

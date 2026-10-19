@@ -219,7 +219,8 @@ function replaceCache(field, entries, bibliography, layout) {
   for (const entry of entries.slice(1)) {
     const next = word(document, 'p');
     const properties = word(document, 'pPr');
-    properties.appendChild(word(document, 'pStyle', { val: 'Bibliography' }));
+    const paragraphStyle = nodes(firstParagraph, 'pPr')[0]?.getElementsByTagNameNS(W, 'pStyle')[0];
+    if (paragraphStyle) properties.appendChild(paragraphStyle.cloneNode(true));
     properties.appendChild(word(document, 'ind', { left: 360, hanging: 360 }));
     properties.appendChild(word(document, 'spacing', { after: 120, line: 276, lineRule: 'auto' }));
     next.appendChild(properties);

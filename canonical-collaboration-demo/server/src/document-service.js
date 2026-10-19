@@ -11,8 +11,11 @@ import { citationTool, citationInstructions, citationInput, referenceLibraryCont
 import { referenceTool, referenceInstructions, referenceInput } from './reference-tool.js';
 import { bibliographyTool, bibliographyInstructions, bibliographyInput } from './bibliography-tool.js';
 import { removeBibliographyInSnapshot } from './bibliography-remove.js';
+import { insertBibliographyInSnapshot } from './bibliography-insert.js';
 import { removeCitationInSnapshot } from './citation-remove.js';
 import { insertCitationInSnapshot } from './citation-insert.js';
+import { resolveReferenceAnchor, verifyInsertedReference } from './reference-anchors.js';
+import { referenceAnchorInstructions } from './reference-anchor-contract.js';
 
 export class Document {
   #handle;
@@ -161,23 +164,29 @@ export class Document {
         return { success: true, action: input.action, bibliography: target, bibliographyId: target.nodeId,
           evaluatedRevision: current.evaluatedRevision, bibliographyStyle: this.#bibliographyStyle };
       }
-      const options = { expectedRevision: input.expectedRevision, changeMode: input.changeMode };
-      const at = ['before', 'after'].includes(input.position)
-        ? { kind: input.position, target: { kind: 'block', nodeType: 'paragraph', nodeId: input.blockId } }
-        : { kind: input.position };
-      // Native style writes fail in collaboration after inserting the field. The renderer owns style application below.
-      const result = await this.#handle.citations.bibliography.insert({ ...options, at });
-      if (!result.success) return result;
-      let formattingWarning;
+      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'superdoc-bibliography-insert-'));
       try {
-        await this.#applyReferenceStyle(style);
-      } catch (error) {
-        formattingWarning = `Bibliography ${input.action} succeeded. Rendering could not finish: ${error.message}`;
+        const snapshot = path.join(directory, 'document.docx');
+        await this.#writeSnapshot(snapshot);
+        const bibliography = await insertBibliographyInSnapshot(snapshot, input);
+        await renderReferenceFields(snapshot, { style, fieldCodes: this.#fieldCodes });
+        const current = await this.citationSources();
+        if (current.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed during bibliography insertion. Read list and try again.');
+        const bytes = await fs.readFile(snapshot);
+        const imported = await readCitationImport(bytes);
+        await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
+        this.#importedCitations = imported;
+        this.#bibliographyStyle = style;
+        const result = { success: true, action: input.action, bibliography, bibliographyId: bibliography.nodeId,
+          bibliographyStyle: style };
+        try {
+          return { ...result, evaluatedRevision: (await this.citationSources()).evaluatedRevision };
+        } catch {
+          return { ...result, formattingWarning: 'Bibliography inserted. Re-inspect the document before editing again.' };
+        }
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true });
       }
-      const current = await this.citationSources();
-      return { ...result, action: input.action, bibliographyId: result.bibliography.nodeId,
-        evaluatedRevision: current.evaluatedRevision, bibliographyStyle: this.#bibliographyStyle,
-        ...(formattingWarning ? { formattingWarning } : {}) };
     });
   }
 
@@ -231,8 +240,11 @@ export class Document {
       try {
         const snapshot = path.join(directory, 'document.docx');
         await this.#writeSnapshot(snapshot);
-        const inserted = await insertCitationInSnapshot(snapshot, input);
+        const resolved = input.anchor ? await resolveReferenceAnchor(snapshot, input.anchor) : { at: input.at };
+        const inserted = await insertCitationInSnapshot(snapshot, { ...input, at: resolved.at });
         await renderReferenceFields(snapshot, { style: this.#bibliographyStyle, fieldCodes: this.#fieldCodes });
+        await verifyInsertedReference(snapshot, { kind: 'citation', ...inserted });
+        const placement = resolved.resolvedAnchor ? { resolvedAnchor: { ...resolved.resolvedAnchor, verified: true } } : {};
         const current = await this.citationSources();
         if (current.evaluatedRevision !== catalog.evaluatedRevision) throw new Error('The document changed during citation insertion. Try again.');
         const bytes = await fs.readFile(snapshot);
@@ -249,12 +261,12 @@ export class Document {
               && item.address.story?.storyType === 'body'
               && item.address.anchor.start.blockId === inserted.blockId
               && item.address.anchor.start.offset === inserted.offset);
-            if (citation) return { success: true, citation: citation.address };
+            if (citation) return { success: true, citation: citation.address, evaluatedRevision: page.evaluatedRevision, ...placement };
             offset += page.items.length;
           } while (page.items.length && offset < page.total);
-          return { success: true, formattingWarning: 'Citation inserted. Its address could not be refreshed; inspect the document before editing again.' };
+          return { success: true, ...placement, formattingWarning: 'Citation inserted. Its address could not be refreshed; inspect the document before editing again.' };
         } catch {
-          return { success: true, formattingWarning: 'Citation inserted. Re-inspect the document before editing again.' };
+          return { success: true, ...placement, formattingWarning: 'Citation inserted. Re-inspect the document before editing again.' };
         }
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
@@ -303,14 +315,17 @@ export class Document {
       try {
         const snapshot = path.join(directory, 'document.docx');
         await this.#writeSnapshot(snapshot);
-        const result = await insertFootnoteInSnapshot(snapshot, input);
+        const resolved = input.anchor ? await resolveReferenceAnchor(snapshot, input.anchor) : { at: input.at };
+        const result = await insertFootnoteInSnapshot(snapshot, { ...input, at: resolved.at });
+        const segment = resolved.at.segments[0];
+        await verifyInsertedReference(snapshot, { kind: 'footnote', blockId: segment.blockId, offset: segment.range.start, noteId: result.footnote.noteId });
         const current = await this.#handle.citations.sources.list({ limit: 1 });
         if (current.evaluatedRevision !== start.evaluatedRevision) throw new Error('The document changed during insertion. Try again.');
         const bytes = await fs.readFile(snapshot);
         const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
         this.#importedCitations = imported;
-        return result;
+        return { ...result, ...(resolved.resolvedAnchor ? { resolvedAnchor: { ...resolved.resolvedAnchor, verified: true } } : {}) };
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
       }
@@ -395,7 +410,7 @@ export class DocumentService {
   getToolkit() {
     return {
       tools: [...this.#toolkit.tools, footnoteTool, citationTool, referenceTool, bibliographyTool],
-      systemPrompt: `${this.#toolkit.systemPrompt}\n\n${footnoteInstructions}\n\n${citationInstructions}\n\n${referenceInstructions}\n\n${bibliographyInstructions}`,
+      systemPrompt: `${this.#toolkit.systemPrompt}\n\n${footnoteInstructions}\n\n${citationInstructions}\n\n${referenceAnchorInstructions}\n\n${referenceInstructions}\n\n${bibliographyInstructions}`,
     };
   }
 

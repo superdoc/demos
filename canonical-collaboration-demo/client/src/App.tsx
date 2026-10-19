@@ -9,6 +9,7 @@ import type { BibliographyStyle } from './references';
 import { CitationsPanel } from './components/CitationsPanel';
 import { CitationHighlights } from './components/CitationHighlights';
 import { FootnoteHighlights } from './components/FootnoteHighlights';
+import { FootnoteReviewLabels } from './components/FootnoteReviewLabels';
 import { BibliographyDeletion } from './components/BibliographyDeletion';
 import { CitationDeletion } from './components/CitationDeletion';
 
@@ -241,6 +242,7 @@ export default function App() {
               onConnectedUsersChange={setConnectedUsers}
               onReady={setSuperdoc}
             />
+            <FootnoteReviewLabels superdoc={superdoc} />
             <CitationDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}
               onBusyChange={onCitationDeletionBusy} onUpdated={refreshReferences} onError={setError} />
             <BibliographyDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}
