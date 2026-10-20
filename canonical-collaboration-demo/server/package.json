@@ -11,7 +11,7 @@
     "@fastify/multipart": "9.2.1",
     "@fastify/websocket": "11.2.0",
     "@hocuspocus/server": "2.15.3",
-    "@superdoc/sdk": "2.15.0",
+    "@superdoc/sdk": "2.21.0",
     "@xmldom/xmldom": "0.9.12",
     "citeproc": "2.4.63",
     "fastify": "5.12.4",
