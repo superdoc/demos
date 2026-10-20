@@ -98,7 +98,7 @@ export class RoomStore {
   async #replace(roomId, filename, content) {
     this.validateId(roomId);
     const existingRoom = this.#rooms.get(roomId);
-    if (existingRoom?.activeJobs) {
+    if (existingRoom?.activeJobs || existingRoom?.document.referenceBusy) {
       const error = new Error('Wait for the active agent job before replacing the document.');
       error.name = 'HttpError';
       error.statusCode = 409;
@@ -165,11 +165,11 @@ export class RoomStore {
     room?.updateLastActivityAt();
   }
 
-  async export(roomId) {
+  async export(roomId, options) {
     const room = this.require(roomId);
     const exportPath = path.join(config.documentRoot, `${room.document.id}-export-${randomUUID()}.docx`);
     try {
-      await room.document.save(exportPath);
+      await room.document.save(exportPath, options);
       const content = await fs.readFile(exportPath);
       logEvent('rooms', 'document.exported', { roomId, documentId: room.document.id, documentBytes: content.length });
       return { room, content };
@@ -216,6 +216,7 @@ export class RoomStore {
       document_id: room.document.id,
       generation: room.document.generation,
       filename: room.document.filename,
+      field_codes: room.document.fieldCodes,
       last_activity_at: room.lastActivityAt.toISOString(),
       collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };

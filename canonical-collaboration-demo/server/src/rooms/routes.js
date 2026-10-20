@@ -26,7 +26,7 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
   }
 
   async function downloadDocument(request, reply) {
-    const { room, content } = await rooms.export(request.params.roomId);
+    const { room, content } = await rooms.export(request.params.roomId, { fieldCodes: request.query?.fieldCodes === 'true' });
     const filename = room.document.filename.replace(/["\r\n]/g, '_');
     return reply
       .type('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
@@ -51,6 +51,125 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     return reply.code(204).send();
   }
 
+  async function citationSources(request) {
+    const room = rooms.require(request.params.roomId);
+    await room.document.waitForReferences();
+    return room.document.citationSources();
+  }
+
+  async function mutateCitation(request) {
+    const room = rooms.require(request.params.roomId);
+    if (room.activeJobs) throw app.httpErrors.badRequest('Wait for the agent to finish before inserting a citation.');
+    if (room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for reference formatting to finish.');
+    const { generation, input } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reopen Insert citation.');
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw app.httpErrors.badRequest('Citation input is required.');
+    try {
+      const result = request.routeOptions.url.endsWith('/citation-sources')
+        ? await room.document.createCitationSource(input)
+        : await room.document.insertCitation(input);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function bibliographyStyle(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, style, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before choosing a style.');
+    if (room.activeJobs) throw app.httpErrors.badRequest('Wait for the agent to finish before changing bibliography style.');
+    try {
+      const result = await room.document.setBibliographyStyle(style, expectedRevision);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function insertFootnote(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, input } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before inserting a footnote.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (!input?.at || typeof input.expectedRevision !== 'string' || !['direct', 'tracked'].includes(input.changeMode)) {
+      throw app.httpErrors.badRequest('A footnote position, revision, and change mode are required.');
+    }
+    try {
+      const result = await room.document.insertFootnote(input);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function referenceDisplay(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, fieldCodes, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before switching reference display.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (typeof fieldCodes !== 'boolean' || typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('Reference display mode and document revision are required.');
+    try {
+      const result = await room.document.setReferenceDisplay(fieldCodes, expectedRevision);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function insertBibliography(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before inserting a bibliography.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('A document revision is required.');
+    try {
+      const result = await room.document.dispatch('superdoc_bibliographies', {
+        action: 'create', position: 'documentEnd', changeMode: 'direct', expectedRevision,
+      });
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function removeEmptyBibliography(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, expectedRevision } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before deleting a bibliography.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('A document revision is required.');
+    try {
+      const result = await room.document.manageBibliographies({
+        action: 'delete', bibliographyId: request.params.bibliographyId, changeMode: 'direct', onlyIfEmpty: true, expectedRevision,
+      });
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
+  async function removeCitation(request) {
+    const room = rooms.require(request.params.roomId);
+    const { generation, input } = request.body ?? {};
+    if (generation !== room.document.generation) throw app.httpErrors.badRequest('The document changed. Reload before deleting a citation.');
+    if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
+    if (!input || typeof input.expectedRevision !== 'string' || !input.expectedRevision.trim()) throw app.httpErrors.badRequest('A current citation and document revision are required.');
+    try {
+      const result = await room.document.removeCitation(input);
+      room.updateLastActivityAt();
+      return result;
+    } catch (error) {
+      throw app.httpErrors.badRequest(error.message);
+    }
+  }
+
   async function getRoomStatus(request) {
     return rooms.status(request.params.roomId, request.body?.generation);
   }
@@ -60,6 +179,7 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
   }
 
   async function createJob(request, reply) {
+    if (rooms.require(request.params.roomId).document.referenceBusy) throw app.httpErrors.badRequest('Wait for reference formatting to finish before running the agent.');
     const record = jobService.create(request.params.roomId, request.body);
     return reply
       .code(202)
@@ -69,6 +189,33 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
 
   async function getJob(request) {
     return jobService.get(request.params.roomId, request.params.jobId);
+  }
+
+  function streamJob(request, reply) {
+    const { roomId, jobId } = request.params;
+    const job = jobService.get(roomId, jobId);
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      ...reply.getHeaders(),
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const send = (record) => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify(record)}\n\n`);
+      if (['completed', 'failed', 'cancelled'].includes(record.status)) reply.raw.end();
+    };
+    const unsubscribe = jobService.subscribe(roomId, jobId, send);
+    const heartbeat = setInterval(() => {
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(': keep-alive\n\n');
+    }, 15_000);
+    heartbeat.unref();
+    const cleanup = () => { unsubscribe(); clearInterval(heartbeat); };
+    reply.raw.on('close', cleanup);
+    reply.raw.on('error', cleanup);
+    send(job);
+    return reply;
   }
 
   async function cancelJob(request) {
@@ -88,6 +235,16 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     { url: `${roomPath}/document`, method: 'GET', handler: downloadDocument },
     // Apply one SuperDoc tool operation to the current document.
     { url: `${roomPath}/document`, method: 'PATCH', handler: dispatchDocumentTool },
+    { url: `${roomPath}/citation-sources`, method: 'GET', handler: citationSources },
+    { url: `${roomPath}/jobs/:jobId/events`, method: 'GET', handler: streamJob },
+    { url: `${roomPath}/footnotes`, method: 'POST', handler: insertFootnote },
+    { url: `${roomPath}/citation-sources`, method: 'POST', handler: mutateCitation },
+    { url: `${roomPath}/citations`, method: 'POST', handler: mutateCitation },
+    { url: `${roomPath}/citations`, method: 'DELETE', handler: removeCitation },
+    { url: `${roomPath}/bibliography-style`, method: 'POST', handler: bibliographyStyle },
+    { url: `${roomPath}/bibliographies`, method: 'POST', handler: insertBibliography },
+    { url: `${roomPath}/bibliographies/:bibliographyId/empty`, method: 'DELETE', handler: removeEmptyBibliography },
+    { url: `${roomPath}/reference-display`, method: 'POST', handler: referenceDisplay },
     // Delete the room's document and associated ephemeral state.
     { url: `${roomPath}/document`, method: 'DELETE', handler: deleteDocument },
     // Refresh room activity and reconcile document generation metadata.

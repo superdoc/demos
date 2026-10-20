@@ -1,0 +1,7 @@
+.citation-highlights { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.citation-highlight { position: absolute; border-radius: 2px; background: #3b82f633; box-shadow: inset 0 0 0 1px #2563eb66; }
+.citation-highlight-error { position: sticky; top: 8px; margin: 8px; padding: 10px; background: #fff; color: #b91c1c; font-size: 12px; }
+.footnote-navigation { display: grid; gap: 2px; }
+.footnote-navigation .reference-command { display: inline-flex; align-items: center; justify-content: flex-start; min-height: 24px; padding: 2px 6px; gap: 5px; }
+.footnote-navigation .reference-command svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

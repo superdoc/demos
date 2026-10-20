@@ -129,6 +129,62 @@ A room contains one document with one stable document ID. Creating or uploading 
 
 The chat panel is isolated in `client/src/components/ChatPanel.tsx`. It communicates only through the public HTTP API and can be replaced with another agent interface.
 
+### Insert citations
+
+Choose **References** to switch from the editor toolbar to the References toolbar; **Home** switches back. Place the cursor in document text, or select a passage, then choose **Insert citation**. Choose a saved reference or enter a new source with its type, title, authors, year, publisher, pages, DOI, and URL. The citation is inserted at the cursor or after the selection, using the document's Editing/Reviewing mode. Sources are stored with the document and included in DOCX exports.
+
+The **Agent** button beside the Home toolbar's tracked-change controls toggles the agent panel while preserving its draft, history, width, and ongoing work. At toolbar widths up to 1800px, insertion and tracked-change buttons stack under their labels, and the native undo/redo and accept/reject controls are hidden. The native toolbar centers its controls and uses its own available width to move excess controls into its overflow menu.
+
+The References toolbar also provides:
+
+- **Insert footnote**: inserts a native numbered footnote at the cursor and moves into its body for typing. The editor owns footnote placement and numbering. When the native API rejects a paragraph containing citation fields, the server inserts the note into a revision-checked DOCX snapshot and reloads it while preserving those fields.
+- **Next footnote / Previous footnote**: selects the superscript reference in the main text and centers it in view, following document order and wrapping at either end. Navigation also works in Viewing mode.
+- **Citations**: opens the reference library to the right of the agent panel. Double-click a reference to insert it at the document cursor; keyboard users can press Enter on a reference. During insertion, only that reference shows a spinner, the cursor indicates loading, and the document remains visible and scrollable without a blocking overlay. Repeated activation is ignored until the insertion completes.
+- **Add reference**: at the top of the Citations panel, opens the source form to save a new reference without requiring a document cursor or inserting a citation. The saved source appears in the panel and becomes available to the agent.
+- **Insert bibliography**: inserts a native bibliography at the document end using the current style. Requires the document's Editing mode and shows progress only on the button while keeping scrolling available.
+- **Delete an empty bibliography**: in Editing mode, Backspace/Delete clears an empty native bibliography field and its leftover paragraph after the visible text is gone. The server checks that the field and its paragraph are still empty before removing them; saved references and in-text citations remain available. Reviewing mode continues to use the editor's tracked-deletion behavior.
+- **Bibliography style**: applies APA 7, Chicago 18 author-date, or MLA 9 to native citation fields and an existing bibliography, using vendored CSL styles and citeproc-js. Source data and field instructions are retained. This control does not create a bibliography where one is absent.
+
+**Highlight citations** and **Highlight footnotes**, immediately left of the render button, independently toggle blue overlays using `ui.viewport.getRect`. Footnote highlights mark the superscript references in the main document. Highlights follow scrolling, zoom, layout changes, and edits in either display mode without changing document formatting or intercepting clicks. Both toggles are local to your browser.
+
+**Render citations & bibliography** and **Option–F9** toggle field codes in the live collaborative document. Editing and Reviewing work in either display mode; Viewing remains read-only. The button is highlighted when results are rendered and shows progress while switching. The display mode is shared within the room. Normal DOCX downloads use rendered results while retaining native field instructions. Switching display or bibliography style preserves pending revisions through a revision-checked DOCX round trip. Wait for an active agent job to finish before switching reference display, formatting, or inserting citations.
+
+Citation sources are saved in the document's Word source catalog. Citation insertion writes a native Word field using its saved source tag in a revision-checked snapshot, applies the current style, and replaces the shared document. This avoids temporary SDK source IDs that stop resolving after V2 reloads. If another edit changes the document while the menu is open, reopen the menu at the intended cursor position before inserting.
+
+Deleting the last visible character of a citation, or selecting its complete text and pressing Backspace/Delete, removes the native citation field through `doc.citations.remove`. If the collaboration runtime returns `unsupported-context`, a server-side revision-checked DOCX fallback removes the exact matching main-document citation. It checks the paragraph, offsets, instruction, and displayed text before writing, preserves surrounding text and the saved source, and records a Word deletion in Reviewing mode. The fallback refuses unsupported nested revision wrappers. Other characters continue through normal editor deletion. Scrolling stays available during the server operation.
+
+DOCX imports load saved Word bibliography source records into **Existing references**. This includes uncited sources, organization authors, and source catalogs stored in different custom XML parts. Imported references can be reused, and exports retain their original Word source tags and full source metadata. Replacing the document replaces its reference library. The menu can also be opened to browse references before placing a cursor in the document.
+
+The chat agent can insert footnotes with `superdoc_insert_footnote({anchor, content, expectedRevision})`. It reads the target paragraph and revision with `superdoc_inspect`, then inserts a native numbered reference and the note text through the toolbar's revision-checked snapshot path. The host applies the request's tracked/direct mode and rejects stale revisions. Imports and exports repair the SDK's document/body wrapper around footnote parts so native notes survive collaboration and DOCX round trips.
+
+The agent also has `superdoc_insert_citation({anchor, sourceId, expectedRevision})`, using the same native Word field insertion and style rendering as the toolbar. It inserts one saved source per call. Each prompt receives the room's current reference library: source IDs, types, full source fields, bibliography style, and 1-based numbers in Citations-panel order. The model can resolve "the first reference" or a source title without guessing IDs. This context is refreshed for each request and is not stored as extra chat messages. Both reference tools enforce the request's tracked/direct mode.
+
+Agent insertion anchors are `{kind: 'afterText', text, sectionHeading?}`, `{kind: 'sectionEnd', sectionHeading}`, or `{kind: 'paragraphEnd', blockId}`. The server resolves exact text and actual heading boundaries in the current DOCX; the model never counts character offsets. Missing or ambiguous anchors fail without an insertion. Successful calls return `resolvedAnchor` with the block, offset, surrounding text, and `verified: true`, after checking the inserted marker/field in the edited snapshot before replacing the shared document. Toolbar insertions continue to use the native cursor selection. The local review-caption adapter corrects SuperDoc 2.18's "Added table" caption for structural footnote insertions to "Added footnote" without changing native IDs or decisions.
+
+Citation and footnote tool schemas enforce each anchor variant with strict decoding. Invalid arguments return exact field paths and corrected examples. Repeating the same failed tool arguments twice stops the run, even if inspections occur between retries. Stopped runs list operations that succeeded and the last failure; the 12-turn limit remains unchanged. The contract, DOCX placement, generic retry policy, and reference-specific reporting are separate modules.
+
+See [reference integration inventory](docs/reference-integration.md) for the native API, custom tool, and workaround boundaries and their removal criteria. Focused synthetic checks run with `node --test server/src/agent.test.js server/src/reference-anchor-contract.test.js server/src/reference-anchors.test.js server/src/reference-tool-progress.test.js tests/footnote-review-labels.test.mjs` (Node 24).
+
+`superdoc_references` manages saved sources with `list`, `get`, `create`, `update`, and `delete` actions. Creation requires a source type and title; other known metadata can include people or organization authors, year, publisher, pages, DOI, and URL. It returns a stable source ID that the agent can immediately use to insert a native citation. Updates patch only supplied fields and refresh citations and an existing bibliography. Deletion refuses still-cited sources. Mutations require the latest inspected/library revision, persist through DOCX export and reimport, and refresh the Citations panel when the agent finishes. Source-library metadata is saved directly; document citation insertion continues to follow Reviewing/Editing mode. Adding a source does not create a bibliography block.
+
+Requests such as "for each paragraph, create citations, but don't insert anything yet" save the distinct source records to the library without inserting citation markers or changing rendered bibliography text. The agent reads the paragraphs, reuses existing sources, creates identifiable missing sources, and reports paragraph coverage. Saving sources is separate from inserting their citations and does not require a second permission request.
+
+`superdoc_bibliographies` manages native bibliography fields with `list`, `get`, `create`, `update`, and `delete`. Creation defaults to the end of the document and its current style, or can go before/after an inspected body paragraph. Update refreshes entries; an optional APA, Chicago, or MLA style applies throughout the document, matching the toolbar. List/get return bibliography IDs and the revision required for mutations. Delete removes the complete field and generated paragraphs while preserving saved sources, in-text citations, and independently typed headings. Mutations currently require Editing mode; Reviewing-mode requests fail without applying direct edits. Reads work in either mode.
+
+Prompts such as "add a bibliography to the last page" select the native bibliography tool first; the agent uses the current style and document-end position without asking for approval. Generic text insertion and style-repair fallbacks are blocked for these creation requests. If the native tool reports a mode restriction, select Editing in the chat panel's **Agent edit mode** dropdown and retry; the document toolbar's mode selector is separate.
+
+Bibliography discovery filters returned Word fields by their actual instruction, since SDK 2.15 does not accept a field-type filter. Existing citations therefore do not count as bibliographies. Failed bibliography calls return the actual tool error directly, without asking for approval or offering plain-text alternatives; only the explicit mode-restriction error suggests changing Agent edit mode.
+
+Bibliography creation writes a native Word field into a revision-checked DOCX snapshot and renders it before replacing the shared document. This avoids SDK paragraph-style resolution and collaboration style-metadata writes during insertion. Generated bibliography entries retain the field paragraph’s style or use the document default; they do not reference an absent Bibliography style. Updates use the same renderer.
+
+Agent tool calls stream live in a separate bubble between the user prompt and the agent response, showing running, completed, or failed status and elapsed tool time. Each saved agent reply retains its own tool-call bubble, newest first. The collapsed bubble shows four complete calls and fades the fifth; clicking expands the full list, and clicking again collapses it. Expanded state is retained when the active job becomes a saved reply. Replies created before tool-call recording was enabled have no recorded trace.
+
+Reviewing-mode typing includes an isolated selection workaround for replacements following earlier tracked deletions in a paragraph. Before native typing begins, it reapplies the selected range in visible coordinates using the public selection API, preventing replacement letters from splitting around deleted text. The implementation lives in `client/src/reference-integration/workarounds/tracked-replacement-caret.ts`, with portable React lifecycle wiring in `client/src/reference-integration/components/TrackedReplacementCaret.tsx`. Native typing retains revision creation and undo. Verify the guards with `node --test tests/tracked-replacement-caret.test.mjs`.
+
+## Customer reference integration
+
+The citation/footnote tools and compatibility fixes are isolated in portable server and browser modules. See [the integration guide](docs/customer-integration.md), [workaround inventory](docs/reference-integration.md), and [agent guidance](AGENTS.md). The customer’s agent can integrate the source with its existing agent loop through `createReferenceAgentAdapter`, retaining native API calls, custom tools, and compatibility fixes together. The demo uses this same adapter.
+
 ## Services and ports
 
 `make dev` starts:
@@ -180,11 +236,21 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | `GET` | `/api/rooms/{roomId}/document` | Export and download the current collaborative DOCX |
 | `GET` | `/api/rooms/{roomId}/document/info` | Read document and collaboration metadata |
 | `PATCH` | `/api/rooms/{roomId}/document` | Dispatch one SuperDoc toolkit operation through the backend SDK |
+| `GET` | `/api/rooms/{roomId}/citation-sources` | Read saved citation sources and the server document revision |
+| `POST` | `/api/rooms/{roomId}/citation-sources` | Add a source using `{generation, input}` with SDK source fields and `expectedRevision` |
+| `POST` | `/api/rooms/{roomId}/citations` | Insert a citation using `{generation, input}` with SDK target, source ID, change mode, and `expectedRevision` |
+| `DELETE` | `/api/rooms/{roomId}/citations` | Remove an exact native citation from a DOCX snapshot using `{generation, input: {target, instruction, displayText, changeMode, expectedRevision}}` |
+| `POST` | `/api/rooms/{roomId}/bibliography-style` | Format native citation and bibliography fields using `{generation, style, expectedRevision}` |
+| `POST` | `/api/rooms/{roomId}/bibliographies` | Insert a native bibliography at the document end using `{generation, expectedRevision}` and the current style |
+| `DELETE` | `/api/rooms/{roomId}/bibliographies/{bibliographyId}/empty` | Remove an empty bibliography and its paragraph using `{generation, expectedRevision}`; refuse to remove visible content |
+| `POST` | `/api/rooms/{roomId}/reference-display` | Switch editable shared field-code/results display using `{generation, fieldCodes, expectedRevision}` |
+| `POST` | `/api/rooms/{roomId}/footnotes` | Insert a footnote beside existing fields using `{generation, input: {at, changeMode, expectedRevision}}` |
 | `DELETE` | `/api/rooms/{roomId}/document` | Delete the document and room state |
 | `POST` | `/api/rooms/{roomId}/status` | Refresh activity and return current metadata with a stale-generation indicator |
 | `GET` | `/api/rooms/{roomId}/chat` | Read completed agent conversation messages |
 | `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}` | Read job status and result |
+| `GET` | `/api/rooms/{roomId}/jobs/{jobId}/events` | Stream job status and tool-call updates as server-sent events |
 | `DELETE` | `/api/rooms/{roomId}/jobs/{jobId}` | Cancel a queued or running job |
 
 ### End-to-end API example
@@ -266,8 +332,10 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 - Fastify and Hocuspocus setup, health and collaboration routes, hooks, cleanup, and shutdown: `server/src/server.js`
 - Room, document, chat, status, and job routes: `server/src/rooms/routes.js`
 - Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms/store.js`
-- Shared SDK client, document objects, and document operations: `server/src/document-service.js`
-- OpenAI calls, system prompt, and SuperDoc tool dispatch: `server/src/agent.js`
+- Demo SDK startup and document registration: `server/src/document-service.js`
+- Portable document operations, tools, agent policy, and workarounds: `server/src/reference-integration/`
+- Demo OpenAI/model/logging injection: `server/src/agent.js`
+- Portable browser adapters and injected demo transport: `client/src/reference-integration/`, `client/src/reference-transport.ts`
 - In-memory queue, cancellation, and job state: `server/src/job-service.js`
 - Browser API and room-status client: `client/src/api.ts`
 - Replaceable agent UI: `client/src/components/ChatPanel.tsx`

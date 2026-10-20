@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { config } from './config.js';
 import { logEvent } from './logging.js';
 
@@ -12,6 +13,7 @@ export class JobService {
   #records = new Map();
   #active;
   #running = false;
+  #events = new EventEmitter();
 
   constructor(rooms, agent) {
     this.#rooms = rooms;
@@ -44,6 +46,7 @@ export class JobService {
       updated_at: timestamp,
       answer: null,
       error: null,
+      toolCalls: [],
     };
     this.#records.set(record.id, record);
     this.#queue.push(record.id);
@@ -63,12 +66,23 @@ export class JobService {
     return record;
   }
 
+  subscribe(roomId, jobId, listener) {
+    this.get(roomId, jobId);
+    this.#events.on(jobId, listener);
+    return () => this.#events.off(jobId, listener);
+  }
+
+  #publish(record) {
+    this.#events.emit(record.id, record);
+  }
+
   cancel(roomId, jobId) {
     const record = this.get(roomId, jobId);
     if (terminalStatuses.has(record.status)) return record;
     record.status = 'cancelled';
     record.updated_at = new Date().toISOString();
     if (this.#active?.record.id === jobId) this.#active.controller.abort(new Error('Agent job cancelled.'));
+    this.#publish(record);
     logEvent('worker', 'job.cancelled', { jobId, roomId });
     return record;
   }
@@ -105,6 +119,7 @@ export class JobService {
           room.startJob();
           record.status = 'running';
           record.updated_at = new Date().toISOString();
+          this.#publish(record);
           logEvent('worker', 'job.running', { jobId, roomId: record.room_id, queueSize: this.#queue.length });
           record.answer = await this.#agent.run(
             room.document,
@@ -112,6 +127,15 @@ export class JobService {
             room.conversation,
             record.isSuggesting,
             controller.signal,
+            {
+              messageId: record.id,
+              onToolCall: (toolCall) => {
+                const index = record.toolCalls.findIndex((call) => call.id === toolCall.id);
+                if (index === -1) record.toolCalls.push(toolCall);
+                else record.toolCalls[index] = toolCall;
+                this.#publish(record);
+              },
+            },
           );
           if (record.status !== 'cancelled') {
             record.status = 'applying_edit';
@@ -129,6 +153,7 @@ export class JobService {
           }
         } finally {
           record.updated_at = new Date().toISOString();
+          this.#publish(record);
           room?.finishJob();
           this.#active = undefined;
           logEvent('worker', 'job.finished', { jobId, roomId: record.room_id, status: record.status, queueSize: this.#queue.length });

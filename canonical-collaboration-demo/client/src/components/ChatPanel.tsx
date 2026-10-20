@@ -2,12 +2,16 @@ import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useLayoutEffect, use
 import Markdown from 'react-markdown';
 import { api } from '../api';
 import type { ChatMessage, Job } from '../types';
+import { ToolCallsBubble } from './ToolCallsBubble';
 
 type ChatPanelProps = {
+  hidden?: boolean;
   roomId: string;
   disabled: boolean;
   width: number;
   onWidthChange: (width: number) => void;
+  reservedWidth?: number;
+  onDocumentUpdated?: () => void;
 };
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -57,14 +61,17 @@ function JobStatus({ job }: { job: Job }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelProps) {
+export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string>();
   const historyRef = useRef<HTMLDivElement>(null);
+  const submittedPromptsRef = useRef<string[] | null>(null);
+  const promptNavigationRef = useRef<{ prompts: string[]; index: number; draft: string } | null>(null);
   const resizeStartRef = useRef<{ x: number; width: number } | undefined>(undefined);
+  const streamRef = useRef<EventSource | undefined>(undefined);
   const activeJob = jobs.find((job) => !TERMINAL.has(job.status));
 
   function startResize(event: PointerEvent<HTMLDivElement>) {
@@ -75,7 +82,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
   function resize(event: PointerEvent<HTMLDivElement>) {
     const start = resizeStartRef.current;
     if (!start) return;
-    const maximum = Math.max(280, Math.min(720, window.innerWidth - 680));
+    const maximum = Math.max(280, Math.min(720, window.innerWidth - 680 - reservedWidth));
     onWidthChange(Math.max(280, Math.min(maximum, start.width + start.x - event.clientX)));
   }
 
@@ -89,11 +96,15 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
   useLayoutEffect(() => {
     const history = historyRef.current;
     if (history) history.scrollTop = history.scrollHeight;
-  }, [jobs, messages]);
+  }, [jobs, messages, hidden]);
 
   async function refreshHistory() {
     try {
-      setMessages(await api.getChatHistory(roomId));
+      const history = await api.getChatHistory(roomId);
+      setMessages(history);
+      if (submittedPromptsRef.current === null) {
+        submittedPromptsRef.current = history.filter((message) => message.role === 'user').map((message) => message.content);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
@@ -103,8 +114,23 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
     setJobs([]);
     setMessages([]);
     setError(undefined);
+    submittedPromptsRef.current = null;
+    promptNavigationRef.current = null;
+    return () => { streamRef.current?.close(); streamRef.current = undefined; };
+  }, [roomId]);
+
+  useEffect(() => {
     if (!disabled) void refreshHistory();
   }, [disabled, roomId]);
+
+  async function finishJob(job: Job) {
+    onDocumentUpdated?.();
+    if (job.status === 'completed') {
+      const history = await api.getChatHistory(roomId);
+      setMessages(history);
+      setJobs((current) => current.filter((candidate) => candidate.id !== job.id));
+    }
+  }
 
   async function poll(job: Job) {
     while (!TERMINAL.has(job.status)) {
@@ -112,10 +138,34 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
       job = await api.getJob(roomId, job.id);
       setJobs((current) => current.map((candidate) => (candidate.id === job.id ? job : candidate)));
     }
-    if (job.status === 'completed') {
-      setJobs((current) => current.filter((candidate) => candidate.id !== job.id));
-      await refreshHistory();
-    }
+    await finishJob(job);
+  }
+
+  function watchJob(initialJob: Job): Promise<void> {
+    if (TERMINAL.has(initialJob.status)) return finishJob(initialJob);
+    return new Promise((resolve, reject) => {
+      let job = initialJob;
+      const stream = new EventSource(api.jobEventsUrl(roomId, job.id));
+      streamRef.current = stream;
+      const close = () => {
+        stream.onmessage = null; stream.onerror = null; stream.close();
+        if (streamRef.current === stream) streamRef.current = undefined;
+      };
+      stream.onmessage = (event) => {
+        try {
+          job = JSON.parse(event.data) as Job;
+          setJobs((current) => current.map((candidate) => candidate.id === job.id ? job : candidate));
+          if (TERMINAL.has(job.status)) {
+            close();
+            void finishJob(job).then(resolve, reject);
+          }
+        } catch (caught) { close(); reject(caught); }
+      };
+      stream.onerror = () => {
+        close();
+        void poll(job).then(resolve, reject);
+      };
+    });
   }
 
   async function submit(event: FormEvent) {
@@ -132,24 +182,45 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
     const message = prompt.trim();
     if (!message) return;
     setError(undefined);
+    submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
+    submittedPromptsRef.current.push(message);
+    promptNavigationRef.current = null;
     setPrompt('');
     try {
       const job = await api.createJob(roomId, message, isSuggesting);
       setJobs((current) => [...current, job]);
-      await poll(job);
+      await watchJob(job);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }
 
   function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (event.nativeEvent.isComposing) return;
+    if ((event.key === 'ArrowUp' || event.key === 'ArrowDown')
+      && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      let navigation = promptNavigationRef.current;
+      if (!navigation) {
+        if (prompt.trim() || event.key === 'ArrowDown') return;
+        const prompts = (submittedPromptsRef.current ?? []).filter((value) => value.trim());
+        if (!prompts.length) return;
+        navigation = { prompts, index: prompts.length, draft: prompt };
+        promptNavigationRef.current = navigation;
+      }
+      event.preventDefault();
+      navigation.index = Math.max(0, Math.min(navigation.prompts.length, navigation.index + (event.key === 'ArrowUp' ? -1 : 1)));
+      setPrompt(navigation.prompts[navigation.index] ?? navigation.draft);
+      if (navigation.index === navigation.prompts.length) promptNavigationRef.current = null;
+      return;
+    }
+    if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) promptNavigationRef.current = null;
+    if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
 
   return (
-    <aside className="chat-panel" aria-label="Agent chat" style={{ width }}>
+    <aside id="agent-panel" className="chat-panel" aria-label="Agent chat" hidden={hidden} style={{ width }}>
       <div
         className="chat-resize-handle"
         role="separator"
@@ -166,22 +237,32 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
       </header>
 
       <div ref={historyRef} className="chat-history">
-        {messages.map((message, index) => (
-          <article className={`message ${message.role}`} key={`${message.role}-${index}`}>
-            <CopyMessageButton content={message.content} />
-            <span className="message-role">{message.role === 'user' ? 'You' : 'Agent'}</span>
-            <MarkdownMessage content={message.content} />
-          </article>
-        ))}
-        {jobs.map((job) => (
-          <article className="message" key={job.id}>
-            <CopyMessageButton content={job.answer ?? job.prompt} />
-            <MarkdownMessage content={job.prompt} />
-            <JobStatus job={job} />
-            {job.answer && <div className="answer"><MarkdownMessage content={job.answer} /></div>}
-            {job.error && <p className="error">{job.error}</p>}
-          </article>
-        ))}
+        {[...messages.map((message, index) => (
+          <div className="message-turn" key={message.id ?? `${message.role}-${index}`}>
+            {message.role === 'assistant' && <ToolCallsBubble key="tools" calls={message.toolCalls} />}
+            <article className={`message ${message.role}`}>
+              <CopyMessageButton content={message.content} />
+              <span className="message-role">{message.role === 'user' ? 'You' : 'Agent'}</span>
+              <MarkdownMessage content={message.content} />
+            </article>
+          </div>
+        )), ...jobs.map((job) => (
+          <div className="message-turn" key={job.id}>
+            <article className="message user">
+              <CopyMessageButton content={job.prompt} />
+              <span className="message-role">You</span>
+              <MarkdownMessage content={job.prompt} />
+              <JobStatus job={job} />
+            </article>
+            <ToolCallsBubble key="tools" calls={job.toolCalls} />
+            {(job.answer || job.error) && <article className="message assistant">
+              <CopyMessageButton content={job.answer ?? job.error ?? ''} />
+              <span className="message-role">Agent</span>
+              {job.answer && <MarkdownMessage content={job.answer} />}
+              {job.error && <p className="error">{job.error}</p>}
+            </article>}
+          </div>
+        ))]}
       </div>
 
       <form onSubmit={submit}>
@@ -200,7 +281,8 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange }: ChatPanelP
         <textarea
           id="agent-prompt"
           value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
+          onChange={(event) => { promptNavigationRef.current = null; setPrompt(event.target.value); }}
+          onClick={() => { promptNavigationRef.current = null; }}
           onKeyDown={handlePromptKeyDown}
           placeholder={isSuggesting
             ? 'Enter a prompt for the agent to apply as a suggestion.'

@@ -11,6 +11,8 @@ body { margin: 0; min-width: 1000px; }
 button, input, textarea { font: inherit; }
 
 .topbar {
+  container: document-ribbon / inline-size;
+  min-width: 0;
   z-index: 12;
   display: grid;
   grid-template-rows: 50px 72px;
@@ -32,18 +34,128 @@ h2, p { margin-top: 0; }
 .file-title { position: absolute; left: 50%; display: flex; min-width: 260px; transform: translateX(-50%); text-align: center; }
 .file-name { max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
 .mode-select { display: flex; align-items: center; margin-left: auto; }
+.connected-users { display: inline-flex; align-items: center; gap: 6px; min-width: 132px; padding: 0 8px; color: #666; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.presence-dot { width: 7px; height: 7px; border-radius: 50%; background: #a1a1aa; }
+.presence-dot.active { background: #00853d; }
 .mode-select select { min-width: 122px; padding: 8px 30px 8px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 8px; outline: none; font-size: 12px; font-weight: 700; }
 .mode-select select:focus, .file-menu:focus { border-color: #3b82f6; outline: 0; box-shadow: 0 0 0 3px #3b82f61c; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.ribbon-controls-row { min-width: 0; display: flex; align-items: center; justify-content: center; padding: 3px 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.ribbon-controls-row { min-width: 0; display: flex; align-items: center; justify-content: flex-start; padding: 3px 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .ribbon-controls-row::-webkit-scrollbar { display: none; }
 .default-toolbar {
   width: auto;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: visible;
   background: #f8f8f8;
   --sd-ui-toolbar-bg: #f8f8f8;
 }
-.default-toolbar .superdoc-toolbar { background: #f8f8f8; }
+.default-toolbar .superdoc-toolbar { justify-content: center; background: #f8f8f8; }
 .default-toolbar [data-item="btn-documentMode"] { display: none; }
+.default-toolbar[hidden] { display: none; }
+.toolbar-switch { display: inline-flex; flex: 0 0 130px; justify-content: center; align-items: center; gap: 8px; min-height: 36px; margin-left: 10px; padding: 8px 12px; border-left: 1px solid #d1d5db; border-radius: 0; color: #303640; background: transparent; font-size: 12px; }
+.toolbar-switch svg, .reference-command svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.toolbar-switch:hover { background: #e8edf5; border-radius: 6px; }
+.agent-toggle { flex: 0 0 auto; margin-left: 8px; }
+.tracked-change-actions { display: grid; flex: 0 0 auto; grid-template-columns: auto auto; align-items: center; column-gap: 4px; margin-left: 10px; padding-left: 10px; border-left: 1px solid #d1d5db; }
+.tracked-change-label { grid-column: 1 / -1; color: #64748b; font-size: 10px; font-weight: 650; text-align: left; }
+.tracked-change-command { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 8px; background: transparent; font-size: 12px; white-space: nowrap; }
+.tracked-change-command.accept-all { color: #15803d; }
+.tracked-change-command.reject-all { color: #b91c1c; }
+.tracked-change-command:hover:not(:disabled) { background: #e8edf5; }
+.tracked-change-command .spinner { width: 18px; height: 18px; border-width: 2px; }
+.references-toolbar { display: flex; flex: 1 1 0; align-items: center; justify-content: safe center; gap: 18px; min-width: 0; height: 100%; overflow-x: auto; scrollbar-width: thin; }
+.reference-group { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding-right: 18px; border-right: 1px solid #d1d5db; }
+.reference-insert-actions { display: contents; }
+.reference-insert-label { display: none; }
+.insert-action-short { display: none; }
+.reference-command .insert-action-label { color: inherit; font-size: inherit; line-height: inherit; }
+.reference-insert-group > .footnote-navigation { order: 1; }
+.reference-insert-actions > .citation-control { order: 2; }
+.reference-display-controls { display: flex; flex: 0 0 auto; align-items: flex-end; gap: 18px; }
+.reference-display-controls .bibliography-style-select { grid-template-rows: 12px 36px; line-height: 12px; }
+.reference-display-controls .bibliography-style-select select { height: 100%; }
+.reference-highlight-group { display: grid; flex: 0 0 auto; grid-template-columns: auto auto; grid-template-rows: 12px 36px; gap: 4px 8px; padding: 0 18px; border-inline: 1px solid #d1d5db; }
+.reference-highlight-label { grid-column: 1 / -1; color: #64748b; font-size: 10px; line-height: 12px; font-weight: 650; text-align: left; }
+.reference-display-controls .reference-command { min-height: 36px; height: 36px; padding: 0 12px; }
+.references-toolbar .citation-control { margin: 0; padding: 0; border: 0; }
+.reference-command { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 8px 12px; color: #303640; background: transparent; font-size: 12px; white-space: nowrap; }
+.reference-command:hover:not(:disabled), .reference-command.is-active { background: #e3ebf8; color: #1d4ed8; }
+.reference-command > span { color: #2563eb; font-size: 25px; line-height: 22px; }
+.reference-command .reference-command-label { display: grid; gap: 3px; color: inherit; font-size: 12px; line-height: normal; text-align: left; }
+.reference-command-label small { color: #64748b; font-size: 10px; font-weight: 500; }
+.reference-command .reference-render-spinner { width: 21px; height: 21px; border-width: 2px; }
+.reference-command .footnote-command-icon { display: inline-flex; align-items: baseline; justify-content: center; width: 21px; font-family: Georgia, serif; font-size: 21px; }
+.footnote-command-icon .spinner { align-self: center; width: 18px; height: 18px; border-width: 2px; }
+.footnote-command-icon sup { font-family: Inter, sans-serif; font-size: 12px; }
+.footnote-navigation { display: grid; gap: 2px; }
+.footnote-navigation .reference-command { justify-content: flex-start; min-height: 24px; padding: 2px 6px; gap: 5px; }
+.footnote-navigation .reference-command svg { width: 16px; height: 16px; }
+.bibliography-style-select { display: grid; gap: 4px; min-width: 135px; color: #64748b; font-size: 10px; font-weight: 650; }
+.bibliography-style-select select { width: 100%; padding: 6px 26px 6px 9px; border: 1px solid #cbd5e1; border-radius: 6px; color: #303640; background: #fff; font: inherit; font-size: 12px; }
+.bibliography-style-control { position: relative; display: block; }
+.bibliography-style-control[aria-busy="true"] select { padding-right: 50px; }
+.bibliography-style-progress { position: absolute; top: 50%; right: 27px; transform: translateY(-50%); display: flex; pointer-events: none; }
+.bibliography-style-progress .spinner { width: 14px; height: 14px; border-width: 2px; }
+@container document-ribbon (max-width: 1800px) {
+  .tracked-change-actions { grid-template-columns: auto; grid-template-rows: 12px 22px 22px; row-gap: 2px; }
+  .tracked-change-label { line-height: 12px; }
+  .tracked-change-actions .tracked-change-command { justify-content: flex-start; min-height: 22px; height: 22px; padding-block: 0; }
+  .default-toolbar .sd-toolbar-item:has([data-item="btn-undo"]),
+  .default-toolbar .sd-toolbar-item:has([data-item="btn-redo"]),
+  .default-toolbar .sd-toolbar-item:has([data-item="btn-acceptTrackedChangeBySelection"]),
+  .default-toolbar .sd-toolbar-item:has([data-item="btn-rejectTrackedChangeOnSelection"]) { display: none !important; }
+  .toolbar-switch { flex-basis: 100px; margin-left: 8px; padding-inline: 8px; }
+  .references-toolbar, .reference-display-controls { gap: 8px; }
+  .reference-group { gap: 6px; padding-right: 8px; }
+  .reference-highlight-group { column-gap: 4px; padding-inline: 8px; }
+  .references-toolbar .reference-command { gap: 6px; padding-inline: 6px; font-size: 11px; }
+  .reference-command .reference-command-label { font-size: 11px; }
+  .references-toolbar .bibliography-style-select { min-width: 120px; }
+  .reference-insert-actions { display: grid; flex: 0 0 auto; grid-template-rows: 12px 22px 22px; gap: 2px; }
+  .reference-insert-label { display: block; color: #64748b; font-size: 10px; line-height: 12px; font-weight: 650; text-align: left; }
+  .reference-insert-actions .insert-action-full { display: none; }
+  .reference-insert-actions .insert-action-short { display: inline; }
+  .reference-insert-actions .reference-command { justify-content: flex-start; width: 100%; min-height: 22px; height: 22px; padding-block: 0; }
+  .footnote-navigation .reference-command { min-height: 22px; }
+}
+.reference-status { position: fixed; z-index: 20; top: 122px; right: 24px; max-width: 420px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; box-shadow: 0 8px 24px #0f172a26; font-size: 13px; }
+
+.citation-control { flex: 0 0 auto; margin-left: 10px; padding-left: 12px; border-left: 1px solid #d1d5db; }
+.citation-toolbar-button { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 10px; color: #303640; background: transparent; font-size: 12px; white-space: nowrap; }
+.citation-toolbar-button:hover:not(:disabled) { background: #e8edf5; }
+.citation-toolbar-button > span { color: #2563eb; font-size: 25px; line-height: 20px; }
+.citation-notice { position: fixed; z-index: 20; top: 122px; right: 24px; max-width: 360px; padding: 12px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 24px #0f172a26; }
+.citation-dialog { width: min(600px, calc(100vw - 40px)); max-height: calc(100vh - 48px); padding: 0; overflow: auto; color: #1f2937; background: #fff; border: 1px solid #d1d5db; border-radius: 14px; box-shadow: 0 24px 80px #0f172a40; }
+.citation-dialog::backdrop { background: #0f172a55; }
+.citation-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px 18px; border-bottom: 1px solid #e5e7eb; }
+.citation-header h2 { margin-bottom: 6px; font-size: 20px; }
+.citation-header p { margin: 0; color: #64748b; font-size: 13px; }
+.citation-close { padding: 0 6px; color: #64748b; background: transparent; font-size: 25px; }
+.citation-body { min-width: 0; margin: 0; padding: 20px 24px; border: 0; }
+.citation-tabs { display: flex; gap: 4px; margin-bottom: 20px; padding: 4px; background: #f1f5f9; border-radius: 8px; }
+.citation-tabs button { flex: 1; padding: 8px; color: #64748b; background: transparent; font-size: 12px; }
+.citation-tabs button[aria-pressed="true"] { color: #1d4ed8; background: #fff; box-shadow: 0 1px 4px #0f172a14; }
+.citation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.citation-field { display: grid; gap: 6px; color: #475569; font-size: 12px; font-weight: 650; }
+.citation-field input, .citation-field textarea, .citation-field select { width: 100%; min-width: 0; padding: 9px 10px; color: #1f2937; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; font-weight: 400; }
+.citation-field textarea { resize: vertical; }
+.citation-field :is(input, textarea, select):focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
+.citation-full-width { grid-column: 1 / -1; }
+.citation-preview { margin-top: 20px; padding: 12px 14px; overflow-wrap: anywhere; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.citation-preview strong { color: #64748b; font-size: 11px; }
+.citation-preview p { margin: 5px 0 0; }
+.citation-sources > p { color: #64748b; font-size: 13px; }
+.citation-source { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer; }
+.citation-source:has(input:checked) { background: #eff6ff; border-color: #93c5fd; }
+.citation-source input { margin-top: 3px; }
+.citation-source strong { font-size: 13px; }
+.citation-source small { display: block; margin-top: 5px; color: #64748b; overflow-wrap: anywhere; line-height: 1.5; }
+.citation-error { margin: 0; padding: 0 24px 18px; font-size: 13px; }
+.citation-footer { display: flex; align-items: center; gap: 8px; padding: 16px 24px; border-top: 1px solid #e5e7eb; }
+.citation-footer > span { flex: 1; color: #64748b; font-size: 11px; }
+.citation-footer button { font-size: 12px; }
+.citation-cancel { color: #475569; background: #f1f5f9; }
 
 button {
   border: 0; border-radius: 7px; padding: 10px 14px; background: var(--primary); color: #fff; cursor: pointer; font-weight: 650;
@@ -51,18 +163,25 @@ button {
 button:disabled { opacity: .45; cursor: not-allowed; }
 .stop-agent { background: #a02e2e; }
 
-.workspace { position: relative; height: calc(100vh - 122px); overflow: hidden; }
-.document-pane { width: 100%; height: 100%; min-width: 0; overflow: auto; background: var(--editor-canvas); }
+.workspace { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; height: calc(100vh - 122px); overflow: hidden; }
+.document-pane { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: auto; background: var(--editor-canvas); }
+.live-document { position: relative; height: 100%; }
+.citation-highlights { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.citation-highlight { position: absolute; border-radius: 2px; background: #3b82f633; box-shadow: inset 0 0 0 1px #2563eb66; }
+.citation-highlight-error { position: sticky; top: 8px; margin: 8px; padding: 10px; background: #fff; font-size: 12px; }
+.reference-busy-overlay { position: absolute; z-index: 10; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; background: #f8fafcdd; color: #475569; font-size: 13px; }
 .editor-shell, .editor-shell .superdoc-wrapper, .editor-shell .superdoc-editor-container { min-height: 100%; background: var(--editor-canvas); }
 .editor-shell { height: 100%; --sd-ui-ruler-bg: #fff; }
 .editor-shell .v2-ruler-host, .editor-shell .v2-ruler { background: #fff; }
+.editor-shell .v2-ruler-host { position: sticky; top: 0; z-index: 5; }
 .editor-state { display: grid; min-height: 240px; place-items: center; color: #64748b; }
 .upload-loading { height: 100%; display: grid; place-content: center; justify-items: center; gap: 12px; color: #64748b; background: var(--editor-canvas); }
 .spinner { width: 34px; height: 34px; border: 3px solid #cbd5e1; border-top-color: var(--primary); border-radius: 50%; animation: spin .75s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .welcome { margin: 72px auto; padding: 48px; max-width: 560px; text-align: center; background: #fff; border-radius: 12px; }
 
-.chat-panel { position: absolute; z-index: 4; top: 0; right: 0; bottom: 0; display: grid; grid-template-rows: auto 1fr auto; min-width: 0; min-height: 0; background: #fff; border-left: 1px solid #d1d5db; box-shadow: -8px 0 20px #0f172a14; }
+.chat-panel { position: relative; z-index: 4; display: grid; grid-template-rows: auto 1fr auto; min-width: 0; min-height: 0; background: #fff; border-left: 1px solid #d1d5db; box-shadow: -8px 0 20px #0f172a14; }
+.chat-panel[hidden] { display: none; }
 .chat-resize-handle { position: absolute; z-index: 5; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; touch-action: none; }
 .chat-resize-handle:hover, .chat-resize-handle:focus-visible { background: #2563eb33; outline: none; }
 .chat-panel header { padding: 24px; border-bottom: 1px solid #e5e7eb; }
@@ -72,6 +191,29 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .empty { color: #64748b; font-size: 14px; }
 .message { position: relative; margin-bottom: 12px; padding: 14px; background: #f3f4f6; border-radius: 9px; }
 .message.assistant { background: #eff6ff; }
+.message-turn { margin-bottom: 12px; }
+.message-turn .message { margin-bottom: 0; }
+.message-turn > .tool-calls-bubble:first-child { margin-top: 0; }
+.message-turn > .tool-calls-bubble + .message { margin-top: 6px; }
+.tool-calls-bubble { display: block; width: 100%; margin-top: 6px; padding: 10px 12px 6px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 9px; color: #475569; background: #f8fafc; text-align: left; font-weight: 400; cursor: default; }
+.tool-calls-bubble.is-expandable { cursor: pointer; }
+.tool-calls-bubble.is-expandable:hover { border-color: #cbd5e1; background: #f1f5f9; }
+.tool-calls-bubble:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.tool-calls-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 11px; font-weight: 650; }
+.tool-calls-count { margin-left: 4px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.tool-calls-heading > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; transition: transform .15s; }
+.tool-calls-heading > svg.is-expanded { transform: rotate(180deg); }
+.tool-calls-list { --tool-call-height: 40px; display: block; }
+.tool-calls-list.is-clipped { max-height: calc(var(--tool-call-height) * 4 + 20px); overflow: hidden; mask-image: linear-gradient(to bottom, #000 calc(var(--tool-call-height) * 4), transparent 100%); }
+.tool-call-row { display: flex; align-items: center; gap: 8px; height: var(--tool-call-height); min-width: 0; }
+.tool-call-icon { display: flex; flex: 0 0 16px; align-items: center; justify-content: center; color: #64748b; }
+.tool-call-icon.completed { color: #15803d; }
+.tool-call-icon.failed { color: #b91c1c; }
+.tool-call-icon > svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tool-call-icon .spinner { width: 14px; height: 14px; border-width: 2px; }
+.tool-call-detail { display: grid; min-width: 0; gap: 3px; }
+.tool-call-name { overflow: hidden; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+.tool-call-meta { color: #94a3b8; font-size: 10px; }
 .copy-message { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 5px; color: #64748b; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; opacity: 0; transition: opacity .1s; }
 .copy-message svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .message:hover .copy-message, .copy-message:focus-visible { opacity: 1; }
@@ -85,7 +227,6 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .message-markdown code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
 .message-markdown :not(pre) > code { padding: 2px 4px; background: #e2e8f0; border-radius: 4px; }
 .message-markdown a { color: var(--primary); }
-.message .answer { margin-top: 12px; color: #475569; font-size: 13px; }
 .job-status { font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .07em; color: #806414; }
 .job-status.completed { color: #187044; }
 .job-status.failed, .error { color: #a02e2e; }
@@ -95,3 +236,25 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .prompt-options select { padding: 5px 26px 5px 8px; color: #303640; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
 .chat-panel textarea { min-height: 96px; resize: vertical; padding: 10px; border: 1px solid #cbd5e1; border-radius: 7px; }
 .banner { position: fixed; z-index: 10; left: 50%; transform: translateX(-50%); top: 95px; padding: 10px 16px; background: #fff1f1; border-radius: 7px; box-shadow: 0 5px 20px #0002; }
+
+.citations-panel { z-index: 5; display: grid; grid-template-rows: auto auto 1fr auto; width: 310px; min-width: 0; min-height: 0; border-left: 1px solid #d1d5db; background: #f8fafc; }
+.citations-panel > header { display: flex; align-items: flex-start; justify-content: space-between; padding: 24px 18px 16px; background: #fff; }
+.citations-panel h2 { margin: 0 0 8px; font-size: 18px; }
+.citations-panel h2 span { display: inline-block; padding: 2px 7px; border-radius: 10px; color: #64748b; background: #f1f5f9; font-size: 11px; vertical-align: middle; }
+.citations-panel header p { margin: 0; color: #64748b; font-size: 12px; line-height: 1.5; }
+.citations-search { padding: 0 16px 16px; border-bottom: 1px solid #e2e8f0; background: #fff; }
+.add-reference-control { margin-bottom: 12px; }
+.add-reference-button { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; padding: 9px 12px; font-size: 12px; }
+.add-reference-button > span { font-size: 18px; line-height: 1; }
+.citations-search input { width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #f8fafc; font-size: 12px; }
+.citations-list { min-height: 0; padding: 14px; overflow-y: auto; }
+.citation-library-item { display: grid; gap: 7px; width: 100%; margin-bottom: 10px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 9px; color: #1f2937; background: #fff; text-align: left; user-select: none; }
+.citation-library-item:hover:not(:disabled), .citation-library-item:focus-visible { border-color: #93c5fd; background: #eff6ff; outline: none; }
+.citation-library-item.is-inserting { opacity: 1; border-color: #93c5fd; background: #eff6ff; }
+.citation-library-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 16px; }
+.citation-insert-spinner { flex: 0 0 auto; width: 16px; height: 16px; border-width: 2px; }
+.is-loading-references, .is-loading-references * { cursor: wait !important; }
+.citation-library-item strong { font-size: 13px; line-height: 1.45; }
+.citation-library-item small { color: #64748b; font-size: 11px; font-weight: 400; line-height: 1.6; overflow-wrap: anywhere; }
+.citation-kind { color: #2563eb; font-size: 10px; font-weight: 650; text-transform: capitalize; }
+.citations-panel-status { margin: 0; padding: 12px 16px; border-top: 1px solid #e2e8f0; background: #fff; font-size: 12px; line-height: 1.5; }

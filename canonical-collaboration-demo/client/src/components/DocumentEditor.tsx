@@ -1,5 +1,6 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SuperDocEditor, type SuperDocEditorProps } from '@superdoc/react';
+import type { SuperDoc } from 'superdoc';
 import { api } from '../api';
 import type { Room } from '../types';
 import type { DocumentMode } from './Topbar';
@@ -8,6 +9,8 @@ type DocumentEditorProps = {
   room: Room;
   mode: DocumentMode;
   onActivity: () => void;
+  onConnectedUsersChange: (count: number | null) => void;
+  onReady: (superdoc: SuperDoc | undefined) => void;
 };
 
 const editorModules: SuperDocEditorProps['modules'] = {
@@ -18,12 +21,32 @@ const editorModules: SuperDocEditorProps['modules'] = {
   },
 };
 const editorUi: SuperDocEditorProps['ui'] = {
-  toolbar: { container: '#superdoc-toolbar' },
+  toolbar: { container: '#superdoc-toolbar', excludeItems: ['ruler'], responsiveTo: 'container', overflow: 'menu' },
   loading: false,
 };
-const editorUser = { name: 'Demo user', email: 'demo@example.com' };
+export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActivity, onConnectedUsersChange, onReady }: DocumentEditorProps) {
+  const editorUser = useMemo(() => {
+    const sessionId = crypto.randomUUID();
+    return { name: `Demo user ${sessionId.slice(0, 8)}`, email: `${sessionId}@demo.example` };
+  }, []);
+  const presenceCount = useRef(0);
+  const synced = useRef(false);
+  const handleAwarenessUpdate = useCallback<NonNullable<SuperDocEditorProps['onAwarenessUpdate']>>(({ states }) => {
+    presenceCount.current = states.filter((state) => state.email !== 'document-service@demo.local').length;
+    if (synced.current) onConnectedUsersChange(presenceCount.current);
+  }, [onConnectedUsersChange]);
+  const handleConnectionChange = useCallback<NonNullable<SuperDocEditorProps['onCollaborationConnectionChange']>>(({ state }) => {
+    synced.current = state === 'synced';
+    onConnectedUsersChange(synced.current ? presenceCount.current : null);
+  }, [onConnectedUsersChange]);
 
-export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActivity }: DocumentEditorProps) {
+  useEffect(() => {
+    onConnectedUsersChange(null);
+    return () => {
+      onReady(undefined);
+      onConnectedUsersChange(null);
+    };
+  }, [room.document_id, onConnectedUsersChange, onReady]);
   const [documentBlob, setDocumentBlob] = useState<Blob>();
   const [loadError, setLoadError] = useState<string>();
   const documents = useMemo<SuperDocEditorProps['documents']>(() => documentBlob ? [
@@ -62,12 +85,19 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
         key={room.document_id}
         documentMode={mode}
         modules={editorModules}
-        rulers
+        rulers={false}
         ui={editorUi}
         documents={documents}
         user={editorUser}
         onTransaction={onActivity}
-        onException={(event) => console.error('SuperDoc error', event)}
+        onAwarenessUpdate={handleAwarenessUpdate}
+        onCollaborationConnectionChange={handleConnectionChange}
+        onReady={({ superdoc }) => {
+          onReady(superdoc);
+        }}
+        onException={(event) => {
+          console.error('SuperDoc error', event);
+        }}
       />
     </div>
   );

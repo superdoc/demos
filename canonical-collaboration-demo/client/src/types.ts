@@ -3,6 +3,7 @@ export type Room = {
   document_id: string;
   generation: number;
   filename: string;
+  field_codes?: boolean;
   last_activity_at: string;
   collaboration_url: string;
 };
@@ -22,9 +23,21 @@ export type Job = {
   updated_at: string;
   answer?: string;
   error?: string;
+  toolCalls?: ToolCall[];
+};
+
+export type ToolCall = {
+  id: string;
+  tool: string;
+  action?: string;
+  status: 'running' | 'completed' | 'failed';
+  startedAt: string;
+  durationMs?: number;
 };
 
 export type ChatMessage = {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
+  toolCalls?: ToolCall[];
 };
