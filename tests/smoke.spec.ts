@@ -13,6 +13,9 @@ test("demo mounts without console errors", async ({ page }, testInfo) => {
 		);
 	}
 	if (testInfo.project.name === "canonical-collaboration-demo") {
+		await page.route("**/api/rooms/*/initialize", (route) =>
+			route.fulfill({ json: { document: null } }),
+		);
 		await page.route("**/api/rooms/*/status", (route) =>
 			route.fulfill({ json: { document: null, stale: false } }),
 		);

@@ -4,6 +4,11 @@ import { config } from '../config.js';
 export const roomPath = '/api/rooms/:roomId';
 
 export function registerRoomRoutes(app, { rooms, jobService }) {
+  async function initializeRoom(request) {
+    const room = await rooms.initializeRoom(request.params.roomId);
+    return { room_id: request.params.roomId, document: room ? rooms.response(room) : null };
+  }
+
   async function getRoom(request) {
     const room = rooms.find(request.params.roomId);
     return { room_id: request.params.roomId, document: room ? rooms.response(room) : null };
@@ -225,6 +230,8 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
   const routes = [
     // Read the room's current document metadata, if a document exists.
     { url: roomPath, method: 'GET', handler: getRoom },
+    // Initialize an empty room from the configured template without replacing existing content.
+    { url: `${roomPath}/initialize`, method: 'POST', handler: initializeRoom },
     // Upload or replace the room's document with a DOCX file.
     { url: `${roomPath}/document`, method: 'PUT', handler: uploadDocument },
     // Create a blank document in the room.

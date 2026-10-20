@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SuperDoc } from 'superdoc';
 import { api } from './api';
 import { ChatPanel } from './components/ChatPanel';
@@ -36,7 +36,9 @@ export default function App() {
   const roomId = initialRoomId;
   const [room, setRoom] = useState<Room>();
   const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+  const initialization = useRef<Promise<Room | undefined> | null>(null);
   const [mode, setMode] = useState<DocumentMode>('editing');
   const [chatWidth, setChatWidth] = useState(360);
   const [agentOpen, setAgentOpen] = useState(true);
@@ -142,6 +144,20 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    initialization.current ??= api.initializeRoom(roomId);
+    initialization.current.then((document) => {
+      if (active) setRoom(document);
+    }).catch((caught) => {
+      if (active) setError(caught instanceof Error ? caught.message : String(caught));
+    }).finally(() => {
+      if (active) { setBusy(false); setInitialized(true); }
+    });
+    return () => { active = false; };
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!initialized) return;
+    let active = true;
     const updateStatus = async () => {
       try {
         const status = await api.getRoomStatus(roomId, room?.generation);
@@ -164,7 +180,7 @@ export default function App() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [roomId, room?.generation]);
+  }, [roomId, room?.generation, initialized]);
 
   async function upload(file: File) {
     setBusy(true);
@@ -256,8 +272,8 @@ export default function App() {
             </div>
           ) : (
             <div className="welcome">
-              <h2>Upload a DOCX to start this room</h2>
-              <p>Each room holds one ephemeral document. Uploading another file replaces it.</p>
+              <h2>No document in this room</h2>
+              <p>Create a new document or upload a DOCX using the buttons above.</p>
             </div>
           )}
         </div>

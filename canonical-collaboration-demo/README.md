@@ -118,12 +118,14 @@ The first run installs the Node dependencies. Open [http://localhost:15173](http
 
 The client creates a random room ID and adds it to the URL as `?room=...`. Keep or share that URL to reconnect to the same room while the local services remain running.
 
-1. Open the **File** menu.
-2. Choose **New Document** for a blank document or **Upload Document** to import a `.docx` file.
+1. Open a new room to load the bundled `server/assets/contract.docx` sample automatically.
+2. Use the four file buttons, left to right: **New Document**, **Replace document**, **Save As**, and **Delete document**. New Document creates a blank document; Replace document imports a `.docx` file.
 3. Edit the document directly in SuperDoc.
 4. Enter an instruction in the agent panel and select **Run agent**. Enter submits; Shift+Enter adds a new line.
 5. While a job is running, select **Stop agent** to cancel remaining work. Edits already applied before cancellation are not rolled back.
 6. Use **Save As** to export the collaborative document, or **Delete Document** to remove it.
+
+Set `DEFAULT_DOCUMENT_PATH` in the local `.env` file to override the bundled room template. Initialization preserves an existing room and coalesces simultaneous requests for the same new room.
 
 A room contains one document with one stable document ID. Creating or uploading another document calls the Node SDK's `replaceFile()` on the existing backend document session. This atomically resets the shared content without replacing the collaboration identity. Replacement starts a new metadata generation and clears the previous chat history.
 
@@ -231,6 +233,7 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | --- | --- | --- |
 | `GET` | `/api/health` | Check server health |
 | `GET` | `/api/rooms/{roomId}` | Read room state; returns `document: null` when empty |
+| `POST` | `/api/rooms/{roomId}/initialize` | Open the existing room, or initialize it from the default contract without replacing existing content |
 | `POST` | `/api/rooms/{roomId}/document` | Create or replace with a blank document |
 | `PUT` | `/api/rooms/{roomId}/document` | Upload or replace with a `.docx` file |
 | `GET` | `/api/rooms/{roomId}/document` | Export and download the current collaborative DOCX |

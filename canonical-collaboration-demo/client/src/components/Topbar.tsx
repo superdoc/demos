@@ -1,4 +1,4 @@
-import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SuperDoc } from 'superdoc';
 import { ReferencesToolbar, type ReferencesToolbarProps } from './ReferencesToolbar';
 import { TrackedChangeActions } from './TrackedChangeActions';
@@ -58,15 +58,6 @@ export function Topbar({
     if (fileInput.current) fileInput.current.value = '';
   }
 
-  function chooseFileAction(event: ChangeEvent<HTMLSelectElement>) {
-    const action = event.target.value;
-    event.target.value = '';
-    if (action === 'new') onNewDocument();
-    if (action === 'upload') fileInput.current?.click();
-    if (action === 'save-as') onDownload();
-    if (action === 'delete') onDelete();
-  }
-
   return (
     <header className="topbar">
       <div className="ribbon-tabs-row">
@@ -78,20 +69,14 @@ export function Topbar({
           onChange={(event) => uploadDocument(event.target.files?.[0])}
         />
 
-        <select
-          className="file-menu"
-          aria-label="File"
-          defaultValue=""
-          disabled={busy || !roomId}
-          title={importError || undefined}
-          onChange={chooseFileAction}
-        >
-          <option value="" disabled>File</option>
-          <option value="new">New Document</option>
-          <option value="upload">{room ? 'Replace document…' : 'Upload document…'}</option>
-          <option value="save-as" disabled={!room}>Save As…</option>
-          <option value="delete" disabled={!room}>Delete document</option>
-        </select>
+        <div className="file-actions" role="group" aria-label="File actions" title={importError || undefined}>
+          <button type="button" className="file-action" disabled={busy || !roomId} onClick={onNewDocument}>New Document</button>
+          <button type="button" className="file-action" disabled={busy || !roomId} onClick={() => fileInput.current?.click()}>
+            {room ? 'Replace document…' : 'Upload document…'}
+          </button>
+          <button type="button" className="file-action" disabled={busy || !roomId || !room} onClick={onDownload}>Save As…</button>
+          <button type="button" className="file-action file-action-delete" disabled={busy || !roomId || !room} onClick={onDelete}>Delete document</button>
+        </div>
 
         <div className="file-title">
           <div className="file-name">{room?.filename ?? 'No document'}</div>

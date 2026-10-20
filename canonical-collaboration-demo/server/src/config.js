@@ -16,6 +16,7 @@ export const config = Object.freeze({
   publicOrigin: process.env.PUBLIC_ORIGIN ?? 'http://localhost:8000',
   documentRoot: path.resolve(process.env.DOCUMENT_ROOT ?? path.join(serverRoot, '..', 'data')),
   blankDocumentPath: path.join(serverRoot, 'assets', 'blank.docx'),
+  defaultDocumentPath: path.resolve(process.env.DEFAULT_DOCUMENT_PATH || path.join(serverRoot, 'assets', 'contract.docx')),
   roomTtlMs: Number(process.env.ROOM_TTL_SECONDS ?? 3600) * 1000,
   completedJobTtlMs: Number(process.env.COMPLETED_JOB_TTL_SECONDS ?? 600) * 1000,
   openaiModel: process.env.OPENAI_MODEL ?? 'gpt-5-mini',

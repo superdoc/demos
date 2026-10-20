@@ -42,6 +42,11 @@ export class ApiClient {
     return state.document;
   }
 
+  async initializeRoom(roomId: string): Promise<Room | undefined> {
+    const state = await this.request<{ document: Room | null }>(`${this.roomPath(roomId)}/initialize`, { method: 'POST' });
+    return state.document ?? undefined;
+  }
+
   uploadDocument(roomId: string, file: File): Promise<Room> {
     const body = new FormData();
     body.append('file', file);

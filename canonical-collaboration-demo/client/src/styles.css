@@ -30,15 +30,18 @@ button, input, textarea { font: inherit; }
 }
 h2, p { margin-top: 0; }
 .eyebrow { margin-bottom: 4px; color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
-.file-menu { min-width: 112px; height: 34px; padding: 5px 28px 5px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 7px; font-size: 11px; font-weight: 750; }
-.file-title { position: absolute; left: 50%; display: flex; min-width: 260px; transform: translateX(-50%); text-align: center; }
+.file-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.file-action { min-height: 34px; padding: 5px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 7px; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.file-action:hover:not(:disabled) { background: #e8edf5; }
+.file-action-delete { color: #b91c1c; }
+.file-title { display: flex; flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center; }
 .file-name { max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
 .mode-select { display: flex; align-items: center; margin-left: auto; }
 .connected-users { display: inline-flex; align-items: center; gap: 6px; min-width: 132px; padding: 0 8px; color: #666; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .presence-dot { width: 7px; height: 7px; border-radius: 50%; background: #a1a1aa; }
 .presence-dot.active { background: #00853d; }
 .mode-select select { min-width: 122px; padding: 8px 30px 8px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 8px; outline: none; font-size: 12px; font-weight: 700; }
-.mode-select select:focus, .file-menu:focus { border-color: #3b82f6; outline: 0; box-shadow: 0 0 0 3px #3b82f61c; }
+.mode-select select:focus, .file-action:focus-visible { border-color: #3b82f6; outline: 0; box-shadow: 0 0 0 3px #3b82f61c; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .ribbon-controls-row { min-width: 0; display: flex; align-items: center; justify-content: flex-start; padding: 3px 8px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .ribbon-controls-row::-webkit-scrollbar { display: none; }

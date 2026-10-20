@@ -35,6 +35,7 @@ export class Room {
 
 export class RoomStore {
   #rooms = new Map();
+  #initializations = new Map();
   #collaboration;
   #documents;
 
@@ -74,6 +75,21 @@ export class RoomStore {
     return room;
   }
 
+  async initializeRoom(roomId) {
+    this.validateId(roomId);
+    const existing = this.#rooms.get(roomId);
+    if (existing) return existing;
+    if (this.#initializations.has(roomId)) return this.#initializations.get(roomId);
+    const pending = (async () => {
+      const content = await fs.readFile(config.defaultDocumentPath);
+      if (!content.length || content.length > config.maximumUploadBytes) throw new Error('The default document must be a non-empty DOCX within the upload size limit.');
+      return this.#replace(roomId, path.basename(config.defaultDocumentPath), content);
+    })();
+    this.#initializations.set(roomId, pending);
+    try { return await pending; }
+    finally { this.#initializations.delete(roomId); }
+  }
+
   async replaceUpload(roomId, filename, content) {
     if (!filename?.toLowerCase().endsWith('.docx')) {
       const error = new Error('Upload a .docx document.');
@@ -87,10 +103,12 @@ export class RoomStore {
       error.statusCode = 400;
       throw error;
     }
+    await this.#initializations.get(roomId);
     return this.#replace(roomId, filename, content);
   }
 
   async createBlank(roomId) {
+    await this.#initializations.get(roomId);
     const content = await fs.readFile(config.blankDocumentPath);
     return this.#replace(roomId, 'Untitled document.docx', content);
   }
