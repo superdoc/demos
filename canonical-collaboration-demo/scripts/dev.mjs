@@ -34,7 +34,6 @@ function loadEnvironment() {
     const value = line.slice(separator + 1).trim().replace(/^(['"])(.*)\1$/, '$2');
     environment[key] ??= value;
   }
-  if (!environment.OPENAI_API_KEY) throw new Error('Add OPENAI_API_KEY to .env before starting the demo.');
   return {
     ...environment,
     PORT: '8000',
@@ -46,6 +45,23 @@ function loadEnvironment() {
 }
 
 const environment = loadEnvironment();
+const componentMode = (name) => {
+  const mode = environment[name] ?? 'on';
+  if (mode !== 'on' && mode !== 'off') throw new Error(`${name} must be "on" or "off". Received "${mode}".`);
+  return mode;
+};
+const apiMode = componentMode('COLLABORATION_API');
+const clientMode = componentMode('COLLABORATION_CLIENT');
+const agentMode = componentMode('COLLABORATION_AGENT');
+if (agentMode === 'on' && apiMode === 'off') throw new Error('COLLABORATION_AGENT=on requires COLLABORATION_API=on.');
+if (clientMode === 'on' && apiMode === 'off') {
+  throw new Error('The bundled client requires COLLABORATION_API=on. Set COLLABORATION_CLIENT=off for a server-only run.');
+}
+if (agentMode === 'on' && !environment.OPENAI_API_KEY) {
+  throw new Error('Add OPENAI_API_KEY to .env, or set COLLABORATION_AGENT=off.');
+}
+environment.VITE_COLLABORATION_AGENT = agentMode;
+
 const services = [
   {
     name: 'server',
@@ -54,7 +70,9 @@ const services = [
     cwd: path.join(root, 'server'),
     showOutput: [...logServices].some((service) => service !== 'client' && service !== 'dev') || logServices.has('all'),
   },
-  { name: 'client', command: 'npm', args: ['run', 'dev'], cwd: path.join(root, 'client'), showOutput: logs('client') },
+  ...(clientMode === 'on'
+    ? [{ name: 'client', command: 'npm', args: ['run', 'dev'], cwd: path.join(root, 'client'), showOutput: logs('client') }]
+    : []),
 ];
 const processes = [];
 let stopping = false;
@@ -85,6 +103,9 @@ for (const service of services) {
   });
 }
 
-if (logs('dev')) console.log('[dev] open http://localhost:15173');
+if (logs('dev')) {
+  console.log(`[dev] components: api=${apiMode}, client=${clientMode}, agent=${agentMode}`);
+  if (clientMode === 'on') console.log('[dev] open http://localhost:15173');
+}
 process.once('SIGINT', () => stop());
 process.once('SIGTERM', () => stop());

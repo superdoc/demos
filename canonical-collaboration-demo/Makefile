@@ -1,7 +1,10 @@
-.PHONY: dev install clean
+.PHONY: dev build install clean
 
 dev: install
 	@node scripts/dev.mjs $(if $(LOG),--log $(LOG),)
+
+build: install
+	@node scripts/build.mjs
 
 install: client/node_modules/.installed server/node_modules/.installed
 
