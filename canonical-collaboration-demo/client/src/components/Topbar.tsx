@@ -6,7 +6,9 @@ import type { Room } from '../types';
 
 export type DocumentMode = 'suggesting' | 'editing' | 'viewing';
 
-const buildCommand = `git clone https://github.com/superdoc/demos.git
+const buildCommand = `set -e
+
+git clone https://github.com/superdoc/demos.git
 cd demos/canonical-collaboration-demo
 
 # Build configuration
