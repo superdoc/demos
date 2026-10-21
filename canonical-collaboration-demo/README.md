@@ -2,47 +2,61 @@
 
 A small reference application showing a browser user and a server-side Node agent editing the same SuperDoc document. Everything runs locally, and model requests go directly to OpenAI with your API key.
 
-## Control Diagram/Hierarchy
+## Architecture
 
 ```mermaid
 flowchart TB
-    Client["Client"]
+    Browser["React client<br/>OPTIONAL: COLLABORATION_CLIENT=on"]
+    External["External client / backend"]
 
-    subgraph Fastify["API"]
+    subgraph Fastify["Fastify server (always included)"]
         direction TB
 
-        Agent["Shared Agent"]
+        subgraph CollaborationLayer["Simba-derived collaboration backend"]
+            Collab["Hocuspocus collaboration core<br/>WebSocket /collaboration"]
+            Auth["JWT WebSocket gate<br/>OPTIONAL: COLLABORATION_AUTH=example-token"]
+            State["Yjs room-state adapter"]
+            Memory["Memory store<br/>COLLABORATION_STORAGE=memory"]
+            FileState["File persistence<br/>OPTIONAL: COLLABORATION_STORAGE=file"]
+            Autosave["Debounced DOCX autosave worker<br/>OPTIONAL: COLLABORATION_DOCX=autosave"]
+            DocxFiles["Autosaved DOCX files"]
 
-        JobService["JobService"]
+            Auth -.->|"enabled gate"| Collab
+            Collab --> State
+            State -->|"memory mode"| Memory
+            State -->|"file mode"| FileState
+            Collab -.-> Autosave --> DocxFiles
+        end
 
-        subgraph DocumentService["DocumentService"]
+        subgraph Api["Existing demo application layer (optional)"]
+            Routes["Room, document, reference,<br/>token, and job routes<br/>COLLABORATION_API=on"]
+            RoomStore["Application RoomStore<br/>metadata + active rooms"]
+            DocumentService["DocumentService"]
             SDK["Shared SuperDocClient"]
+            Jobs["JobService + OpenAI agent<br/>OPTIONAL: COLLABORATION_AGENT=on"]
+
+            Routes --> RoomStore
+            Routes --> Jobs
+            RoomStore --> DocumentService --> SDK
+            Jobs -->|"dispatches document tools"| RoomStore
         end
 
-        subgraph RoomStore["RoomStore"]
-            direction TB
-
-            subgraph Room["Room"]
-                direction TB
-                Document["Document"]
-            end
-        end
+        Routes -.->|"issues room-scoped JWTs when enabled"| Auth
+        SDK -->|"backend collaboration session"| Collab
     end
 
-    Client -->|"HTTP requests"| Fastify
+    Browser -->|"HTTP"| Routes
+    Browser -->|"document WebSocket"| Collab
+    External -->|"HTTP when API is enabled"| Routes
+    External -->|"programmatic WebSocket"| Collab
 
-    JobService -->|"Runs shared agent with Document + prompt"| Agent
-    Agent -->|"Dispatches tool calls"| Document
-
-    RoomStore -->|"Requests document creation"| DocumentService
-
-    DocumentService -.->|"Creates and tracks"| Document
-    Document -.->|"Uses handle from"| SDK
+    classDef optional fill:#fff7ed,stroke:#f97316,stroke-dasharray:5 3,color:#7c2d12;
+    class Browser,Auth,Api,Jobs,Memory,FileState,Autosave,DocxFiles optional;
 ```
 
-The diagram focuses on actions initiated through the HTTP API, such as creating, uploading, downloading, replacing, or deleting a document; submitting or cancelling an agent job; reading job or chat state; and checking room status. Separately, SuperDoc manages the client's connection to the document through the Hocuspocus WebSocket endpoint. That connection carries live document edits between browser editors and the backend SDK.
+Orange dashed blocks are optional. The Fastify host and Hocuspocus collaboration core are always present. The bundled React client, HTTP application layer, agent worker, JWT gate, file-backed Yjs persistence, and DOCX autosave can be included or excluded with the flags shown. The room-state adapter is always present, using either memory or file storage; the two storage blocks are alternatives rather than simultaneous destinations.
 
-The browser owns the UI and interactive editor. Fastify owns the API, rooms, chat, expiry, jobs, collaboration state, and document service. Each room owns one document object, while the document service owns the shared SDK client. The filesystem holds temporary DOCX source and export files.
+The browser owns the UI and interactive editor. When enabled, the HTTP application layer owns room metadata, uploads/downloads, references, chat, expiry, token issuance, and jobs. Each application room owns one document object, while `DocumentService` owns the shared SDK client. Browser and backend SDK sessions edit through the same Hocuspocus document. The Simba-derived collaboration layer owns WebSocket authorization, Yjs room-state storage, and optional debounced DOCX snapshots; it can also run without the bundled client and HTTP application layer.
 
 ### Document Upload/Room Creation
 
@@ -95,7 +109,11 @@ Add your key to `.env`:
 
 ```dotenv
 OPENAI_API_KEY=your-key-here
+COLLABORATION_AUTH_SECRET=replace-with-at-least-32-random-characters
 ```
+
+Generate the collaboration secret with `openssl rand -hex 32`. The server uses it to sign short-lived,
+document-scoped JWTs for browsers and backend SDK sessions; it never sends the secret to a client.
 
 Start the complete stack:
 
@@ -206,13 +224,44 @@ Document content travels through Hocuspocus. The browser posts to the room statu
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | required | Credential sent directly to OpenAI |
+| `COLLABORATION_API` | `on` | Set to `off` to run only the collaboration WebSocket, persistence, auth, and optional DOCX autosave. |
+| `COLLABORATION_CLIENT` | `on` | Set to `off` to skip the bundled React client in `make dev` and the root build. |
+| `COLLABORATION_AGENT` | `on` | Set to `off` to omit the OpenAI agent worker and its job routes/UI. Requires the API when enabled. |
+| `COLLABORATION_AUTH` | `example-token` | Set to `none` only on a private network to disable WebSocket access checks. |
+| `COLLABORATION_AUTH_SECRET` | none | JWT signing secret of at least 32 characters; required for `example-token` auth. |
+| `COLLABORATION_STORAGE` | `file` | Use `memory` to disable Yjs room persistence for an ephemeral process. |
+| `COLLABORATION_STORAGE_DIR` | `./data/collaboration-rooms` | Persistent binary Yjs room-state directory. |
+| `COLLABORATION_DOCX` | `autosave` | Set to `off` to omit DOCX autosaving. |
+| `COLLABORATION_DOCX_DIR` | `./data/collaboration-docx` | Latest autosaved DOCX directory. |
+| `COLLABORATION_DOCX_IDLE_MS` | `10000` | Debounce delay before exporting a changed room. |
+| `OPENAI_API_KEY` | required with agent enabled | Credential sent directly to OpenAI. |
 | `OPENAI_MODEL` | `gpt-5-mini` | Model used by the document agent |
 | `ROOM_TTL_SECONDS` | `3600` | Room expiry period since its last recorded activity |
 | `COMPLETED_JOB_TTL_SECONDS` | `600` | Retention period for terminal job records |
 | `CLIENT_ORIGINS` | Local client URLs and `https://demos.superdoc.dev` | Comma-separated browser origins allowed by CORS |
 
 Local service URLs and ports are configured in `scripts/dev.mjs`.
+
+The component flags follow the quick-start server's mode convention: named values such as `on`, `off`,
+`example-token`, `none`, and `autosave` are validated at startup instead of treating arbitrary strings as booleans.
+The server is interpreted JavaScript rather than a bundled artifact: API and agent flags prevent those modules from
+being imported or initialized at runtime, while the root build validates the server and conditionally bundles the client.
+
+Common compositions:
+
+```bash
+# Full client + API + agent stack (the default)
+make dev
+
+# Client and API without the OpenAI agent worker
+COLLABORATION_AGENT=off make dev
+
+# Collaboration quick-start backend only
+COLLABORATION_API=off COLLABORATION_CLIENT=off COLLABORATION_AGENT=off make dev
+
+# Validate the server without producing a client bundle; runtime also omits the API agent
+COLLABORATION_CLIENT=off COLLABORATION_AGENT=off npm run build
+```
 
 ## Deployment
 
@@ -223,7 +272,7 @@ The same production workflow deploys `server/` to Railway and then verifies `/ap
 - `RAILWAY_TOKEN`: a project-scoped Railway token for the production environment
 - `RAILWAY_SERVICE_ID`: the target Railway service ID
 
-The Railway service owns runtime configuration, including `OPENAI_API_KEY` and `PUBLIC_ORIGIN`. Set `PUBLIC_ORIGIN` to the service's HTTPS Railway domain without a trailing slash.
+The Railway service owns runtime configuration, including `OPENAI_API_KEY`, `COLLABORATION_AUTH_SECRET`, and `PUBLIC_ORIGIN`. Set `PUBLIC_ORIGIN` to the service's HTTPS Railway domain without a trailing slash. Put `COLLABORATION_STORAGE_DIR` and `COLLABORATION_DOCX_DIR` on durable storage before treating restart persistence as production-ready.
 
 ## HTTP API
 
@@ -251,6 +300,7 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | `DELETE` | `/api/rooms/{roomId}/document` | Delete the document and room state |
 | `POST` | `/api/rooms/{roomId}/status` | Refresh activity and return current metadata with a stale-generation indicator |
 | `GET` | `/api/rooms/{roomId}/chat` | Read completed agent conversation messages |
+| `POST` | `/api/rooms/{roomId}/collaboration-token` | Issue a five-minute JWT scoped to this room using `{userId}` |
 | `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}` | Read job status and result |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}/events` | Stream job status and tool-call updates as server-sent events |
@@ -328,11 +378,12 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 - The browser checks room status every 30 seconds, including while the room is empty; an existing room records that check as activity.
 - Cleanup runs once per minute, so removal can occur up to roughly one minute after the deadline.
 - Active jobs prevent room expiry.
-- Process restart recovery is deliberately unsupported; room, collaboration, chat, and job state are in memory.
+- Binary Yjs room state is stored under `COLLABORATION_STORAGE_DIR`, and debounced DOCX snapshots are stored under `COLLABORATION_DOCX_DIR`. API room metadata, open SDK handles, chat, and jobs remain in memory, so complete process-restart recovery is not implemented yet.
 
 ## Code map
 
 - Fastify and Hocuspocus setup, health and collaboration routes, hooks, cleanup, and shutdown: `server/src/server.js`
+- Simba-derived authentication, Yjs storage, and DOCX autosave: `server/src/collaboration/`
 - Room, document, chat, status, and job routes: `server/src/rooms/routes.js`
 - Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms/store.js`
 - Demo SDK startup and document registration: `server/src/document-service.js`
@@ -347,6 +398,6 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 
 ## Production boundary
 
-This demo packages a runnable local collaboration topology; it is not a production deployment template. A production owner would still need authentication and authorization, secrets management, durable document and job storage, queue recovery, collaboration persistence, horizontal scaling, rate limits, observability, backups, TLS, and deployment-specific CORS and public URLs.
+This demo packages a runnable local collaboration topology; it is not a production deployment template. In the default mode, WebSocket clients require signed, document-scoped tokens and binary Yjs state plus DOCX snapshots are written to disk. The token endpoint is still demo infrastructure rather than application login: it trusts the submitted demo user ID, so a production owner must authenticate its HTTP API caller and authorize room access before issuing a token. Persisted Yjs state alone does not restore API room metadata or reopen SDK documents after restart. Production also needs durable room metadata and job storage, queue recovery, multi-process collaboration coordination, rate limits, observability, backups, TLS, and deployment-specific CORS and public URLs.
 
 Integrators can replace the chat component and agent orchestration while retaining the HTTP document surface and SuperDoc collaboration connection. They would operate this Node service or an equivalent implementation preserving the synchronization and state contracts.

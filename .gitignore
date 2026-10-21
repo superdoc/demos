@@ -1,4 +1,5 @@
 dist/
+.DS_Store
 worker-dist/
 node_modules/
 /dist-gallery/

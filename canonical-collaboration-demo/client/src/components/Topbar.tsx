@@ -6,6 +6,30 @@ import type { Room } from '../types';
 
 export type DocumentMode = 'suggesting' | 'editing' | 'viewing';
 
+const buildCommand = `git clone https://github.com/superdoc/demos.git
+cd demos/canonical-collaboration-demo
+
+# Build configuration
+export COLLABORATION_API=on
+export COLLABORATION_CLIENT=on
+export COLLABORATION_AGENT=on
+
+make build
+
+# Runtime configuration for this demo
+export COLLABORATION_AUTH=none
+export COLLABORATION_STORAGE=memory
+export COLLABORATION_DOCX=off
+
+if [[ -z "\${OPENAI_API_KEY:-}" ]]; then
+  read -rsp "OpenAI API key: " OPENAI_API_KEY
+  echo
+  export OPENAI_API_KEY
+fi
+
+touch .env
+make dev`;
+
 type TopbarProps = {
   roomId: string;
   room?: Room;
@@ -14,6 +38,7 @@ type TopbarProps = {
   superdoc?: SuperDoc;
   connectedUsers: number | null;
   agentOpen: boolean;
+  agentEnabled: boolean;
   onAgentToggle: () => void;
   onNewDocument: () => void;
   onUpload: (file: File) => void;
@@ -31,6 +56,7 @@ export function Topbar({
   superdoc,
   connectedUsers,
   agentOpen,
+  agentEnabled,
   onAgentToggle,
   onNewDocument,
   onUpload,
@@ -40,8 +66,10 @@ export function Topbar({
   references,
 }: TopbarProps) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const buildDialog = useRef<HTMLDialogElement>(null);
   const [importError, setImportError] = useState('');
   const [referencesActive, setReferencesActive] = useState(false);
+  const [buildCommandCopied, setBuildCommandCopied] = useState(false);
 
   useEffect(() => {
     if (!room) setReferencesActive(false);
@@ -82,6 +110,9 @@ export function Topbar({
           <div className="file-name">{room?.filename ?? 'No document'}</div>
         </div>
 
+        <button type="button" className="build-app-button" onClick={() => buildDialog.current?.showModal()}>
+          Build this app
+        </button>
         <label className="mode-select">
           <span className="visually-hidden">Document mode</span>
           <select
@@ -101,6 +132,29 @@ export function Topbar({
         </span>
       </div>
 
+      <dialog ref={buildDialog} className="build-dialog" aria-labelledby="build-dialog-title"
+        onClose={() => setBuildCommandCopied(false)} onClick={(event) => {
+          if (event.target === event.currentTarget) buildDialog.current?.close();
+        }}>
+        <div className="build-dialog-header">
+          <div>
+            <h2 id="build-dialog-title">Build this app</h2>
+            <p>Copy this Bash snippet to clone, build, and run the same configuration as this demo.</p>
+          </div>
+          <button type="button" className="build-dialog-close" aria-label="Close" onClick={() => buildDialog.current?.close()}>×</button>
+        </div>
+        <div className="build-dialog-body">
+          <pre><code>{buildCommand}</code></pre>
+          <button type="button" className="build-command-copy" onClick={async () => {
+            await navigator.clipboard.writeText(buildCommand);
+            setBuildCommandCopied(true);
+          }}>{buildCommandCopied ? 'Copied' : 'Copy all commands'}</button>
+          <a className="build-readme-link" href="https://github.com/superdoc/demos/blob/main/canonical-collaboration-demo/README.md"
+            target="_blank" rel="noreferrer">View the README on GitHub</a>
+          <p className="build-dialog-note">The command prompts for an OpenAI API key only when one is not already exported. This demo runs with ephemeral memory storage, DOCX autosave off, and no WebSocket authentication.</p>
+        </div>
+      </dialog>
+
       <div className="ribbon-controls-row">
         <div id="superdoc-toolbar" className="default-toolbar" aria-label="Document toolbar" hidden={!!room && referencesActive}
           inert={busy} />
@@ -108,7 +162,7 @@ export function Topbar({
           {...references} superdoc={superdoc} room={room} mode={mode} disabled={busy || !room || !superdoc} />}
         {room && !referencesActive && <TrackedChangeActions key={`${room.document_id}:${room.generation}`} superdoc={superdoc}
           disabled={busy || mode === 'viewing'} onUpdated={references.onInserted} />}
-        {room && !referencesActive && <button type="button" className={`reference-command agent-toggle${agentOpen ? ' is-active' : ''}`}
+        {room && agentEnabled && !referencesActive && <button type="button" className={`reference-command agent-toggle${agentOpen ? ' is-active' : ''}`}
           aria-expanded={agentOpen} aria-controls="agent-panel"
           onPointerDown={(event) => event.preventDefault()} onClick={onAgentToggle}>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4zM8 9h8M8 13h5" /></svg>
