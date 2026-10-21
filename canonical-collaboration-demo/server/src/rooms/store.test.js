@@ -6,12 +6,14 @@ import path from 'node:path';
 
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'default-room-test-'));
 process.env.DOCUMENT_ROOT = directory;
+process.env.COLLABORATION_AUTH = 'none';
 const { RoomStore } = await import('./store.js');
 const { config } = await import('../config.js');
 
 function fixture({ beforeOpen = async () => {} } = {}) {
   const opened = [];
-  const store = new RoomStore({ unload: async () => {} }, {
+  const unloads = [];
+  const store = new RoomStore({ unload: async (...args) => { unloads.push(args); } }, {
     async open(input) {
       opened.push(input);
       await beforeOpen();
@@ -20,8 +22,8 @@ function fixture({ beforeOpen = async () => {} } = {}) {
         async close() {},
       };
     },
-  });
-  return { store, opened };
+  }, { createServiceToken: (documentId) => `service-token:${documentId}` });
+  return { store, opened, unloads };
 }
 
 test('new rooms receive an independent copy of the bundled contract', async () => {
@@ -64,6 +66,13 @@ test('initialization preserves an uploaded document or an explicitly created bla
   assert.equal(blank.document.filename, 'Untitled document.docx');
   assert.equal(opened.length, 2);
   await assert.rejects(store.initializeRoom('../invalid'), /Room IDs/);
+});
+
+test('deleting a room requests removal of its persisted collaboration state', async () => {
+  const { store, unloads } = fixture();
+  await store.createBlank('delete-me');
+  await store.delete('delete-me');
+  assert.deepEqual(unloads, [['delete-me', { deleteState: true }]]);
 });
 
 test.after(async () => { await fs.rm(directory, { recursive: true, force: true }); });

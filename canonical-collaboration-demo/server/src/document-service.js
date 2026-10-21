@@ -26,10 +26,10 @@ export class DocumentService {
     return createReferenceToolkit(this.#toolkit);
   }
 
-  async open({ id, filename, path, collaboration }) {
+  async open({ id, filename, path, collaboration, collaborationAuth }) {
     if (this.#documents.has(id)) throw new Error(`Document is already open: ${id}`);
     const document = await openReferenceDocument({
-      client: this.#client, toolkit: this.#toolkit, id, filename, path, collaboration, logEvent,
+      client: this.#client, toolkit: this.#toolkit, id, filename, path, collaboration, collaborationAuth, logEvent,
       onClose: (documentId) => this.#documents.delete(documentId),
     });
     this.#documents.set(id, document);

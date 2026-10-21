@@ -38,10 +38,12 @@ export class RoomStore {
   #initializations = new Map();
   #collaboration;
   #documents;
+  #createServiceToken;
 
-  constructor(collaboration, documents) {
+  constructor(collaboration, documents, { createServiceToken }) {
     this.#collaboration = collaboration;
     this.#documents = documents;
+    this.#createServiceToken = createServiceToken;
   }
 
   async initialize() {
@@ -158,6 +160,7 @@ export class RoomStore {
           roomMode: 'create',
           syncTimeoutMs: 90_000,
         },
+        collaborationAuth: { type: 'token', token: this.#createServiceToken(documentId) },
       });
       const room = new Room({ roomId, document });
       this.#rooms.set(roomId, room);
@@ -205,7 +208,7 @@ export class RoomStore {
       throw error;
     }
     this.#rooms.delete(roomId);
-    await this.#close(room);
+    await this.#close(room, { deleteState: true });
     logEvent('rooms', 'room.deleted', { roomId, documentId: room.document.id, activeRooms: this.#rooms.size });
   }
 
@@ -220,12 +223,12 @@ export class RoomStore {
   async closeAll() {
     const rooms = [...this.#rooms.values()];
     this.#rooms.clear();
-    await Promise.all(rooms.map((room) => this.#close(room)));
+    await Promise.all(rooms.map((room) => this.#close(room, { deleteState: false })));
   }
 
-  async #close(room) {
+  async #close(room, { deleteState }) {
     await room.document.close().catch(() => {});
-    await this.#collaboration.unload(room.document.id).catch(() => {});
+    await this.#collaboration.unload(room.document.id, { deleteState }).catch(() => {});
   }
 
   response(room) {
