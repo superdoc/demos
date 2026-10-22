@@ -17,6 +17,21 @@ on:
         required: true
         default: true
 
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: staging
+      dry_run:
+        type: boolean
+        default: true
+      ref:
+        type: string
+        required: true
+      source_artifact:
+        type: string
+        required: true
+
 concurrency:
   group: superdoc-demos-${{ inputs.environment }}
   cancel-in-progress: false
@@ -25,6 +40,9 @@ jobs:
   validate:
     name: Validate release
     uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ inputs.ref || github.sha }}
+      source_artifact: ${{ inputs.source_artifact }}
 
   release:
     name: Build release bundle
@@ -32,6 +50,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Download updated source
+        if: inputs.source_artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp/superdoc-source
+      - name: Restore tested dependency update
+        if: inputs.source_artifact != ''
+        run: tar -xzf /tmp/superdoc-source/superdoc-source.tar.gz
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -79,7 +108,7 @@ jobs:
       - name: Upload tested release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: superdoc-demos-${{ github.sha }}
+          name: superdoc-demos-${{ inputs.ref || github.sha }}-${{ github.run_attempt }}
           path: |
             dist/
             worker-dist/

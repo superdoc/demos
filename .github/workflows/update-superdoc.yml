@@ -8,19 +8,39 @@ on:
         required: true
         default: latest
       dry_run:
-        description: Preview changes without creating a branch or pull request
+        description: Build and test without committing or deploying
         type: boolean
         required: true
         default: true
 
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      dry_run:
+        type: boolean
+        default: true
+    outputs:
+      commit_sha:
+        value: ${{ jobs.update.outputs.commit_sha }}
+      source_artifact:
+        value: ${{ jobs.update.outputs.source_artifact }}
+
 permissions:
   contents: write
-  pull-requests: write
+
+concurrency:
+  group: superdoc-dependency-update-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   update:
     name: Update dependencies
     runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.revision.outputs.sha }}
+      source_artifact: superdoc-source-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -31,7 +51,9 @@ jobs:
         with:
           node-version: 22
       - name: Update all demos and gallery version labels
-        run: node scripts/update-superdoc.mjs '${{ inputs.version }}'
+        env:
+          SUPERDOC_VERSION: ${{ inputs.version }}
+        run: node scripts/update-superdoc.mjs "$SUPERDOC_VERSION"
       - name: Show proposed update
         run: |
           git status --short
@@ -93,11 +115,19 @@ jobs:
           resolved=$(node -p "require('./superdoc-inline-revisions/node_modules/superdoc/package.json').version")
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add rag/apps/web/package.json rag/bun.lock \
-            superdoc-inline-revisions/package.json superdoc-inline-revisions/pnpm-lock.yaml \
-            template-builder-document-api-v2-demo/package.json template-builder-document-api-v2-demo/pnpm-lock.yaml \
-            canonical-collaboration-demo/client/package.json canonical-collaboration-demo/client/package-lock.json \
-            canonical-collaboration-demo/server/package.json canonical-collaboration-demo/server/package-lock.json \
-            dist-landing/index.html
-          git commit -m "chore: update SuperDoc to ${resolved}"
-          git push origin HEAD:main
+          git add --pathspec-from-file=.github/superdoc-update-files.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update SuperDoc to ${resolved}"
+            git push origin HEAD:main
+          fi
+      - name: Capture tested source revision
+        id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Package updated manifests, lockfiles, and gallery labels
+        run: tar -czf /tmp/superdoc-source.tar.gz -T .github/superdoc-update-files.txt
+      - name: Upload updated source for deployment validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: superdoc-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/superdoc-source.tar.gz
+          retention-days: 7

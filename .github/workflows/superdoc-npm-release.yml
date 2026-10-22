@@ -1,0 +1,136 @@
+name: SuperDoc npm release
+
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  pull_request:
+    paths:
+      - .github/workflows/superdoc-npm-release.yml
+      - .github/workflows/update-superdoc.yml
+      - .github/workflows/deploy-rag.yml
+      - .github/workflows/ci.yml
+      - .github/superdoc-update-files.txt
+      - scripts/check-superdoc-release*
+      - scripts/notify-superdoc-release*
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Validate the entire update and deployment without committing or deploying
+        type: boolean
+        default: true
+      simulated_latest:
+        description: Simulate npm latest with an existing published stable version (forces dry run)
+        type: string
+      simulated_deployed:
+        description: Simulate a previous successful deployment, e.g. 0.0.0 (forces dry run)
+        type: string
+      simulate_failure:
+        description: Fail after release detection to test failure notifications (forces dry run)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superdoc-npm-release-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      update: ${{ steps.check.outputs.update }}
+      version: ${{ steps.check.outputs.version }}
+      dry_run: ${{ steps.check.outputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test release detection and simulation safeguards
+        run: node --test scripts/check-superdoc-release.test.mjs scripts/notify-superdoc-release.test.mjs
+      - name: Check npm latest
+        id: check
+        env:
+          DRY_RUN: ${{ github.event_name != 'schedule' && (github.event_name == 'pull_request' || inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) && 'true' || 'false' }}
+          SIMULATED_LATEST: ${{ inputs.simulated_latest }}
+          SIMULATED_DEPLOYED: ${{ github.event_name == 'pull_request' && '0.0.0' || inputs.simulated_deployed }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: |
+          if [ "$DRY_RUN" = false ] && [ "$GITHUB_REF" != "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+            echo "Live runs must use the default branch." >&2
+            exit 1
+          fi
+          node scripts/check-superdoc-release.mjs
+      - name: Simulate release failure for notification testing
+        if: inputs.simulate_failure
+        run: |
+          echo "Intentional simulated release failure. Production changes are disabled."
+          exit 1
+
+  update:
+    needs: check
+    if: needs.check.outputs.update == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/update-superdoc.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+      dry_run: ${{ needs.check.outputs.dry_run == 'true' }}
+    secrets: inherit
+
+  deploy:
+    needs: [check, update]
+    uses: ./.github/workflows/deploy-rag.yml
+    with:
+      environment: production
+      dry_run: ${{ needs.check.outputs.dry_run == 'true' }}
+      ref: ${{ needs.update.outputs.commit_sha }}
+      source_artifact: ${{ needs.update.outputs.source_artifact }}
+    secrets: inherit
+
+  record:
+    needs: [check, update, deploy]
+    if: needs.check.outputs.dry_run == 'false'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Record successful production deployment
+        env:
+          SUPERDOC_VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync(".github/superdoc-release.json", JSON.stringify({ version: process.env.SUPERDOC_VERSION }, null, 2) + "\n")'
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/superdoc-release.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore: record deployed SuperDoc ${SUPERDOC_VERSION}"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+
+  notify:
+    name: Notify Google Chat
+    needs: [check, update, deploy, record]
+    if: ${{ always() && (needs.check.result == 'failure' || needs.update.result == 'failure' || needs.deploy.result == 'failure' || needs.record.result == 'failure' || needs.check.result == 'cancelled' || needs.update.result == 'cancelled' || needs.deploy.result == 'cancelled' || needs.record.result == 'cancelled' || needs.deploy.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.update.outputs.commit_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Send release result and demo links
+        env:
+          GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          RELEASE_RESULTS: ${{ toJSON(needs) }}
+          SUPERDOC_VERSION: ${{ needs.check.outputs.version || inputs.simulated_latest }}
+          RELEASE_DRY_RUN: ${{ needs.check.outputs.dry_run }}
+          TRIGGER_DRY_RUN: ${{ github.event_name != 'schedule' && (github.event_name == 'pull_request' || inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: node scripts/notify-superdoc-release.mjs

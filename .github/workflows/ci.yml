@@ -3,6 +3,13 @@ name: Validate Demos
 on:
   pull_request:
   workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      source_artifact:
+        type: string
+        default: ''
 
 jobs:
   typecheck-build:
@@ -39,6 +46,17 @@ jobs:
             check: npm run check
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Download updated source
+        if: inputs.source_artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp/superdoc-source
+      - name: Restore tested dependency update
+        if: inputs.source_artifact != ''
+        run: tar -xzf /tmp/superdoc-source/superdoc-source.tar.gz
       - uses: oven-sh/setup-bun@v2
       - uses: pnpm/action-setup@v4
         with:
@@ -78,6 +96,17 @@ jobs:
             install: npm ci
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Download updated source
+        if: inputs.source_artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp/superdoc-source
+      - name: Restore tested dependency update
+        if: inputs.source_artifact != ''
+        run: tar -xzf /tmp/superdoc-source/superdoc-source.tar.gz
       - uses: oven-sh/setup-bun@v2
       - uses: pnpm/action-setup@v4
         with:
@@ -121,6 +150,17 @@ jobs:
             build: npm run build
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Download updated source
+        if: inputs.source_artifact != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.source_artifact }}
+          path: /tmp/superdoc-source
+      - name: Restore tested dependency update
+        if: inputs.source_artifact != ''
+        run: tar -xzf /tmp/superdoc-source/superdoc-source.tar.gz
       - uses: oven-sh/setup-bun@v2
       - uses: pnpm/action-setup@v4
         with:
