@@ -56,6 +56,49 @@ bun run dev
 
 See each demo's directory for specific setup instructions.
 
+## Automatic SuperDoc updates
+
+The **SuperDoc npm release** workflow polls `https://registry.npmjs.org/superdoc/latest`
+every 30 minutes. A new stable version runs **Update SuperDoc**, then **Deploy Demos V2**
+to production after the builds and tests pass. It uses the existing Cloudflare and
+Railway secrets; no token or change to the SuperDoc source repository is needed.
+GitHub schedules run from the default branch and may be delayed.
+
+`.github/superdoc-release.json` records the last successful automated deployment.
+The first scheduled run establishes that baseline by validating and deploying npm's
+current stable version. The marker only advances after deployment succeeds, so a
+failed update or deployment is retried on the next check. Prereleases, repeated
+versions, and npm rollbacks are skipped. Polling observes the current `latest` tag;
+versions superseded between checks are not individually deployed.
+
+For a simulation, choose **Actions → SuperDoc npm release → Run workflow**, keep
+`dry_run` enabled, set `simulated_latest` to an existing published stable version
+(at least as new as every demo's dependency), and set `simulated_deployed` to
+`0.0.0`. Either simulation input forces dry-run even if the checkbox is disabled.
+For example:
+
+```bash
+gh workflow run superdoc-npm-release.yml \
+  -f dry_run=true \
+  -f simulated_latest=2.25.0 \
+  -f simulated_deployed=0.0.0
+```
+
+The simulation updates real dependencies in the runner, runs the existing update
+and deployment validation, and uploads release bundles. It never commits changes,
+updates the deployment marker, or deploys Cloudflare/Railway resources. Updated
+manifests, lockfiles, and gallery labels are passed between jobs as an artifact so
+deployment validation tests the update even without a commit. Live runs also pin
+every checkout to the resulting update commit.
+
+Pull requests changing this automation run the same full dry-run chain against
+npm's actual latest version, simulating a previous deployed version of `0.0.0`.
+Release-detection tests can also be run locally:
+
+```bash
+node --test scripts/check-superdoc-release.test.mjs
+```
+
 ## License
 
 MIT
