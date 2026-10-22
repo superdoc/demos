@@ -47,7 +47,7 @@ export function componentMode(name, value) {
 }
 
 export function authMode(env) {
-  const mode = env.COLLABORATION_AUTH ?? 'example-token';
+  const mode = env.COLLABORATION_AUTH ?? 'none';
   if (mode === 'none') return { mode };
   if (mode !== 'example-token') {
     throw new Error(`COLLABORATION_AUTH must be "example-token" or "none". Received "${mode}".`);
@@ -63,7 +63,7 @@ export function authMode(env) {
 }
 
 export function storageMode(value) {
-  const mode = value ?? 'file';
+  const mode = value ?? 'memory';
   if (mode !== 'file' && mode !== 'memory') {
     throw new Error(`COLLABORATION_STORAGE must be "file" or "memory". Received "${mode}".`);
   }
@@ -71,7 +71,7 @@ export function storageMode(value) {
 }
 
 export function docxMode(env) {
-  const mode = env.COLLABORATION_DOCX ?? 'autosave';
+  const mode = env.COLLABORATION_DOCX ?? 'off';
   if (mode === 'off') return { mode };
   if (mode !== 'autosave') {
     throw new Error(`COLLABORATION_DOCX must be "autosave" or "off". Received "${mode}".`);

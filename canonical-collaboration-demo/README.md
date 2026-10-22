@@ -109,11 +109,11 @@ Add your key to `.env`:
 
 ```dotenv
 OPENAI_API_KEY=your-key-here
-COLLABORATION_AUTH_SECRET=replace-with-at-least-32-random-characters
 ```
 
-Generate the collaboration secret with `openssl rand -hex 32`. The server uses it to sign short-lived,
-document-scoped JWTs for browsers and backend SDK sessions; it never sends the secret to a client.
+The checked-in example profile enables the API, client, and agent while using unauthenticated,
+in-memory collaboration with DOCX autosave disabled. These are the same quick-start flags shown
+by **Build this app** in the client.
 
 Start the complete stack:
 
@@ -227,11 +227,11 @@ Document content travels through Hocuspocus. The browser posts to the room statu
 | `COLLABORATION_API` | `on` | Set to `off` to run only the collaboration WebSocket, persistence, auth, and optional DOCX autosave. |
 | `COLLABORATION_CLIENT` | `on` | Set to `off` to skip the bundled React client in `make dev` and the root build. |
 | `COLLABORATION_AGENT` | `on` | Set to `off` to omit the OpenAI agent worker and its job routes/UI. Requires the API when enabled. |
-| `COLLABORATION_AUTH` | `example-token` | Set to `none` only on a private network to disable WebSocket access checks. |
+| `COLLABORATION_AUTH` | `none` | Set to `example-token` to require signed WebSocket credentials. |
 | `COLLABORATION_AUTH_SECRET` | none | JWT signing secret of at least 32 characters; required for `example-token` auth. |
-| `COLLABORATION_STORAGE` | `file` | Use `memory` to disable Yjs room persistence for an ephemeral process. |
+| `COLLABORATION_STORAGE` | `memory` | Use `file` to persist binary Yjs room state. |
 | `COLLABORATION_STORAGE_DIR` | `./data/collaboration-rooms` | Persistent binary Yjs room-state directory. |
-| `COLLABORATION_DOCX` | `autosave` | Set to `off` to omit DOCX autosaving. |
+| `COLLABORATION_DOCX` | `off` | Set to `autosave` to write debounced DOCX snapshots. |
 | `COLLABORATION_DOCX_DIR` | `./data/collaboration-docx` | Latest autosaved DOCX directory. |
 | `COLLABORATION_DOCX_IDLE_MS` | `10000` | Debounce delay before exporting a changed room. |
 | `OPENAI_API_KEY` | required with agent enabled | Credential sent directly to OpenAI. |
@@ -258,6 +258,13 @@ COLLABORATION_AGENT=off make dev
 
 # Collaboration quick-start backend only
 COLLABORATION_API=off COLLABORATION_CLIENT=off COLLABORATION_AGENT=off make dev
+
+# Opt into the secured, file-persisted backend modes
+export COLLABORATION_AUTH=example-token
+export COLLABORATION_AUTH_SECRET="$(openssl rand -hex 32)"
+export COLLABORATION_STORAGE=file
+export COLLABORATION_DOCX=autosave
+make dev
 
 # Validate the server without producing a client bundle; runtime also omits the API agent
 COLLABORATION_CLIENT=off COLLABORATION_AGENT=off npm run build
@@ -398,6 +405,6 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 
 ## Production boundary
 
-This demo packages a runnable local collaboration topology; it is not a production deployment template. In the default mode, WebSocket clients require signed, document-scoped tokens and binary Yjs state plus DOCX snapshots are written to disk. The token endpoint is still demo infrastructure rather than application login: it trusts the submitted demo user ID, so a production owner must authenticate its HTTP API caller and authorize room access before issuing a token. Persisted Yjs state alone does not restore API room metadata or reopen SDK documents after restart. Production also needs durable room metadata and job storage, queue recovery, multi-process collaboration coordination, rate limits, observability, backups, TLS, and deployment-specific CORS and public URLs.
+This demo packages a runnable local collaboration topology; it is not a production deployment template. Its default example profile disables WebSocket authentication and persistence for a zero-configuration quick start. The optional token endpoint is still demo infrastructure rather than application login: it trusts the submitted demo user ID, so a production owner must authenticate its HTTP API caller and authorize room access before issuing a token. File-backed Yjs state alone does not restore API room metadata or reopen SDK documents after restart. Production also needs durable room metadata and job storage, queue recovery, multi-process collaboration coordination, rate limits, observability, backups, TLS, and deployment-specific CORS and public URLs.
 
 Integrators can replace the chat component and agent orchestration while retaining the HTTP document surface and SuperDoc collaboration connection. They would operate this Node service or an equivalent implementation preserving the synchronization and state contracts.
