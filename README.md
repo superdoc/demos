@@ -99,6 +99,42 @@ Release-detection tests can also be run locally:
 node --test scripts/check-superdoc-release.test.mjs
 ```
 
+## Deployment notifications
+
+The release workflow sends success and failure notifications to Google Chat using
+the `GOOGLE_CHAT_WEBHOOK_URL` repository secret. Each message includes the SuperDoc
+version, failed stages when applicable, a workflow-log link, and all demo titles
+and production links from `demos.json`. Adding a demo to that catalog automatically
+includes it in future notifications. Routine checks with no release stay silent.
+
+Dry-run messages are labeled **DRY RUN** and describe validation rather than a live
+deployment. Their demo links open the current production demos. Failure messages
+list the targeted demos without claiming that a failed deployment updated them.
+A failure to record the deployed version is reported separately from a successful
+production deployment. Webhook delivery failures fail the notification job and do
+not roll back a successful deployment or reset its recorded version.
+
+The full simulated release command above sends a dry-run success notification
+after validation succeeds. To deliberately exercise the failure notification,
+run:
+
+```bash
+gh workflow run superdoc-npm-release.yml \
+  -f simulated_latest=2.25.0 \
+  -f simulated_deployed=0.0.0 \
+  -f simulate_failure=true
+```
+
+`simulate_failure` always forces dry-run and fails immediately after release
+detection, skipping dependency updates and deployments. The workflow is expected
+to be red while **Notify Google Chat** succeeds and delivers a clearly labeled
+simulated-failure message. Both kinds of simulation send real messages to the
+configured Chat space.
+
+```bash
+node --test scripts/check-superdoc-release.test.mjs scripts/notify-superdoc-release.test.mjs
+```
+
 ## License
 
 MIT

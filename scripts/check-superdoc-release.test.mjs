@@ -71,6 +71,7 @@ test("production checks use the npm registry and require explicit live mode", as
   assert.equal((await checkRelease({ root, env: {}, fetchImpl })).dry_run, true);
   assert.equal((await checkRelease({ root, env: { DRY_RUN: "false" }, fetchImpl })).dry_run, false);
   assert.equal((await checkRelease({ root, env: { DRY_RUN: "false", SIMULATED_DEPLOYED: "0.0.0" }, fetchImpl })).dry_run, true);
+  assert.equal((await checkRelease({ root, env: { DRY_RUN: "false", SIMULATE_FAILURE: "true" }, fetchImpl })).dry_run, true);
 });
 
 test("registry errors fail the check instead of starting an update", async (t) => {

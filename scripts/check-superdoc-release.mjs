@@ -28,7 +28,7 @@ export function decideRelease({ latest, deployed, installed }) {
 }
 
 export async function checkRelease({ env = process.env, root = process.cwd(), fetchImpl = fetch } = {}) {
-  const simulation = Boolean(env.SIMULATED_LATEST || env.SIMULATED_DEPLOYED);
+  const simulation = Boolean(env.SIMULATED_LATEST || env.SIMULATED_DEPLOYED || env.SIMULATE_FAILURE === "true");
   // A simulation must never acquire the ability to commit or deploy.
   const dryRun = simulation || env.DRY_RUN !== "false";
   let latest = env.SIMULATED_LATEST;
