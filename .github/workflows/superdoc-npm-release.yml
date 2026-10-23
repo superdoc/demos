@@ -4,14 +4,8 @@ on:
   schedule:
     - cron: '17,47 * * * *'
   pull_request:
-    paths:
-      - .github/workflows/superdoc-npm-release.yml
-      - .github/workflows/update-superdoc.yml
-      - .github/workflows/deploy-rag.yml
-      - .github/workflows/ci.yml
-      - .github/superdoc-update-files.txt
-      - scripts/check-superdoc-release*
-      - scripts/notify-superdoc-release*
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -38,6 +32,7 @@ concurrency:
 
 jobs:
   check:
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       update: ${{ steps.check.outputs.update }}
@@ -115,7 +110,7 @@ jobs:
   notify:
     name: Notify Google Chat
     needs: [check, update, deploy, record]
-    if: ${{ always() && (needs.check.result == 'failure' || needs.update.result == 'failure' || needs.deploy.result == 'failure' || needs.record.result == 'failure' || needs.check.result == 'cancelled' || needs.update.result == 'cancelled' || needs.deploy.result == 'cancelled' || needs.record.result == 'cancelled' || needs.deploy.result == 'success') }}
+    if: ${{ always() && ((github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run && inputs.simulated_latest == '' && inputs.simulated_deployed == '' && !inputs.simulate_failure)) && (needs.check.result == 'failure' || needs.update.result == 'failure' || needs.deploy.result == 'failure' || needs.record.result == 'failure' || needs.check.result == 'cancelled' || needs.update.result == 'cancelled' || needs.deploy.result == 'cancelled' || needs.record.result == 'cancelled' || needs.deploy.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

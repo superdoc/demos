@@ -4,7 +4,49 @@ import { pathToFileURL } from "node:url";
 const stages = { check: "Release detection", update: "Update SuperDoc", deploy: "Deploy Demos V2", record: "Record deployment" };
 const label = (value) => String(value).replace(/[<>|*`\r\n]/g, " ").replace(/\s+/g, " ").trim();
 
-export function buildNotification({ needs, demos, version, dryRun, simulatedFailure = false, runUrl }) {
+export function shouldNotifyTrigger({ env, event = {} }) {
+  if (env.GITHUB_EVENT_NAME === "pull_request") {
+    return event.action === "closed" && event.pull_request?.merged === true;
+  }
+  if (env.GITHUB_EVENT_NAME === "schedule") return true;
+  if (env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+    const inputs = event.inputs || {};
+    return String(inputs.dry_run) === "false" && !inputs.simulated_latest && !inputs.simulated_deployed && String(inputs.simulate_failure) !== "true";
+  }
+  return false;
+}
+
+export function describeTrigger({ env, event = {} }) {
+  const repositoryUrl = `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}`;
+  const pr = event.pull_request;
+  if (["pull_request", "pull_request_target"].includes(env.GITHUB_EVENT_NAME) && pr) {
+    const merged = event.action === "closed" && pr.merged === true;
+    const kind = merged ? "PR merge" : "PR testing";
+    const source = `<${repositoryUrl}/pull/${Number(pr.number)}|PR #${Number(pr.number)}: ${label(pr.title)}>`;
+    const branches = `${label(pr.head?.ref || "unknown")} → ${label(pr.base?.ref || "unknown")}`;
+    return `${kind} — ${source} (${branches}; ${label(event.action || "unknown action")})`;
+  }
+  if (env.GITHUB_EVENT_NAME === "schedule") {
+    return "Latest stable release check — scheduled poll of npm latest";
+  }
+  if (env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+    const simulation = event.inputs?.simulated_latest || event.inputs?.simulated_deployed || String(event.inputs?.simulate_failure) === "true";
+    return `${simulation ? "Manual release simulation" : "Latest stable release check — manual run"} by ${label(env.GITHUB_ACTOR || "unknown")} on ${label(env.GITHUB_REF_NAME || "unknown")}`;
+  }
+  if (env.GITHUB_EVENT_NAME === "merge_group") {
+    return `Merge queue testing — ${label(event.merge_group?.head_ref || env.GITHUB_REF_NAME || "unknown")}`;
+  }
+  if (env.GITHUB_EVENT_NAME === "push") {
+    // A push alone does not establish whether the commit came from a merged PR.
+    const commit = event.after || env.GITHUB_SHA;
+    const source = /^[a-f0-9]{40,64}$/i.test(commit || "")
+      ? ` — <${repositoryUrl}/commit/${commit}|${commit.slice(0, 7)}>` : "";
+    return `Branch testing after push or merge — ${label(env.GITHUB_REF_NAME || "unknown")}${source}`;
+  }
+  return `${label(env.GITHUB_EVENT_NAME || "Unknown trigger")} on ${label(env.GITHUB_REF_NAME || "unknown")}`;
+}
+
+export function buildNotification({ needs, demos, version, dryRun, simulatedFailure = false, runUrl, trigger = "Unknown trigger" }) {
   const failed = Object.keys(stages).filter((stage) => needs[stage]?.result === "failure");
   const cancelled = Object.keys(stages).filter((stage) => needs[stage]?.result === "cancelled");
   const deployed = needs.deploy?.result === "success";
@@ -12,7 +54,7 @@ export function buildNotification({ needs, demos, version, dryRun, simulatedFail
   const status = failed.length ? "FAILURE" : cancelled.length ? "CANCELLED" : "SUCCESS";
   const icon = failed.length ? "❌" : cancelled.length ? "⚠️" : "✅";
   const mode = dryRun ? "DRY RUN" : "PRODUCTION";
-  const lines = [`${icon} *[${mode}] SuperDoc demos — ${status}*`, `SuperDoc: ${label(version || "unknown (release detection did not complete)")}`];
+  const lines = [`${icon} *[${mode}] SuperDoc demos — ${status}*`, `Trigger: ${trigger}`, `SuperDoc: ${label(version || "unknown (release detection did not complete)")}`];
   if (simulatedFailure) lines.push("Intentional simulated release failure to test notifications.");
   if (dryRun) lines.push("Validation only. No production deployment was performed.");
   if (failed.length) lines.push(`Failed stage(s): ${failed.map((stage) => stages[stage]).join(", ")}`);
@@ -66,12 +108,18 @@ export async function sendNotification({ webhookUrl, message, fetchImpl = fetch,
 }
 
 export async function notifyRelease({ env = process.env, root = process.cwd(), fetchImpl = fetch } = {}) {
+  const event = env.GITHUB_EVENT_PATH ? JSON.parse(await readFile(env.GITHUB_EVENT_PATH, "utf8")) : {};
+  if (!shouldNotifyTrigger({ env, event })) {
+    console.log("Notifications are limited to PR merges and stable releases.");
+    return;
+  }
   const needs = JSON.parse(env.RELEASE_RESULTS);
   // Fall back to trigger inputs if release detection failed before producing outputs.
   const dryRun = env.RELEASE_DRY_RUN === "true" || env.TRIGGER_DRY_RUN === "true";
   const demos = JSON.parse(await readFile(`${root}/demos.json`, "utf8"));
   const runUrl = `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}/attempts/${env.GITHUB_RUN_ATTEMPT}`;
-  const message = buildNotification({ needs, demos, version: env.SUPERDOC_VERSION, dryRun, simulatedFailure: env.SIMULATE_FAILURE === "true", runUrl });
+  const trigger = describeTrigger({ env, event });
+  const message = buildNotification({ needs, demos, version: env.SUPERDOC_VERSION, dryRun, simulatedFailure: env.SIMULATE_FAILURE === "true", runUrl, trigger });
   if (!message) {
     console.log("No release attempted; no Google Chat notification needed.");
     return;
