@@ -6,6 +6,7 @@ import { createCollaborationAuthorize, signCollaborationToken } from './collabor
 import { createCollaborationServer } from './collaboration/create-server.js';
 import { createDocxAutosave } from './collaboration/docx-autosave.js';
 import { documentIdFromRoomName } from './collaboration/room-name.js';
+import { createDeletableRoomStore } from './collaboration/storage/deletable-room-store.js';
 import { createFileDocxStore } from './collaboration/storage/file-docx-store.js';
 import { createFileRoomStore } from './collaboration/storage/file-room-store.js';
 import { createMemoryRoomStore } from './collaboration/storage/memory-room-store.js';
@@ -69,9 +70,9 @@ app.setErrorHandler((error, _request, reply) => {
 let rooms;
 const lastChangeLog = new Map();
 const documentNames = new Map();
-const roomStateStore = config.collaborationStorage === 'memory'
+const roomStateStore = createDeletableRoomStore(config.collaborationStorage === 'memory'
   ? createMemoryRoomStore()
-  : createFileRoomStore(config.collaborationStorageDirectory);
+  : createFileRoomStore(config.collaborationStorageDirectory));
 const docxAutosave = config.collaborationDocx.mode === 'off'
   ? null
   : createDocxAutosave({
