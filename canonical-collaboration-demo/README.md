@@ -12,7 +12,7 @@ flowchart TB
     subgraph Fastify["Fastify server (always included)"]
         direction TB
 
-        subgraph CollaborationLayer["Simba-derived collaboration backend"]
+        subgraph CollaborationLayer["Collaboration server template backend"]
             Collab["Hocuspocus collaboration core<br/>WebSocket /collaboration"]
             Auth["JWT WebSocket gate<br/>OPTIONAL: COLLABORATION_AUTH=example-token"]
             State["Yjs room-state adapter"]
@@ -56,7 +56,7 @@ flowchart TB
 
 Orange dashed blocks are optional. The Fastify host and Hocuspocus collaboration core are always present. The bundled React client, HTTP application layer, agent worker, JWT gate, file-backed Yjs persistence, and DOCX autosave can be included or excluded with the flags shown. The room-state adapter is always present, using either memory or file storage; the two storage blocks are alternatives rather than simultaneous destinations.
 
-The browser owns the UI and interactive editor. When enabled, the HTTP application layer owns room metadata, uploads/downloads, references, chat, expiry, token issuance, and jobs. Each application room owns one document object, while `DocumentService` owns the shared SDK client. Browser and backend SDK sessions edit through the same Hocuspocus document. The Simba-derived collaboration layer owns WebSocket authorization, Yjs room-state storage, and optional debounced DOCX snapshots; it can also run without the bundled client and HTTP application layer.
+The browser owns the UI and interactive editor. When enabled, the HTTP application layer owns room metadata, uploads/downloads, references, chat, expiry, token issuance, and jobs. Each application room owns one document object, while `DocumentService` owns the shared SDK client. Browser and backend SDK sessions edit through the same Hocuspocus document. The collaboration layer, adapted from the SuperDoc collaboration server template, owns WebSocket authorization, Yjs room-state storage, and optional debounced DOCX snapshots; it can also run without the bundled client and HTTP application layer.
 
 ### Document Upload/Room Creation
 
@@ -227,11 +227,11 @@ Document content travels through Hocuspocus. The browser posts to the room statu
 | `COLLABORATION_API` | `on` | Set to `off` to run only the collaboration WebSocket, persistence, auth, and optional DOCX autosave. |
 | `COLLABORATION_CLIENT` | `on` | Set to `off` to skip the bundled React client in `make dev` and the root build. |
 | `COLLABORATION_AGENT` | `on` | Set to `off` to omit the OpenAI agent worker and its job routes/UI. Requires the API when enabled. |
-| `COLLABORATION_AUTH` | `none` | Set to `example-token` to require signed WebSocket credentials. |
+| `COLLABORATION_AUTH` | `none` | Set to `example-token` to require signed WebSocket credentials. This gates the WebSocket but is not application login: the demo token endpoint trusts its submitted user ID. |
 | `COLLABORATION_AUTH_SECRET` | none | JWT signing secret of at least 32 characters; required for `example-token` auth. |
-| `COLLABORATION_STORAGE` | `memory` | Use `file` to persist binary Yjs room state. |
+| `COLLABORATION_STORAGE` | `memory` | Use `file` to persist binary Yjs room state across room expiry and process restarts. |
 | `COLLABORATION_STORAGE_DIR` | `./data/collaboration-rooms` | Persistent binary Yjs room-state directory. |
-| `COLLABORATION_DOCX` | `off` | Set to `autosave` to write debounced DOCX snapshots. |
+| `COLLABORATION_DOCX` | `off` | Set to `autosave` to write DOCX snapshots after the idle debounce. |
 | `COLLABORATION_DOCX_DIR` | `./data/collaboration-docx` | Latest autosaved DOCX directory. |
 | `COLLABORATION_DOCX_IDLE_MS` | `10000` | Debounce delay before exporting a changed room. |
 | `OPENAI_API_KEY` | required with agent enabled | Credential sent directly to OpenAI. |
@@ -307,7 +307,7 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | `DELETE` | `/api/rooms/{roomId}/document` | Delete the document and room state |
 | `POST` | `/api/rooms/{roomId}/status` | Refresh activity and return current metadata with a stale-generation indicator |
 | `GET` | `/api/rooms/{roomId}/chat` | Read completed agent conversation messages |
-| `POST` | `/api/rooms/{roomId}/collaboration-token` | Issue a five-minute JWT scoped to this room using `{userId}` |
+| `POST` | `/api/rooms/{roomId}/collaboration-token` | Issue a five-minute JWT scoped to this room using `{userId}`; this demo endpoint trusts the caller-supplied identity |
 | `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}` | Read job status and result |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}/events` | Stream job status and tool-call updates as server-sent events |
@@ -381,16 +381,17 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 - A room holds one document and one conversation.
 - Replacement retains the document ID, increments its generation, and clears its conversation.
 - Terminal job records expire after 10 minutes by default.
-- Rooms expire after one hour without recorded activity from a status heartbeat, a room/document/chat request that resolves the room, a collaboration change, or agent execution by default. Job-status polling alone does not refresh room activity.
+- Rooms unload from the API after one hour without recorded activity from a status heartbeat, a room/document/chat request that resolves the room, a collaboration change, or agent execution by default. Job-status polling alone does not refresh room activity.
 - The browser checks room status every 30 seconds, including while the room is empty; an existing room records that check as activity.
-- Cleanup runs once per minute, so removal can occur up to roughly one minute after the deadline.
+- Cleanup runs once per minute, so unloading can occur up to roughly one minute after the deadline. Explicit document deletion removes persisted Yjs state and any autosaved DOCX; idle expiry retains both.
 - Active jobs prevent room expiry.
-- Binary Yjs room state is stored under `COLLABORATION_STORAGE_DIR`, and debounced DOCX snapshots are stored under `COLLABORATION_DOCX_DIR`. API room metadata, open SDK handles, chat, and jobs remain in memory, so complete process-restart recovery is not implemented yet.
+- Binary Yjs room state is stored under `COLLABORATION_STORAGE_DIR`, and debounced DOCX snapshots are stored under `COLLABORATION_DOCX_DIR`. Reinitializing the same room ID rejoins persisted Yjs state after expiry or restart. API metadata such as the original filename, chat, and jobs remains in memory and is reconstructed or reset rather than durably restored.
+- DOCX autosave runs after the configured idle debounce. The collaboration template can also save when its final connection leaves; in this API-integrated demo, `DocumentService` keeps a backend SDK session connected for each active room, so closing the browser alone does not normally trigger that path.
 
 ## Code map
 
 - Fastify and Hocuspocus setup, health and collaboration routes, hooks, cleanup, and shutdown: `server/src/server.js`
-- Simba-derived authentication, Yjs storage, and DOCX autosave: `server/src/collaboration/`
+- Authentication, Yjs storage, and DOCX autosave adapted from the SuperDoc collaboration server template: `server/src/collaboration/`
 - Room, document, chat, status, and job routes: `server/src/rooms/routes.js`
 - Room metadata, source files, replacement coordination, export, and expiry: `server/src/rooms/store.js`
 - Demo SDK startup and document registration: `server/src/document-service.js`

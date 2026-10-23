@@ -117,6 +117,9 @@ const collaborationServer = createCollaborationServer({
 });
 const collaboration = {
   server: collaborationServer,
+  async prepareDelete(documentId) {
+    await docxAutosave?.delete(documentId);
+  },
   async unload(documentId, { deleteState = false } = {}) {
     const documentName = [...collaborationServer.documents.keys()].find(
       (candidate) => documentIdFromRoomName(candidate) === documentId,
@@ -129,7 +132,6 @@ const collaboration = {
     }
     if (deleteState) {
       if (documentName) await roomStateStore.delete(documentName);
-      await docxAutosave?.delete(documentId);
       documentNames.delete(documentId);
     }
   },

@@ -6,7 +6,8 @@ import type { Room } from '../types';
 
 export type DocumentMode = 'suggesting' | 'editing' | 'viewing';
 
-const buildCommand = `set -e
+const buildCommand = `bash <<'SUPERDOC_QUICKSTART'
+set -euo pipefail
 
 git clone https://github.com/superdoc/demos.git
 cd demos/canonical-collaboration-demo
@@ -16,6 +17,7 @@ export COLLABORATION_API=on
 export COLLABORATION_CLIENT=on
 export COLLABORATION_AGENT=on
 
+# Validate the production build for these components
 make build
 
 # Runtime configuration for this demo
@@ -24,13 +26,14 @@ export COLLABORATION_STORAGE=memory
 export COLLABORATION_DOCX=off
 
 if [[ -z "\${OPENAI_API_KEY:-}" ]]; then
-  read -rsp "OpenAI API key: " OPENAI_API_KEY
+  read -r -s -p "OpenAI API key: " OPENAI_API_KEY
   echo
   export OPENAI_API_KEY
 fi
 
 touch .env
-make dev`;
+make dev
+SUPERDOC_QUICKSTART`;
 
 type TopbarProps = {
   roomId: string;
@@ -153,7 +156,7 @@ export function Topbar({
           }}>{buildCommandCopied ? 'Copied' : 'Copy all commands'}</button>
           <a className="build-readme-link" href="https://github.com/superdoc/demos/blob/main/canonical-collaboration-demo/README.md"
             target="_blank" rel="noreferrer">View the README on GitHub</a>
-          <p className="build-dialog-note">The command prompts for an OpenAI API key only when one is not already exported. This demo runs with ephemeral memory storage, DOCX autosave off, and no WebSocket authentication.</p>
+          <p className="build-dialog-note">The command runs in an isolated Bash process and prompts for an OpenAI API key only when one is not already exported. This demo uses ephemeral memory storage, DOCX autosave off, and no WebSocket authentication. The optional example-token mode gates WebSocket access, but its demo token endpoint trusts the submitted user ID and is not application login.</p>
         </div>
       </dialog>
 

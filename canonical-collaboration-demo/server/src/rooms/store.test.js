@@ -10,20 +10,25 @@ process.env.COLLABORATION_AUTH = 'none';
 const { RoomStore } = await import('./store.js');
 const { config } = await import('../config.js');
 
-function fixture({ beforeOpen = async () => {} } = {}) {
+function fixture({ beforeOpen = async () => {}, openDocument } = {}) {
   const opened = [];
   const unloads = [];
-  const store = new RoomStore({ unload: async (...args) => { unloads.push(args); } }, {
+  const lifecycle = [];
+  const store = new RoomStore({
+    async prepareDelete(documentId) { lifecycle.push(['prepareDelete', documentId]); },
+    async unload(...args) { unloads.push(args); lifecycle.push(['unload', ...args]); },
+  }, {
     async open(input) {
       opened.push(input);
       await beforeOpen();
+      if (openDocument) return openDocument(input, opened.length);
       return { id: input.id, filename: input.filename, path: input.path, generation: 1,
         async replace(filename, newPath) { this.filename = filename; this.path = newPath; this.generation++; },
-        async close() {},
+        async close() { lifecycle.push(['close', this.id]); },
       };
     },
   }, { createServiceToken: (documentId) => `service-token:${documentId}` });
-  return { store, opened, unloads };
+  return { store, opened, unloads, lifecycle };
 }
 
 test('new rooms receive an independent copy of the bundled contract', async () => {
@@ -68,11 +73,66 @@ test('initialization preserves an uploaded document or an explicitly created bla
   await assert.rejects(store.initializeRoom('../invalid'), /Room IDs/);
 });
 
-test('deleting a room requests removal of its persisted collaboration state', async () => {
-  const { store, unloads } = fixture();
+test('deleting a room cancels autosave before disconnecting and removes persisted state', async () => {
+  const { store, unloads, lifecycle } = fixture();
   await store.createBlank('delete-me');
   await store.delete('delete-me');
   assert.deepEqual(unloads, [['delete-me', { deleteState: true }]]);
+  assert.deepEqual(lifecycle, [
+    ['prepareDelete', 'delete-me'],
+    ['close', 'delete-me'],
+    ['unload', 'delete-me', { deleteState: true }],
+  ]);
+});
+
+test('initialization rejoins persisted collaboration state after a restart', async () => {
+  const document = { id: 'persisted', filename: 'contract.docx', generation: 1, async close() {} };
+  const { store, opened } = fixture({
+    openDocument(input, attempt) {
+      if (attempt === 1) {
+        const error = new Error('Room exists.');
+        error.code = 'COLLABORATION_ROOM_ALREADY_EXISTS';
+        throw error;
+      }
+      return document;
+    },
+  });
+  const room = await store.initializeRoom('persisted');
+  assert.equal(room.document, document);
+  assert.deepEqual(opened.map((input) => input.collaboration.roomMode), ['create', 'join']);
+});
+
+test('explicit replacement updates a persisted room after joining it', async () => {
+  let replacements = 0;
+  const document = {
+    id: 'persisted-upload', filename: 'old.docx', generation: 1,
+    async replace(filename) { this.filename = filename; this.generation += 1; replacements += 1; },
+    async close() {},
+  };
+  const { store, opened } = fixture({
+    openDocument(_input, attempt) {
+      if (attempt === 1) {
+        const error = new Error('Room exists.');
+        error.name = 'RoomExistsError';
+        throw error;
+      }
+      return document;
+    },
+  });
+  const content = await fs.readFile(config.blankDocumentPath);
+  const room = await store.replaceUpload('persisted-upload', 'replacement.docx', content);
+  assert.equal(room.document.filename, 'replacement.docx');
+  assert.equal(replacements, 1);
+  assert.deepEqual(opened.map((input) => input.collaboration.roomMode), ['create', 'join']);
+});
+
+test('expiry unloads inactive rooms without deleting persisted collaboration state', async () => {
+  const { store, unloads } = fixture();
+  const room = await store.createBlank('idle-room');
+  room.lastActivityAt = new Date(0);
+  assert.deepEqual(await store.expire(), ['idle-room']);
+  assert.deepEqual(unloads, [['idle-room', { deleteState: false }]]);
+  assert.equal(store.find('idle-room'), undefined);
 });
 
 test.after(async () => { await fs.rm(directory, { recursive: true, force: true }); });

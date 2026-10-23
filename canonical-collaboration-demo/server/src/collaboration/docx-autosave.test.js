@@ -45,6 +45,8 @@ test('deleting a document cancels pending autosave and removes its snapshot', as
   const state = fixture(60_000);
   state.autosave.roomChanged('sd2/v1/deleted-room');
   await state.autosave.delete('deleted-room');
+  state.autosave.roomEmptied('sd2/v1/deleted-room');
+  await state.autosave.flush();
   assert.equal(state.opens, 0);
   assert.deepEqual(state.puts, []);
   assert.deepEqual(state.deletes, ['deleted-room']);
