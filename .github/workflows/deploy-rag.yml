@@ -149,7 +149,16 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler pages deploy dist --project-name=superdoc-demos --commit-dirty=true
+        run: |
+          bunx wrangler pages deploy dist \
+            --project-name=superdoc-demos \
+            --branch=main \
+            --commit-hash="$(git rev-parse HEAD)" \
+            --commit-dirty=true
+
+      - name: Verify production gallery version
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        run: node scripts/verify-production-gallery.mjs
 
       - name: Deploy gallery and demos to staging
         id: staging
