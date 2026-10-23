@@ -38,10 +38,12 @@ export class RoomStore {
   #initializations = new Map();
   #collaboration;
   #documents;
+  #createServiceToken;
 
-  constructor(collaboration, documents) {
+  constructor(collaboration, documents, { createServiceToken }) {
     this.#collaboration = collaboration;
     this.#documents = documents;
+    this.#createServiceToken = createServiceToken;
   }
 
   async initialize() {
@@ -83,7 +85,7 @@ export class RoomStore {
     const pending = (async () => {
       const content = await fs.readFile(config.defaultDocumentPath);
       if (!content.length || content.length > config.maximumUploadBytes) throw new Error('The default document must be a non-empty DOCX within the upload size limit.');
-      return this.#replace(roomId, path.basename(config.defaultDocumentPath), content);
+      return this.#replace(roomId, path.basename(config.defaultDocumentPath), content, { recoverExisting: true });
     })();
     this.#initializations.set(roomId, pending);
     try { return await pending; }
@@ -113,7 +115,7 @@ export class RoomStore {
     return this.#replace(roomId, 'Untitled document.docx', content);
   }
 
-  async #replace(roomId, filename, content) {
+  async #replace(roomId, filename, content, { recoverExisting = false } = {}) {
     this.validateId(roomId);
     const existingRoom = this.#rooms.get(roomId);
     if (existingRoom?.activeJobs || existingRoom?.document.referenceBusy) {
@@ -146,8 +148,9 @@ export class RoomStore {
     const documentId = roomId;
     const documentPath = path.join(config.documentRoot, `${roomId}-${randomUUID()}.docx`);
     await fs.writeFile(documentPath, content);
+    let document;
     try {
-      const document = await this.#documents.open({
+      const open = (roomMode) => this.#documents.open({
         id: documentId,
         filename,
         path: documentPath,
@@ -155,15 +158,33 @@ export class RoomStore {
           providerType: 'hocuspocus',
           url: `ws://127.0.0.1:${config.port}/collaboration`,
           documentId,
-          roomMode: 'create',
+          roomMode,
           syncTimeoutMs: 90_000,
         },
+        collaborationAuth: { type: 'token', token: this.#createServiceToken(documentId) },
       });
+      try {
+        document = await open('create');
+      } catch (error) {
+        if (!roomAlreadyExists(error)) throw error;
+        document = await open('join');
+        if (!recoverExisting) {
+          const replacementPath = path.join(config.documentRoot, `${roomId}-${randomUUID()}.docx`);
+          await fs.writeFile(replacementPath, content);
+          try {
+            await document.replace(filename, replacementPath);
+          } catch (error) {
+            await fs.rm(replacementPath, { force: true });
+            throw error;
+          }
+        }
+      }
       const room = new Room({ roomId, document });
       this.#rooms.set(roomId, room);
       logEvent('rooms', 'room.created', { roomId, documentId, documentBytes: content.length, activeRooms: this.#rooms.size });
       return room;
     } catch (error) {
+      await document?.close().catch(() => {});
       await fs.rm(documentPath, { force: true });
       throw error;
     }
@@ -205,14 +226,17 @@ export class RoomStore {
       throw error;
     }
     this.#rooms.delete(roomId);
-    await this.#close(room);
+    await this.#close(room, { deleteState: true });
     logEvent('rooms', 'room.deleted', { roomId, documentId: room.document.id, activeRooms: this.#rooms.size });
   }
 
   async expire() {
     const cutoff = Date.now() - config.roomTtlMs;
     const expired = [...this.#rooms.values()].filter((room) => !room.activeJobs && room.lastActivityAt.getTime() < cutoff);
-    for (const room of expired) await this.delete(room.roomId);
+    for (const room of expired) {
+      this.#rooms.delete(room.roomId);
+      await this.#close(room, { deleteState: false });
+    }
     if (expired.length) logEvent('rooms', 'rooms.expired', { roomIds: expired.map((room) => room.roomId), activeRooms: this.#rooms.size });
     return expired.map((room) => room.roomId);
   }
@@ -220,12 +244,13 @@ export class RoomStore {
   async closeAll() {
     const rooms = [...this.#rooms.values()];
     this.#rooms.clear();
-    await Promise.all(rooms.map((room) => this.#close(room)));
+    await Promise.all(rooms.map((room) => this.#close(room, { deleteState: false })));
   }
 
-  async #close(room) {
+  async #close(room, { deleteState }) {
+    if (deleteState) await this.#collaboration.prepareDelete?.(room.document.id);
     await room.document.close().catch(() => {});
-    await this.#collaboration.unload(room.document.id).catch(() => {});
+    await this.#collaboration.unload(room.document.id, { deleteState }).catch(() => {});
   }
 
   response(room) {
@@ -239,4 +264,11 @@ export class RoomStore {
       collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };
   }
+}
+
+function roomAlreadyExists(error) {
+  for (let current = error; current; current = current.cause) {
+    if (current.code === 'COLLABORATION_ROOM_ALREADY_EXISTS' || current.name === 'RoomExistsError') return true;
+  }
+  return false;
 }

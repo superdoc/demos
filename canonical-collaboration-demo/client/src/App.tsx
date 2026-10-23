@@ -25,6 +25,7 @@ function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room |
 }
 
 const params = new URLSearchParams(window.location.search);
+const agentEnabled = import.meta.env.VITE_COLLABORATION_AGENT !== 'off';
 const initialRoomId = params.get('room') ?? `room-${crypto.randomUUID()}`;
 if (!params.has('room')) {
   const initialUrl = new URL(window.location.href);
@@ -41,7 +42,7 @@ export default function App() {
   const initialization = useRef<Promise<Room | undefined> | null>(null);
   const [mode, setMode] = useState<DocumentMode>('editing');
   const [chatWidth, setChatWidth] = useState(360);
-  const [agentOpen, setAgentOpen] = useState(true);
+  const [agentOpen, setAgentOpen] = useState(agentEnabled);
   const [connectedUsers, setConnectedUsers] = useState<number | null>(null);
   const [superdoc, setSuperdoc] = useState<SuperDoc>();
   const [citationsOpen, setCitationsOpen] = useState(false);
@@ -229,6 +230,7 @@ export default function App() {
         onModeChange={setMode}
         superdoc={superdoc}
         agentOpen={agentOpen}
+        agentEnabled={agentEnabled}
         onAgentToggle={() => setAgentOpen((current) => !current)}
         references={{ fieldCodes, renderingBusy, citationsHighlighted, footnotesHighlighted, citationsOpen, bibliographyStyle, pendingBibliographyStyle, footnoteBusy, bibliographyBusy,
           onHighlightToggle: () => setCitationsHighlighted((current) => !current),
@@ -277,7 +279,7 @@ export default function App() {
             </div>
           )}
         </div>
-        <ChatPanel
+        {agentEnabled && <ChatPanel
           hidden={!agentOpen}
           roomId={roomId}
           disabled={!room || busy || referenceBusy}
@@ -285,7 +287,7 @@ export default function App() {
           onWidthChange={setChatWidth}
           onDocumentUpdated={refreshReferences}
           reservedWidth={citationsOpen ? 310 : 0}
-        />
+        />}
         {citationsOpen && <CitationsPanel room={room} superdoc={superdoc} mode={mode}
           disabled={busy || referenceBusy} refresh={referenceRefresh}
           onClose={() => setCitationsOpen(false)} onBusyChange={setReferenceBusy}

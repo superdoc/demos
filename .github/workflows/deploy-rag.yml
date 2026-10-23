@@ -94,6 +94,7 @@ jobs:
         working-directory: canonical-collaboration-demo/client
         env:
           VITE_API_URL: ${{ vars.COLLAB_API_URL || 'https://canonical-collab-demo-backend-production.up.railway.app' }}
+          VITE_COLLABORATION_AGENT: 'on'
         run: |
           npm ci
           npm run build

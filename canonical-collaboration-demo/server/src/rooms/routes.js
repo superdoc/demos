@@ -3,7 +3,7 @@ import { config } from '../config.js';
 
 export const roomPath = '/api/rooms/:roomId';
 
-export function registerRoomRoutes(app, { rooms, jobService }) {
+export function registerRoomRoutes(app, { rooms, jobService, createCollaborationToken }) {
   async function initializeRoom(request) {
     const room = await rooms.initializeRoom(request.params.roomId);
     return { room_id: request.params.roomId, document: room ? rooms.response(room) : null };
@@ -183,6 +183,13 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     return { messages: rooms.require(request.params.roomId).conversation };
   }
 
+  async function collaborationToken(request) {
+    rooms.require(request.params.roomId);
+    const userId = typeof request.body?.userId === 'string' ? request.body.userId.trim() : '';
+    if (!userId || userId.length > 200) throw app.httpErrors.badRequest('A user ID is required.');
+    return { token: createCollaborationToken(request.params.roomId, userId) };
+  }
+
   async function createJob(request, reply) {
     if (rooms.require(request.params.roomId).document.referenceBusy) throw app.httpErrors.badRequest('Wait for reference formatting to finish before running the agent.');
     const record = jobService.create(request.params.roomId, request.body);
@@ -243,7 +250,6 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     // Apply one SuperDoc tool operation to the current document.
     { url: `${roomPath}/document`, method: 'PATCH', handler: dispatchDocumentTool },
     { url: `${roomPath}/citation-sources`, method: 'GET', handler: citationSources },
-    { url: `${roomPath}/jobs/:jobId/events`, method: 'GET', handler: streamJob },
     { url: `${roomPath}/footnotes`, method: 'POST', handler: insertFootnote },
     { url: `${roomPath}/citation-sources`, method: 'POST', handler: mutateCitation },
     { url: `${roomPath}/citations`, method: 'POST', handler: mutateCitation },
@@ -258,13 +264,19 @@ export function registerRoomRoutes(app, { rooms, jobService }) {
     { url: `${roomPath}/status`, method: 'POST', handler: getRoomStatus },
     // Read the current document's completed agent conversation.
     { url: `${roomPath}/chat`, method: 'GET', handler: getChat },
+    // Issue a short-lived token scoped to this room's collaboration document.
+    { url: `${roomPath}/collaboration-token`, method: 'POST', handler: collaborationToken },
+  ];
+
+  if (jobService) routes.push(
+    { url: `${roomPath}/jobs/:jobId/events`, method: 'GET', handler: streamJob },
     // Enqueue an agent job for the room's current document.
     { url: `${roomPath}/jobs`, method: 'POST', handler: createJob },
     // Read the current status and result of an agent job.
     { url: `${roomPath}/jobs/:jobId`, method: 'GET', handler: getJob },
     // Cancel an active agent job.
     { url: `${roomPath}/jobs/:jobId`, method: 'DELETE', handler: cancelJob },
-  ];
+  );
 
   for (const route of routes) app.route(route);
 }

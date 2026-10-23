@@ -58,10 +58,11 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
         providerType: 'hocuspocus',
         documentId: room.document_id,
         serverUrl: room.collaboration_url,
+        token: () => api.getCollaborationToken(room.room_id, editorUser.email),
         roomMode: 'join',
       },
     },
-  ] : [], [documentBlob, room.collaboration_url, room.document_id]);
+  ] : [], [documentBlob, editorUser.email, room.collaboration_url, room.document_id, room.room_id]);
 
   useEffect(() => {
     const controller = new AbortController();

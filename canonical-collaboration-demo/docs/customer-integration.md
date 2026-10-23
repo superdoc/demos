@@ -226,4 +226,4 @@ other body text; check both Reviewing and Editing; accept/reject native changes;
 Word export and a second collaborator. If interactive fixes are mounted, also verify
 final-character citation deletion, empty-bibliography cleanup, footnote body navigation,
 and partial-word replacement after earlier tracked edits at slow and rapid typing rates.
-Keep customer evidence outside source control. Local load-testing code remains unrelated.
+Keep customer evidence outside source control.

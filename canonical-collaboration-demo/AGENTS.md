@@ -58,7 +58,6 @@ Start with [the integration guide](docs/customer-integration.md) and consult the
   model keys, or configuration. The thin demo adapters live outside the shared folders.
 - After upgrading SuperDoc, verify each fix against its inventory removal condition.
   Keep customer documents, exports, traces, and credentials in ignored `artifacts/`.
-  Local load-testing files/edits remain unrelated and must stay out of commits/deploys.
 
 ## Verification
 

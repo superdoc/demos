@@ -55,7 +55,7 @@ jobs:
             directory: canonical-collaboration-demo/server
             manager: npm
             install: npm ci
-            check: npm run check
+            check: npm run check && npm test
     steps:
       - uses: actions/checkout@v6
         with:

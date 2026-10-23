@@ -69,6 +69,15 @@ export class ApiClient {
     return this.request(`${this.roomPath(roomId)}/document${fieldCodes ? '?fieldCodes=true' : ''}`, { signal }, (response) => response.blob());
   }
 
+  async getCollaborationToken(roomId: string, userId: string): Promise<string> {
+    const result = await this.request<{ token: string }>(`${this.roomPath(roomId)}/collaboration-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    return result.token;
+  }
+
   getRoomStatus(roomId: string, generation?: number): Promise<RoomStatus> {
     return this.request(`${this.roomPath(roomId)}/status`, {
       method: 'POST',
