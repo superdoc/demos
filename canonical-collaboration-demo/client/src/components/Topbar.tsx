@@ -26,7 +26,7 @@ export COLLABORATION_STORAGE=memory
 export COLLABORATION_DOCX=off
 
 if [[ -z "\${OPENAI_API_KEY:-}" ]]; then
-  read -r -s -p "OpenAI API key: " OPENAI_API_KEY
+  read -r -s -p "OpenAI API key: " OPENAI_API_KEY < /dev/tty
   echo
   export OPENAI_API_KEY
 fi
