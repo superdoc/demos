@@ -31,7 +31,24 @@ export async function checkRelease({ env = process.env, root = process.cwd(), fe
   const simulation = Boolean(env.SIMULATED_LATEST || env.SIMULATED_DEPLOYED || env.SIMULATE_FAILURE === "true");
   // A simulation must never acquire the ability to commit or deploy.
   const dryRun = simulation || env.DRY_RUN !== "false";
-  let latest = env.SIMULATED_LATEST;
+  const deployCurrent = env.DEPLOY_CURRENT === "true" && !simulation;
+  const state = JSON.parse(await readFile(`${root}/.github/superdoc-release.json`, "utf8"));
+  const deployed = env.SIMULATED_DEPLOYED || state.version;
+  const manifests = ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client"];
+  const installed = await Promise.all(manifests.map(async (directory) => {
+    const manifest = JSON.parse(await readFile(`${root}/${directory}/package.json`, "utf8"));
+    return manifest.dependencies.superdoc;
+  }));
+  if (deployCurrent) {
+    if (installed.some((version) => !stableVersion(version)) || new Set(installed).size !== 1) {
+      throw new Error("Source deployment requires matching exact stable SuperDoc versions in every demo");
+    }
+    if (deployed !== null && !stableVersion(deployed)) throw new Error("Invalid deployed version");
+    if (deployed !== null && compareVersions(installed[0], deployed) < 0) {
+      throw new Error("Source deployment would roll back the deployed SuperDoc version");
+    }
+  }
+  let latest = deployCurrent ? installed[0] : env.SIMULATED_LATEST;
   if (!latest) {
     const response = await fetchImpl("https://registry.npmjs.org/superdoc/latest", {
       signal: AbortSignal.timeout(30_000),
@@ -41,19 +58,15 @@ export async function checkRelease({ env = process.env, root = process.cwd(), fe
     latest = (await response.json()).version;
   }
   if (simulation && !stableVersion(latest)) throw new Error("Simulated npm latest must be an exact stable version");
-  const state = JSON.parse(await readFile(`${root}/.github/superdoc-release.json`, "utf8"));
-  const deployed = env.SIMULATED_DEPLOYED || state.version;
-  const manifests = ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client"];
-  const installed = await Promise.all(manifests.map(async (directory) => {
-    const manifest = JSON.parse(await readFile(`${root}/${directory}/package.json`, "utf8"));
-    return manifest.dependencies.superdoc;
-  }));
-  const result = { ...decideRelease({ latest, deployed, installed }), version: latest, dry_run: dryRun, simulation };
+  const decision = deployCurrent
+    ? { update: true, reason: "Deploy current source regardless of the previous version marker" }
+    : decideRelease({ latest, deployed, installed });
+  const result = { ...decision, version: latest, dry_run: dryRun, simulation };
   if (env.GITHUB_OUTPUT) {
-    await appendFile(env.GITHUB_OUTPUT, `update=${result.update}\nversion=${stableVersion(latest) ? latest : ""}\ndry_run=${dryRun}\n`);
+    await appendFile(env.GITHUB_OUTPUT, `update=${result.update}\nversion=${stableVersion(latest) ? latest : ""}\ndry_run=${dryRun}\ndeploy_current=${deployCurrent}\n`);
   }
   if (env.GITHUB_STEP_SUMMARY) {
-    await appendFile(env.GITHUB_STEP_SUMMARY, `## SuperDoc npm release check\n\n${result.reason}.\n\n- npm latest: ${stableVersion(latest) ? latest : "ignored (not stable)"}\n- Last successful automated deployment: ${deployed ?? "none"}\n- Dry run: ${dryRun}\n- Simulation: ${simulation}\n`);
+    await appendFile(env.GITHUB_STEP_SUMMARY, `## SuperDoc release check\n\n${result.reason}.\n\n- ${deployCurrent ? "Source SuperDoc version" : "npm latest"}: ${stableVersion(latest) ? latest : "ignored (not stable)"}\n- Last successful automated deployment: ${deployed ?? "none"}\n- Dry run: ${dryRun}\n- Simulation: ${simulation}\n`);
   }
   return result;
 }

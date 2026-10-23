@@ -31,6 +31,7 @@ test("scheduled and manual release checks identify their source without claiming
   assert.equal(describeTrigger({ env: { ...triggerEnv, GITHUB_EVENT_NAME: "schedule" } }), "Latest stable release check — scheduled poll of npm latest");
   const env = { ...triggerEnv, GITHUB_EVENT_NAME: "workflow_dispatch" };
   assert.equal(describeTrigger({ env }), "Latest stable release check — manual run by maintainer on main");
+  assert.equal(describeTrigger({ env, event: { inputs: { deploy_current: "true" } } }), "Production source deployment — manual run by maintainer on main");
   for (const inputs of [{ simulated_latest: "2.25.0" }, { simulated_deployed: "0.0.0" }, { simulate_failure: "true" }]) {
     assert.match(describeTrigger({ env, event: { inputs } }), /^Manual release simulation by maintainer on main$/);
   }

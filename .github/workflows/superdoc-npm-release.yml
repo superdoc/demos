@@ -12,6 +12,10 @@ on:
         description: Validate the entire update and deployment without committing or deploying
         type: boolean
         default: true
+      deploy_current:
+        description: Deploy current source even when its SuperDoc version is already deployed
+        type: boolean
+        default: false
       simulated_latest:
         description: Simulate npm latest with an existing published stable version (forces dry run)
         type: string
@@ -27,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: superdoc-npm-release-${{ github.event_name == 'pull_request' && github.ref || 'production' }}
+  group: superdoc-npm-release-production
   cancel-in-progress: false
 
 jobs:
@@ -38,19 +42,23 @@ jobs:
       update: ${{ steps.check.outputs.update }}
       version: ${{ steps.check.outputs.version }}
       dry_run: ${{ steps.check.outputs.dry_run }}
+      deploy_current: ${{ steps.check.outputs.deploy_current }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Test release detection and simulation safeguards
         run: node --test scripts/check-superdoc-release.test.mjs scripts/notify-superdoc-release.test.mjs
-      - name: Check npm latest
+      - name: Select source deployment or npm update
         id: check
         env:
-          DRY_RUN: ${{ github.event_name != 'schedule' && (github.event_name == 'pull_request' || inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) && 'true' || 'false' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) && 'true' || 'false' }}
+          DEPLOY_CURRENT: ${{ github.event_name == 'pull_request' || inputs.deploy_current }}
           SIMULATED_LATEST: ${{ inputs.simulated_latest }}
-          SIMULATED_DEPLOYED: ${{ github.event_name == 'pull_request' && '0.0.0' || inputs.simulated_deployed }}
+          SIMULATED_DEPLOYED: ${{ inputs.simulated_deployed }}
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
         run: |
           if [ "$DRY_RUN" = false ] && [ "$GITHUB_REF" != "refs/heads/${{ github.event.repository.default_branch }}" ]; then
@@ -66,7 +74,7 @@ jobs:
 
   update:
     needs: check
-    if: needs.check.outputs.update == 'true'
+    if: needs.check.outputs.update == 'true' && needs.check.outputs.deploy_current != 'true'
     permissions:
       contents: write
     uses: ./.github/workflows/update-superdoc.yml
@@ -77,17 +85,18 @@ jobs:
 
   deploy:
     needs: [check, update]
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.check.outputs.update == 'true' && (needs.update.result == 'success' || (needs.update.result == 'skipped' && needs.check.outputs.deploy_current == 'true')) }}
     uses: ./.github/workflows/deploy-rag.yml
     with:
       environment: production
       dry_run: ${{ needs.check.outputs.dry_run == 'true' }}
-      ref: ${{ needs.update.outputs.commit_sha }}
+      ref: ${{ needs.update.outputs.commit_sha || github.event.pull_request.merge_commit_sha || github.sha }}
       source_artifact: ${{ needs.update.outputs.source_artifact }}
     secrets: inherit
 
   record:
     needs: [check, update, deploy]
-    if: needs.check.outputs.dry_run == 'false'
+    if: ${{ !cancelled() && needs.check.outputs.dry_run == 'false' && needs.deploy.result == 'success' }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -116,7 +125,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.update.outputs.commit_sha || github.sha }}
+          ref: ${{ needs.update.outputs.commit_sha || github.event.pull_request.merge_commit_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -126,6 +135,6 @@ jobs:
           RELEASE_RESULTS: ${{ toJSON(needs) }}
           SUPERDOC_VERSION: ${{ needs.check.outputs.version || inputs.simulated_latest }}
           RELEASE_DRY_RUN: ${{ needs.check.outputs.dry_run }}
-          TRIGGER_DRY_RUN: ${{ github.event_name != 'schedule' && (github.event_name == 'pull_request' || inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) }}
+          TRIGGER_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) }}
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
         run: node scripts/notify-superdoc-release.mjs

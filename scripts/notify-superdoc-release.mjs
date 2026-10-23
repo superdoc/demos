@@ -31,7 +31,8 @@ export function describeTrigger({ env, event = {} }) {
   }
   if (env.GITHUB_EVENT_NAME === "workflow_dispatch") {
     const simulation = event.inputs?.simulated_latest || event.inputs?.simulated_deployed || String(event.inputs?.simulate_failure) === "true";
-    return `${simulation ? "Manual release simulation" : "Latest stable release check — manual run"} by ${label(env.GITHUB_ACTOR || "unknown")} on ${label(env.GITHUB_REF_NAME || "unknown")}`;
+    const sourceDeployment = String(event.inputs?.deploy_current) === "true";
+    return `${simulation ? "Manual release simulation" : sourceDeployment ? "Production source deployment — manual run" : "Latest stable release check — manual run"} by ${label(env.GITHUB_ACTOR || "unknown")} on ${label(env.GITHUB_REF_NAME || "unknown")}`;
   }
   if (env.GITHUB_EVENT_NAME === "merge_group") {
     return `Merge queue testing — ${label(event.merge_group?.head_ref || env.GITHUB_REF_NAME || "unknown")}`;

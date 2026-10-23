@@ -57,7 +57,7 @@ test("simulated npm latest flows into workflow outputs with dry-run forced on", 
   assert.deepEqual(result, {
     update: true, reason: "New stable npm release", version: "2.25.0", dry_run: true, simulation: true,
   });
-  assert.equal(await readFile(`${root}/outputs`, "utf8"), "update=true\nversion=2.25.0\ndry_run=true\n");
+  assert.equal(await readFile(`${root}/outputs`, "utf8"), "update=true\nversion=2.25.0\ndry_run=true\ndeploy_current=false\n");
   assert.match(await readFile(`${root}/summary`, "utf8"), /Simulation: true/);
   assert.equal(JSON.parse(await readFile(`${root}/.github/superdoc-release.json`, "utf8")).version, "2.24.0");
 });
@@ -78,4 +78,36 @@ test("registry errors fail the check instead of starting an update", async (t) =
   const root = await fixture(t);
   await assert.rejects(checkRelease({ root, env: {}, fetchImpl: async () => new Response("unavailable", { status: 503 }) }), /HTTP 503/);
   await assert.rejects(checkRelease({ root, env: { SIMULATED_LATEST: "2.26.0-beta.1" } }), /exact stable version/);
+});
+
+test("merged source deploys the same SuperDoc version without updating dependencies or querying npm", async (t) => {
+  const root = await fixture(t);
+  const result = await checkRelease({ root, env: {
+    DEPLOY_CURRENT: "true", DRY_RUN: "false", GITHUB_OUTPUT: `${root}/outputs`,
+  }, fetchImpl: () => assert.fail("A source deployment must use committed dependencies") });
+  assert.equal(result.update, true);
+  assert.equal(result.version, "2.24.0");
+  assert.equal(result.dry_run, false);
+  assert.equal(result.simulation, false);
+  assert.match(await readFile(`${root}/outputs`, "utf8"), /deploy_current=true/);
+});
+
+test("source deployment retains explicit dry runs and simulation safeguards", async (t) => {
+  const root = await fixture(t);
+  const fetchImpl = async () => Response.json({ version: "2.25.0" });
+  assert.equal((await checkRelease({ root, env: { DEPLOY_CURRENT: "true", DRY_RUN: "true" }, fetchImpl })).dry_run, true);
+  for (const simulation of [{ SIMULATED_LATEST: "2.25.0" }, { SIMULATED_DEPLOYED: "0.0.0" }, { SIMULATE_FAILURE: "true" }]) {
+    const result = await checkRelease({ root, env: { DEPLOY_CURRENT: "true", DRY_RUN: "false", ...simulation }, fetchImpl });
+    assert.equal(result.dry_run, true);
+    assert.equal(result.simulation, true);
+  }
+});
+
+test("source deployment rejects mismatched versions and SuperDoc rollbacks", async (t) => {
+  const root = await fixture(t);
+  const env = { DEPLOY_CURRENT: "true", DRY_RUN: "false" };
+  await writeFile(`${root}/.github/superdoc-release.json`, JSON.stringify({ version: "2.25.0" }));
+  await assert.rejects(checkRelease({ root, env }), /roll back/);
+  await writeFile(`${root}/superdoc-inline-revisions/package.json`, JSON.stringify({ dependencies: { superdoc: "2.26.0" } }));
+  await assert.rejects(checkRelease({ root, env }), /matching exact stable/);
 });
