@@ -8,12 +8,12 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
-    "@superdoc/react": "2.21.0",
+    "@superdoc/react": "2.22.0",
     "jszip": "3.10.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
-    "superdoc": "2.26.0"
+    "superdoc": "2.27.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.12",
