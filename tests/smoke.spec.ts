@@ -26,6 +26,11 @@ test("demo mounts without console errors", async ({ page }, testInfo) => {
 		? "#app > *"
 		: "#root > *";
 	await expect(page.locator(mount)).toHaveCount(1, { timeout: 15_000 });
+	if (testInfo.project.name === "template-builder-document-api-v2-demo") {
+		// The Vue shell mounts before SuperDoc loads the document and its workers.
+		await expect(page.getByRole("combobox", { name: "File", exact: true })).toBeEnabled({ timeout: 15_000 });
+		await expect(page.getByRole("combobox", { name: "Document mode", exact: true })).toBeEnabled();
+	}
 	await page.waitForLoadState("networkidle");
 
 	expect(errors, errors.join("\n")).toEqual([]);
