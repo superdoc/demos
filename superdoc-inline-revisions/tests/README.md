@@ -12,6 +12,10 @@ The runner builds the demo and starts a preview on port 4188. The normal dev
 server on port 5173 can keep running. Tests use two Chromium workers, with a new
 browser context/document for each case.
 
+Document and style-catalog initialization gets a 30-second readiness wait, with
+a 60-second total budget per test. Individual interaction assertions retain
+Playwright's five-second default. CI always starts its own preview server.
+
 `review-ui.spec.ts` checks the editor, ruler, three toolbar sections, and comments
 rail. `toolbar.spec.ts` exercises real UI gestures and verifies rendered document
 changes, without mocking editor commands or exposing application globals:
