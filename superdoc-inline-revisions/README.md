@@ -31,7 +31,20 @@ for coverage, fixtures, screenshots, and traces.
 - Selection-based comment creation, replies, resolve, reopen, and navigation
 - Per-change and bulk accept/reject actions
 - Editing and suggesting mode switching
+- Standard right-click options plus wrapping selected text in a content control
+- Lock/unlock actions on the clicked content control
+- Toolbar formatting on locked controls with atomic unlock/format/relock
 - DOCX export from the browser
+
+Select text and right-click **Wrap in content control**. Right-click the control
+to **Lock content control** or **Unlock content control**. Locking selects the
+control's text so the toolbar can format it immediately. Inline formatting
+uses `doc.mutations.apply` and restores the original lock modes in the same atomic
+commit. Clicking an existing locked control also selects its contents. The
+toolbar and Cmd/Ctrl formatting shortcuts use the same handler. Paragraph formatting
+uses standard commands while keeping the locks in place. Wrapping and changing
+locks are direct operations in both Editing and Reviewing modes; formatting is
+tracked in Reviewing mode.
 
 ## Reuse the toolbar
 

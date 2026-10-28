@@ -3,7 +3,7 @@ import { SuperDoc } from 'superdoc';
 import { DocumentToolbar } from '..';
 import 'superdoc/style.css';
 
-/** Minimal standalone integration; no demo components or global demo CSS required. */
+/** Standalone integration, including locked-control formatting and shortcuts. */
 export function EditorWithToolbar({ documentUrl }: { documentUrl: string }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const [superdoc, setSuperDoc] = useState<SuperDoc | null>(null);
