@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import { SuperDoc } from 'superdoc';
 import type { SelectionCapture, TrackChangesItem } from 'superdoc/ui';
 import { useSetSuperDoc, useSuperDocSelection, useSuperDocTrackChanges, useSuperDocUI } from 'superdoc/ui/react';
+import { createContentControlMenu } from './contentControlMenu';
 
 export function SuperDocEditor({
   onStartComment,
@@ -21,10 +22,23 @@ export function SuperDocEditor({
   const rulerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLElement>(null);
   const setSuperDoc = useSetSuperDoc();
+  const ui = useSuperDocUI();
+  const uiRef = useRef(ui);
+  uiRef.current = ui;
   const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => {
     if (!mountRef.current) return;
+    let ready = false;
+
+    const menu = createContentControlMenu(() => uiRef.current, () => superdoc.activeEditor?.doc, setActionError);
+    const stage = stageRef.current;
+    const preserveRightClick = (event: PointerEvent) => {
+      if (event.button === 2) event.preventDefault();
+    };
+    stage?.addEventListener('pointerdown', preserveRightClick, true);
+    stage?.addEventListener('contextmenu', menu.captureContext, true);
 
     const superdoc = new SuperDoc({
       selector: mountRef.current,
@@ -35,26 +49,38 @@ export function SuperDocEditor({
       ui: {
         toolbar: false,
         comments: false,
-        contextMenu: false,
+        contextMenu: menu.config,
         loading: false,
         search: false,
         linkPopover: false,
         ruler: true,
-        contentControls: false,
+        contentControls: true,
       },
-      onReady: ({ superdoc: readySuperDoc }) => setSuperDoc(readySuperDoc),
-      onException: ({ error: loadError }) => {
-        console.error(loadError);
-        setError('The review document could not be opened.');
+      onReady: ({ superdoc: readySuperDoc }) => {
+        ready = true;
+        setError('');
+        setSuperDoc(readySuperDoc);
+      },
+      onException: (exception) => {
+        // Protected edits are expected rejections, not document-open failures.
+        if ('code' in exception && exception.code === 'edit-rejected') return;
+        console.error(exception.error);
+        if (!ready) setError('The review document could not be opened.');
       },
     });
 
-    return () => superdoc.destroy();
+    return () => {
+      stage?.removeEventListener('contextmenu', menu.captureContext, true);
+      stage?.removeEventListener('pointerdown', preserveRightClick, true);
+      menu.dispose();
+      superdoc.destroy();
+    };
   }, [setSuperDoc]);
 
   return (
     <main ref={stageRef} className="document-stage">
       {error ? <div className="error-banner">{error}</div> : null}
+      {actionError ? <div className="error-banner" role="alert">{actionError}<button type="button" aria-label="Dismiss content control message" onClick={() => setActionError('')}>×</button></div> : null}
       <div ref={rulerRef} className="fixed-ruler" aria-label="Document ruler" />
       <RulerPositioner ruler={rulerRef} relativeTo={stageRef} />
       <div ref={mountRef} className="editor-mount" aria-label="Editable contract" />
@@ -125,6 +151,7 @@ function CommentRangeActivation({
     if (!stage || !ui) return;
 
     const updateActiveComment = (event: PointerEvent) => {
+      if (event.button !== 0) return;
       const hits = ui.viewport.entityAt({ x: event.clientX, y: event.clientY });
       const comment = hits.find((hit) => hit.type === 'comment');
       const commentId = comment?.type === 'comment' ? comment.id : null;
@@ -270,6 +297,7 @@ function TrackedChangeClickPopover({ relativeTo }: { relativeTo: RefObject<HTMLE
     if (!stage || !ui) return;
 
     const showAtClick = (event: PointerEvent) => {
+      if (event.button !== 0) return;
       const hit = ui.trackChanges.getAt({ x: event.clientX, y: event.clientY });
       if (!hit) return setClicked(null);
       const bounds = stage.getBoundingClientRect();

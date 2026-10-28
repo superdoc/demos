@@ -5,6 +5,7 @@ import type { SuperDocHost } from 'superdoc/ui/react';
 import { FormattingControls } from './FormattingControls';
 import { StyleGallery } from './StyleGallery';
 import { TrackedChangesControls } from './TrackedChangesControls';
+import { FormattingShortcuts } from './FormattingShortcuts';
 import './DocumentToolbar.css';
 
 export interface DocumentToolbarProps {
@@ -20,6 +21,8 @@ type ToolbarContentsProps = Omit<DocumentToolbarProps, 'superdoc'>;
 function ToolbarContents({ className = '', style, 'aria-label': label = 'Document toolbar' }: ToolbarContentsProps) {
   return (
     <div className={`document-toolbar ${className}`.trim()} style={style} role="toolbar" aria-label={label}>
+      {/* Mount editor interactions here so consumers get them with the toolbar. */}
+      <FormattingShortcuts />
       <FormattingControls />
       <StyleGallery />
       <TrackedChangesControls />
@@ -35,6 +38,7 @@ function BoundToolbar({ superdoc, ...props }: ToolbarContentsProps & { superdoc:
 
 /**
  * Complete toolbar: formatting, styles, and bulk tracked-change decisions.
+ * Includes mutation planning, locked-control selection, and formatting shortcuts.
  * Pass `superdoc` for standalone use, or omit it inside SuperDocUIProvider.
  * CSS is imported automatically. The editor instance remains owned by the app.
  */

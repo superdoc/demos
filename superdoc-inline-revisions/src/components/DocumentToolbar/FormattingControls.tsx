@@ -5,7 +5,7 @@ import type { SelectionCapture, SelectionTarget } from 'superdoc/ui';
 import { useSuperDocFontOptions, useSuperDocFontSizeOptions, useSuperDocHost, useSuperDocToolbar, useSuperDocUI } from 'superdoc/ui/react';
 import { ToolbarIcon } from './ToolbarIcon';
 import type { IconName } from './ToolbarIcon';
-import { hasSelectedVerticalAlignment } from './selectionFormatting';
+import { useSelectionFormatting } from './useSelectionFormatting';
 import './FormattingControls.css';
 
 type MenuId = 'fonts' | 'table' | 'underline' | 'case' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'spacing';
@@ -35,6 +35,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const ui = useSuperDocUI();
   const host = useSuperDocHost();
   const toolbar = useSuperDocToolbar();
+  const formatting = useSelectionFormatting();
   const fonts = useSuperDocFontOptions();
   const sizes = useSuperDocFontSizeOptions();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -46,7 +47,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const captureRef = useRef<SelectionCapture | null>(null);
   const tableTargetRef = useRef<SelectionTarget | null>(null);
   const state = (command: string) => toolbar.commands[command];
-  const readOnly = !ui || toolbar.context === 'viewing';
+  const readOnly = formatting.readOnly || formatting.pending;
   const font = String(state('font-family')?.value ?? 'Calibri');
   const size = String(state('font-size')?.value ?? '11');
   const fontOptions = fonts.some((option) => option.value === font) ? fonts : [{ label: font, value: font, previewFamily: font }, ...fonts];
@@ -73,7 +74,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     closeMenu();
     setStatus('');
     try {
-      await ui?.commands.executeAsync(command, payload);
+      await formatting.execute(command, payload);
     } catch { reportError('The formatting could not be applied to this selection.'); }
   };
   const openMenu = (id: MenuId, trigger: HTMLButtonElement) => {
@@ -132,11 +133,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     if (!doc?.selection?.current || !doc.format?.apply) return;
     setFormattingPending(true);
     try {
-      const selection = await doc.selection.current({ includeText: true });
-      if (selection.empty || !selection.selectionTarget) return;
-      const active = await hasSelectedVerticalAlignment(doc, selection, value);
-      const result = await doc.format.apply({ target: selection.selectionTarget, inline: { vertAlign: active ? 'baseline' : value } }, { changeMode: toolbar.context === 'suggesting' ? 'tracked' : 'direct' });
-      if (!result.success) reportError('This formatting is unavailable for the current selection.');
+      await formatting.execute(value);
     } catch { reportError('This formatting could not be applied.'); }
     finally { setFormattingPending(false); }
   };
@@ -148,18 +145,17 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     if (!doc?.selection?.current || !doc.invoke) return;
     setFormattingPending(true);
     try {
-      const selection = await doc.selection.current({ includeText: true });
+      const selection = await formatting.getSelection();
       if (selection.empty || !selection.selectionTarget || selection.text === undefined) return;
       const text = transform(selection.text);
       if (text === selection.text) return;
-      const result = await doc.invoke({ operationId: 'replace', input: { target: selection.selectionTarget, text }, options: { changeMode: toolbar.context === 'suggesting' ? 'tracked' : 'direct' } });
-      if (!result || typeof result !== 'object' || !('success' in result) || !result.success) reportError('The case could not be changed for this selection.');
+      await formatting.applyChanges(selection, [{ kind: 'replaceText', target: selection.selectionTarget, text }]);
     } catch { reportError('The case could not be changed for this selection.'); }
     finally { setFormattingPending(false); }
   };
   const button = (label: string, icon: IconName, options: ToolOptions) => (
     <button type="button" className={`document-toolbar-tool ${options.className ?? ''}${(options.active ?? (options.command ? state(options.command)?.active : false)) ? ' is-active' : ''}`} aria-label={label} title={label}
-      disabled={options.disabled ?? (options.command ? !state(options.command)?.enabled : readOnly)}
+      disabled={formatting.pending || (options.disabled ?? (options.command ? !formatting.canExecute(options.command) : readOnly))}
       aria-pressed={options.command || options.active !== undefined ? options.active ?? state(options.command ?? '')?.active ?? false : undefined}
       aria-haspopup={options.menu ? 'menu' : undefined} aria-expanded={options.menu ? menu?.id === options.menu : undefined}
       onMouseDown={(event) => event.preventDefault()}
