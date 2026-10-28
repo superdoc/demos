@@ -34,7 +34,8 @@ test.beforeEach(async ({ page }) => {
   browserErrors.set(page, errors);
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await expect(tool(page, 'Apply Normal')).toBeEnabled();
+  // Loading the document, workers, and style catalog can exceed five seconds on CI.
+  await expect(tool(page, 'Apply Normal')).toBeEnabled({ timeout: 30_000 });
   await page.getByLabel('Document mode').selectOption('editing');
 });
 

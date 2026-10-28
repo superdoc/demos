@@ -36,7 +36,8 @@ async function wrapSample(page: Page) {
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => { throw error; });
   await page.goto('/');
-  await expect(tool(page, 'Apply Normal')).toBeEnabled();
+  // Wait for document/worker/style initialization before exercising editor actions.
+  await expect(tool(page, 'Apply Normal')).toBeEnabled({ timeout: 30_000 });
   await page.getByLabel('Document mode').selectOption('editing');
 });
 
