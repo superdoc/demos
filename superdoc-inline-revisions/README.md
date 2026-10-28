@@ -20,7 +20,9 @@ pnpm preview
 
 Deploy the generated `dist/` directory to any static host. The included review document is copied into the build automatically by Vite.
 
-Run `pnpm browsers` once and `pnpm test` to exercise both review feeds in Chromium.
+Run `pnpm browsers` once and `pnpm test` to build the demo and exercise the toolbar
+and document interactions in Chromium. See the [browser test guide](./tests/README.md)
+for coverage, fixtures, screenshots, and traces.
 
 ## What it demonstrates
 

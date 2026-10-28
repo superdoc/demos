@@ -18,7 +18,7 @@ test('loads floating comments and leaves tracked changes inline', async ({ page 
   await expect(page.getByRole('button', { name: 'Bold', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Bullets options', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Numbering options', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Multilevel List', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Insert Table', exact: true })).toBeVisible();
   await expect(page.getByLabel('Format styles')).toBeVisible();
   await expect(page.locator('#default-toolbar')).toHaveCount(0);
   await expect(page.locator('.v2-ruler-host, .ruler')).toBeVisible();

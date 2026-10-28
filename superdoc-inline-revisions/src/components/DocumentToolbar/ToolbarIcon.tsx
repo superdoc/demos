@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export type IconName = 'grow' | 'shrink' | 'case' | 'clear' | 'bold' | 'italic' | 'underline' | 'strike' | 'subscript' | 'superscript' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'multilevel' | 'outdent' | 'indent' | 'marks' | 'left' | 'center' | 'right' | 'justify' | 'spacing' | 'table';
+export type IconName = 'grow' | 'shrink' | 'case' | 'clear' | 'bold' | 'italic' | 'underline' | 'strike' | 'subscript' | 'superscript' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'outdent' | 'indent' | 'marks' | 'left' | 'center' | 'right' | 'justify' | 'spacing' | 'table';
 
 export function ToolbarIcon({ name }: { name: IconName }) {
   const blue = '#3188b7';
@@ -17,7 +17,7 @@ export function ToolbarIcon({ name }: { name: IconName }) {
     case 'subscript': case 'superscript': content = <>{text('x', { x: 9, fontSize: 18 })}{text('2', { x: 18, y: name === 'subscript' ? 22 : 9, fontSize: 11, fill: blue })}</>; break;
     case 'highlight': content = <><path fill="#737b7e" d="m9 13 9-10 4 4-10 9-5 1z" /><path d="m8 14 3 3-4 3H4z" /><path stroke="#fff200" strokeWidth="4" d="M2 22h20" /></>; break;
     case 'color': content = <>{text('A', { y: 17 })}<path stroke="#e50022" strokeWidth="4" d="M2 22h20" /></>; break;
-    case 'bullets': case 'numbers': case 'multilevel': content = <>{[5, 12, 19].map((y, i) => <g key={y}>{name === 'bullets' ? <rect x="2" y={y - 1} width="2" height="2" fill={blue} stroke={blue} /> : <text x={name === 'multilevel' ? 1 + i * 3 : 1} y={y + 2} fill={blue} stroke="none" fontSize="7">{name === 'multilevel' ? ['1.', 'a.', 'i.'][i] : `${i + 1}.`}</text>}<path d={`M${name === 'multilevel' ? 8 + i * 3 : 8} ${y}H22`} /></g>)}</>; break;
+    case 'bullets': case 'numbers': content = <>{[5, 12, 19].map((y, i) => <g key={y}>{name === 'bullets' ? <rect x="2" y={y - 1} width="2" height="2" fill={blue} stroke={blue} /> : <text x="1" y={y + 2} fill={blue} stroke="none" fontSize="7">{`${i + 1}.`}</text>}<path d={`M8 ${y}H22`} /></g>)}</>; break;
     case 'outdent': case 'indent': content = <><path d="M3 4h19M10 9h12M10 14h12M3 19h19" /><path stroke={blue} d={name === 'indent' ? 'M1 11h6M4 8l3 3-3 3' : 'M7 11H1M4 8l-3 3 3 3'} /></>; break;
     case 'marks': content = text('¶', { fontSize: 22, fontFamily: 'Georgia, serif', fontWeight: 700 }); break;
     case 'left': case 'center': case 'right': case 'justify': content = <>{[4, 9, 14, 19].map((y, i) => { const short = i % 2 === 1 && name !== 'justify'; const x = !short || name === 'left' ? 3 : name === 'center' ? 6 : 9; return <path key={y} d={`M${x} ${y}h${short ? 12 : 18}`} />; })}</>; break;

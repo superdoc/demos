@@ -5,16 +5,16 @@ import type { SelectionCapture, SelectionTarget } from 'superdoc/ui';
 import { useSuperDocFontOptions, useSuperDocFontSizeOptions, useSuperDocHost, useSuperDocToolbar, useSuperDocUI } from 'superdoc/ui/react';
 import { ToolbarIcon } from './ToolbarIcon';
 import type { IconName } from './ToolbarIcon';
+import { hasSelectedVerticalAlignment } from './selectionFormatting';
 import './FormattingControls.css';
 
-type MenuId = 'table' | 'underline' | 'case' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'multilevel' | 'spacing';
+type MenuId = 'fonts' | 'table' | 'underline' | 'case' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'spacing';
 type OpenMenu = { id: MenuId; left: number; top: number; trigger: HTMLButtonElement };
-
-// These controls intentionally remain no-ops until their desired behavior is specified.
-export const DOCUMENT_TOOLBAR_PLACEHOLDERS = [
-  'Multilevel list presets',
-  'Define New Multilevel List', 'Define New List Style',
-] as const;
+type ToolOptions = (
+  | { command: string; menu?: never; action?: never }
+  | { command?: never; menu: MenuId; action?: never }
+  | { command?: never; menu?: never; action: () => void }
+) & { payload?: unknown; active?: boolean; disabled?: boolean; className?: string };
 
 const COLORS = ['#000000', '#ffffff', '#e50022', '#ff9900', '#fff200', '#70ad47', '#00b0f0', '#0070c0', '#7030a0', '#666666'];
 const NUMBERS = [
@@ -26,18 +26,8 @@ const NUMBERS = [
   { label: 'Lower letters', preset: 'lowerLetter', markers: ['a.', 'b.', 'c.'] },
   { label: 'Lower Roman', preset: 'lowerRoman', markers: ['i.', 'ii.', 'iii.'] },
 ];
-const MULTILEVEL = [
-  { label: 'Numbers and letters', markers: ['1)', 'a)', 'i)'] },
-  { label: 'Decimal outline', markers: ['1.', '1.1.', '1.1.1.'] },
-  { label: 'Symbol outline', markers: ['❖', '➢', '▪'] },
-  { label: 'Article and section headings', markers: ['Article I.', 'Section 1.01', '(a)'] },
-  { label: 'Numbered headings', markers: ['1 Heading 1', '1.1 Heading 2', '1.1.1 Heading 3'] },
-  { label: 'Roman outline', markers: ['I. Heading 1', 'A. Heading 2', '1. Heading 3'] },
-  { label: 'Chapter headings', markers: ['Chapter 1', 'Heading 2', 'Heading 3'] },
-];
-
-function ListPreview({ markers, nested = false }: { markers: string[]; nested?: boolean }) {
-  return <span className={`document-toolbar-list-preview${nested ? ' is-nested' : ''}`} aria-hidden="true">{markers.map((marker, index) => <span key={index} style={nested ? { paddingLeft: index * 8 } : undefined}><span>{marker}</span><i /></span>)}</span>;
+function ListPreview({ markers }: { markers: string[] }) {
+  return <span className="document-toolbar-list-preview" aria-hidden="true">{markers.map((marker, index) => <span key={index}><span>{marker}</span><i /></span>)}</span>;
 }
 
 /** Text and paragraph controls sharing the parent toolbar’s SuperDoc UI controller. */
@@ -49,6 +39,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const sizes = useSuperDocFontSizeOptions();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [status, setStatus] = useState('');
+  const [formattingPending, setFormattingPending] = useState(false);
   const [tableSize, setTableSize] = useState({ rows: 1, columns: 1 });
   const menuRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -58,6 +49,9 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const readOnly = !ui || toolbar.context === 'viewing';
   const font = String(state('font-family')?.value ?? 'Calibri');
   const size = String(state('font-size')?.value ?? '11');
+  const fontOptions = fonts.some((option) => option.value === font) ? fonts : [{ label: font, value: font, previewFamily: font }, ...fonts];
+  const fontLabel = fontOptions.find((option) => option.value === font)?.label ?? font;
+  const fontSearchRef = useRef({ text: '', time: 0 });
 
   const preserve = () => { captureRef.current = ui?.selection.capture() ?? null; };
   const closeMenu = (focus = false) => {
@@ -85,6 +79,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const openMenu = (id: MenuId, trigger: HTMLButtonElement) => {
     if (menu?.id === id) return closeMenu();
     preserve();
+    fontSearchRef.current = { text: '', time: 0 };
     tableTargetRef.current = null;
     if (id === 'table') {
       setTableSize({ rows: 1, columns: 1 });
@@ -120,7 +115,8 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     document.addEventListener('keydown', escape);
     window.addEventListener('resize', dismiss);
     window.addEventListener('scroll', dismiss, true);
-    menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    const initialFocus = menuRef.current?.querySelector<HTMLButtonElement>('button[aria-checked="true"]') ?? menuRef.current?.querySelector<HTMLButtonElement>('button');
+    initialFocus?.focus();
     return () => {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape);
@@ -130,26 +126,39 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   }, [menu]);
 
   const verticalAlign = async (value: 'subscript' | 'superscript') => {
-    const capture = restore() ?? ui?.selection.capture();
-    if (readOnly || !capture?.selectionTarget || capture.empty) return;
+    if (readOnly || formattingPending) return;
+    restore();
+    const doc = host?.activeEditor?.doc;
+    if (!doc?.selection?.current || !doc.format?.apply) return;
+    setFormattingPending(true);
     try {
-      const result = await host?.activeEditor?.doc?.format?.apply?.({ target: capture.selectionTarget, inline: { vertAlign: capture.activeMarks.includes(value) ? 'baseline' : value } }, { changeMode: toolbar.context === 'suggesting' ? 'tracked' : 'direct' });
-      if (!result?.success) reportError('This formatting is unavailable for the current selection.');
+      const selection = await doc.selection.current({ includeText: true });
+      if (selection.empty || !selection.selectionTarget) return;
+      const active = await hasSelectedVerticalAlignment(doc, selection, value);
+      const result = await doc.format.apply({ target: selection.selectionTarget, inline: { vertAlign: active ? 'baseline' : value } }, { changeMode: toolbar.context === 'suggesting' ? 'tracked' : 'direct' });
+      if (!result.success) reportError('This formatting is unavailable for the current selection.');
     } catch { reportError('This formatting could not be applied.'); }
+    finally { setFormattingPending(false); }
   };
   const changeCase = async (transform: (text: string) => string) => {
-    const capture = restore();
+    if (readOnly || formattingPending) return;
+    restore();
     closeMenu();
-    if (readOnly || !capture?.selectionTarget || capture.empty) return;
+    const doc = host?.activeEditor?.doc;
+    if (!doc?.selection?.current || !doc.invoke) return;
+    setFormattingPending(true);
     try {
-      const result = await host?.activeEditor?.doc?.invoke?.({ operationId: 'replace', input: { target: capture.selectionTarget, text: transform(capture.quotedText) }, options: { changeMode: toolbar.context === 'suggesting' ? 'tracked' : 'direct' } });
+      const selection = await doc.selection.current({ includeText: true });
+      if (selection.empty || !selection.selectionTarget || selection.text === undefined) return;
+      const text = transform(selection.text);
+      if (text === selection.text) return;
+      const result = await doc.invoke({ operationId: 'replace', input: { target: selection.selectionTarget, text }, options: { changeMode: toolbar.context === 'suggesting' ? 'tracked' : 'direct' } });
       if (!result || typeof result !== 'object' || !('success' in result) || !result.success) reportError('The case could not be changed for this selection.');
     } catch { reportError('The case could not be changed for this selection.'); }
+    finally { setFormattingPending(false); }
   };
-  const placeholder = () => closeMenu();
-  const button = (label: string, icon: IconName, options: { command?: string; payload?: unknown; menu?: MenuId; action?: () => void; active?: boolean; disabled?: boolean; className?: string } = {}) => (
-    <button type="button" className={`document-toolbar-tool ${options.className ?? ''}${(options.active ?? (options.command ? state(options.command)?.active : false)) ? ' is-active' : ''}`} aria-label={label} title={!options.command && !options.menu && !options.action ? `${label} (no-op)` : label}
-      data-noop={!options.command && !options.menu && !options.action || undefined}
+  const button = (label: string, icon: IconName, options: ToolOptions) => (
+    <button type="button" className={`document-toolbar-tool ${options.className ?? ''}${(options.active ?? (options.command ? state(options.command)?.active : false)) ? ' is-active' : ''}`} aria-label={label} title={label}
       disabled={options.disabled ?? (options.command ? !state(options.command)?.enabled : readOnly)}
       aria-pressed={options.command || options.active !== undefined ? options.active ?? state(options.command ?? '')?.active ?? false : undefined}
       aria-haspopup={options.menu ? 'menu' : undefined} aria-expanded={options.menu ? menu?.id === options.menu : undefined}
@@ -161,7 +170,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const split = (label: string, icon: IconName, command: string, id: MenuId, payload?: unknown) => (
     <span className="document-toolbar-split">{button(label, icon, { command, payload })}<button type="button" className="document-toolbar-tool document-toolbar-menu-arrow" aria-label={`${label} options`} title={`${label} options`} aria-haspopup="menu" aria-expanded={menu?.id === id} disabled={readOnly} onMouseDown={(event) => event.preventDefault()} onClick={(event) => openMenu(id, event.currentTarget)}><span className="document-toolbar-caret" aria-hidden="true" /></button></span>
   );
-  const item = (label: string, action: () => void, children?: ReactNode) => <button type="button" role="menuitem" className={children ? 'document-toolbar-gallery-tile' : 'document-toolbar-menu-item'} aria-label={label} title={action === placeholder ? `${label} (no-op)` : label} data-noop={action === placeholder || undefined} onMouseDown={(event) => event.preventDefault()} onClick={action}>{children ?? label}</button>;
+  const item = (label: string, action: () => void, children?: ReactNode) => <button type="button" role="menuitem" className={children ? 'document-toolbar-gallery-tile' : 'document-toolbar-menu-item'} aria-label={label} title={label} onMouseDown={(event) => event.preventDefault()} onClick={action}>{children ?? label}</button>;
   const none = () => {
     // Both libraries' None tile removes either kind of list from the selected paragraphs.
     if (state('bullet-list')?.active) void run('bullet-list');
@@ -170,6 +179,13 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   };
   let menuContent: ReactNode;
   switch (menu?.id) {
+    case 'fonts': menuContent = <>
+      <div className="document-toolbar-menu-heading">Fonts</div>
+      {fontOptions.map((option) => <button key={option.value} type="button" role="menuitemradio" aria-checked={option.value === font} aria-label={option.label} title={option.label} data-font-name={option.label} className="document-toolbar-menu-item document-toolbar-font-option" style={{ fontFamily: option.previewFamily ?? option.value }} onMouseDown={(event) => event.preventDefault()} onClick={() => void run('font-family', option.value)}>
+        <span className="document-toolbar-font-check" aria-hidden="true">{option.value === font ? '✓' : ''}</span>
+        <span>{option.label}</span>
+      </button>)}
+    </>; break;
     case 'table': menuContent = <>
       <div className="document-toolbar-menu-heading">Insert Table</div>
       <div className="document-toolbar-table-size">{tableSize.columns} × {tableSize.rows} Table</div>
@@ -183,7 +199,6 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     </>; break;
     case 'bullets': menuContent = <><div className="document-toolbar-menu-heading">Bullet Library</div><div className="document-toolbar-bullet-grid">{item('No bullets', () => none(), <span>None</span>)}{[['Disc', 'disc', '●'], ['Circle', 'circle', '○'], ['Square', 'square', '▪']].map(([label, preset, glyph]) => <span key={preset}>{item(label, () => void run('bullet-list', { preset, behavior: 'toggleStyle' }), <span className="document-toolbar-bullet-glyph">{glyph}</span>)}</span>)}</div></>; break;
     case 'numbers': menuContent = <><div className="document-toolbar-menu-heading">Numbering Library</div><div className="document-toolbar-number-grid">{item('No numbering', () => none(), <span>None</span>)}{NUMBERS.map(({ label, preset, markers }) => <span key={preset}>{item(label, () => void run('numbered-list', { preset, behavior: 'toggleStyle' }), <ListPreview markers={markers} />)}</span>)}</div></>; break;
-    case 'multilevel': menuContent = <><div className="document-toolbar-menu-heading">Current List</div><div className="document-toolbar-current-list">{state('numbered-list')?.active || state('bullet-list')?.active ? <ListPreview nested markers={state('bullet-list')?.active ? ['•', '○', '▪'] : ['1.', 'a.', 'i.']} /> : <span>None</span>}</div><div className="document-toolbar-menu-heading">List Library</div><div className="document-toolbar-number-grid">{item('No multilevel list', () => none(), <span>None</span>)}{MULTILEVEL.map(({ label, markers }) => <span key={label}>{item(label, placeholder, <ListPreview nested markers={markers} />)}</span>)}</div>{item('Define New Multilevel List…', placeholder)}{item('Define New List Style…', placeholder)}</>; break;
     case 'spacing': menuContent = <>{[1, 1.15, 1.5, 2, 2.5, 3].map((value) => <span key={value}>{item(String(value), () => void run('line-height', value))}</span>)}</>; break;
     case 'color': case 'highlight': menuContent = <><div className="document-toolbar-menu-heading">{menu.id === 'color' ? 'Font Color' : 'Text Highlight Color'}</div><div className="document-toolbar-color-grid">{COLORS.map((color) => <button type="button" role="menuitem" key={color} aria-label={`Apply ${color}`} title={color} style={{ backgroundColor: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => void run(menu.id === 'color' ? 'text-color' : 'highlight-color', color)} />)}</div>{menu.id === 'highlight' ? item('No Color', () => void run('highlight-color', 'none')) : item('Automatic', () => void run('text-color', '#000000'))}</>; break;
     case 'case': menuContent = <>{item('Sentence case.', () => void changeCase((text) => text.toLowerCase().replace(/(^\s*\p{L}|[.!?]\s+\p{L})/gu, (letter) => letter.toUpperCase())))}{item('lowercase', () => void changeCase((text) => text.toLowerCase()))}{item('UPPERCASE', () => void changeCase((text) => text.toUpperCase()))}{item('Title Case', () => void changeCase((text) => text.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())))}{item('tOGGLE cASE', () => void changeCase((text) => [...text].map((letter) => letter === letter.toLowerCase() ? letter.toUpperCase() : letter.toLowerCase()).join('')))}</>; break;
@@ -194,10 +209,15 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     <div ref={rootRef} className={`document-toolbar-formatting-controls ${className}`} role="group" aria-label="Text options and formatting">
       <div className="document-toolbar-font-group" role="group" aria-label="Font">
         <div className="document-toolbar-tool-row">
-          <select aria-label="Font family" className="document-toolbar-font-select" value={font} disabled={readOnly} onPointerDown={preserve} onChange={(event) => void run('font-family', event.target.value)}>
-            {!fonts.some((option) => option.value === font) ? <option value={font}>{font}</option> : null}
-            {fonts.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+          <button type="button" aria-label="Font family" title={fontLabel} className="document-toolbar-font-select" disabled={readOnly} aria-haspopup="menu" aria-expanded={menu?.id === 'fonts'} onMouseDown={(event) => event.preventDefault()} onClick={(event) => openMenu('fonts', event.currentTarget)} onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault();
+              openMenu('fonts', event.currentTarget);
+            }
+          }}>
+            <span className="document-toolbar-font-value">{fontLabel}</span>
+            <span className="document-toolbar-caret" aria-hidden="true" />
+          </button>
           <select aria-label="Font size" className="document-toolbar-size-select" value={size} disabled={readOnly} onPointerDown={preserve} onChange={(event) => void run('font-size', Number(event.target.value))}>
             {!sizes.some((option) => option.value === size) ? <option value={size}>{size}</option> : null}
             {sizes.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -213,8 +233,8 @@ export function FormattingControls({ className = '' }: { className?: string }) {
           {button('Bold', 'bold', { command: 'bold' })}{button('Italic', 'italic', { command: 'italic' })}
           {split('Underline', 'underline', 'underline', 'underline')}
           {button('Strikethrough', 'strike', { command: 'strikethrough' })}
-          {button('Subscript', 'subscript', { action: () => void verticalAlign('subscript') })}
-          {button('Superscript', 'superscript', { action: () => void verticalAlign('superscript') })}
+          {button('Subscript', 'subscript', { action: () => void verticalAlign('subscript'), disabled: readOnly || formattingPending })}
+          {button('Superscript', 'superscript', { action: () => void verticalAlign('superscript'), disabled: readOnly || formattingPending })}
           <span className="document-toolbar-divider" />
           {split('Text Highlight Color', 'highlight', 'highlight-color', 'highlight', '#fff200')}
           {split('Font Color', 'color', 'text-color', 'color', '#e50022')}
@@ -224,7 +244,6 @@ export function FormattingControls({ className = '' }: { className?: string }) {
         <div className="document-toolbar-tool-row">
           {split('Bullets', 'bullets', 'bullet-list', 'bullets')}
           {split('Numbering', 'numbers', 'numbered-list', 'numbers')}
-          {button('Multilevel List', 'multilevel', { menu: 'multilevel' })}
           <span className="document-toolbar-divider" />
           {button('Decrease Indent', 'outdent', { command: 'indent-decrease' })}
           {button('Increase Indent', 'indent', { command: 'indent-increase' })}
@@ -247,6 +266,16 @@ export function FormattingControls({ className = '' }: { className?: string }) {
         event.preventDefault();
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1) + buttons.length) % buttons.length;
         buttons[next]?.focus();
+      }
+      if (menu.id === 'fonts' && event.key !== ' ' && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        const now = Date.now();
+        const previous = now - fontSearchRef.current.time < 700 ? fontSearchRef.current.text : '';
+        const text = previous + event.key.toLowerCase();
+        fontSearchRef.current = { text, time: now };
+        const match = buttons.find((button) => button.dataset.fontName?.toLowerCase().startsWith(text))
+          ?? buttons.find((button) => button.dataset.fontName?.toLowerCase().startsWith(event.key.toLowerCase()));
+        match?.focus();
       }
       if (event.key === 'Tab') closeMenu();
     }}>{menuContent}</div>, document.body) : null}

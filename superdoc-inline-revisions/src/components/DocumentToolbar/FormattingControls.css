@@ -24,7 +24,7 @@
 .document-toolbar-split > .document-toolbar-tool:first-child { border-radius: 3px 0 0 3px; }
 .document-toolbar-formatting-controls .document-toolbar-menu-arrow { min-width: 11px; width: 11px; padding: 0; border-radius: 0 3px 3px 0; }
 .document-toolbar-font-select, .document-toolbar-size-select { height: 25px; padding: 1px 3px; border: 1px solid #c8cbce; border-radius: 3px; color: #34383c; background: #fff; font-size: 12px; }
-.document-toolbar-font-select { width: 115px; }
+.document-toolbar-font-select { display: inline-flex; align-items: center; gap: 6px; width: 115px; text-align: left; }
 .document-toolbar-size-select { width: 53px; }
 .document-toolbar-font-bottom { justify-content: space-between; }
 .document-toolbar-font-bottom .document-toolbar-divider { margin: 0 2px; }
@@ -43,7 +43,6 @@
 .document-toolbar-list-preview > span { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .document-toolbar-list-preview > span > span { white-space: nowrap; }
 .document-toolbar-list-preview i { display: block; height: 1px; min-width: 5px; flex: 1; background: #888; }
-.document-toolbar-current-list { display: grid; place-items: center; width: 77px; height: 70px; padding: 5px; border: 1px solid #aaa; background: #fff; }
 .document-toolbar-color-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 7px; }
 .document-toolbar-color-grid button { height: 26px; border: 1px solid #aaa; border-radius: 2px; }
 .document-toolbar-color-grid button:hover, .document-toolbar-color-grid button:focus-visible { outline: 2px solid #3188b7; outline-offset: 1px; }
@@ -56,22 +55,16 @@
   .document-toolbar-divider { margin-inline: 2px; }
 }
 
-/* Mark intentionally unconnected controls during manual testing. */
-.document-toolbar-formatting-controls .document-toolbar-tool[data-noop="true"],
-.document-toolbar-menu [data-noop="true"] {
-  background: #fbcfe8;
-  border-color: #ec4899;
-  color: #831843;
-}
-.document-toolbar-formatting-controls .document-toolbar-tool[data-noop="true"]:hover,
-.document-toolbar-menu [data-noop="true"]:is(:hover, :focus-visible) {
-  background: #f9a8d4;
-  border-color: #db2777;
-}
-
 .document-toolbar-menu-table { width: 216px; }
 .document-toolbar-table-size { padding: 5px 6px 8px; font-weight: 700; }
 .document-toolbar-table-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; padding: 2px 5px 7px; }
 .document-toolbar-table-grid button { width: 100%; aspect-ratio: 1; padding: 0; border: 1px solid #aeb5bd; border-radius: 1px; background: #fff; }
 .document-toolbar-table-grid button.is-selected { border-color: #4d97d1; background: #dceafb; }
 .document-toolbar-table-grid button:focus-visible { outline: 2px solid #3188b7; outline-offset: 1px; }
+
+.document-toolbar-font-value { display: block; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.document-toolbar-font-select:hover:not(:disabled), .document-toolbar-font-select[aria-expanded="true"] { border-color: #8aaed0; }
+.document-toolbar-menu-fonts { max-height: min(420px, calc(100vh - 120px)); }
+.document-toolbar-font-option { display: flex; align-items: center; gap: 6px; min-height: 33px; padding: 5px 8px; font-size: 16px; }
+.document-toolbar-font-option[aria-checked="true"] { background: #e5edf7; }
+.document-toolbar-font-check { width: 16px; flex: 0 0 16px; font: 13px Arial, sans-serif; }

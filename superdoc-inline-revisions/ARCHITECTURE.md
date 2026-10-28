@@ -62,7 +62,6 @@ public `activeEditor.doc` facade:
 These operations use a captured SuperDoc selection as their target, request
 tracked changes in Reviewing mode, and guard mutations in Viewing mode. The
 implementation does not use legacy editor commands or DOM-based formatting.
-Pink placeholder controls intentionally perform no document mutation.
 
 The separate `TrackedChangesControls` component uses `useSuperDocCommand` for
 `acceptAllChanges` and `rejectAllChanges`. Buttons reflect the controller's live

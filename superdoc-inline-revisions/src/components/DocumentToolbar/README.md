@@ -109,6 +109,14 @@ pending. Viewing mode disables document mutations.
 Selection-dependent menus preserve the editor selection. Escape and outside
 click dismiss menus; arrow keys navigate menu options.
 
-The remaining intentional no-ops are highlighted pink and exported as
-`DOCUMENT_TOOLBAR_PLACEHOLDERS`: multilevel preset tiles, Define New Multilevel List,
-and Define New List Style. The multilevel menu's None tile removes list formatting.
+
+The font-family menu previews each font name using the SDK's `previewFamily`
+(or its font-family value when no preview family is supplied), marks the active
+font, and supports arrow keys and typing a name prefix. Font selection executes
+the same `font-family` command with the preserved document selection.
+
+Browser coverage lives in `tests/toolbar.spec.ts`; see `tests/README.md` for the
+runner and revision fixture. Subscript/superscript inspect the selected source
+run properties through `selection.extractOoxml` before toggling, and text-case
+operations read the current selection from the Document API rather than relying
+on a potentially stale UI snapshot.
