@@ -28,11 +28,11 @@ export function TrackedChangesControls() {
   };
 
   return (
-    <div className="tracked-changes-controls" role="group" aria-label="Tracked changes" aria-busy={pending !== null}>
-      <span className="tracked-changes-label">Tracked changes</span>
+    <div className="document-toolbar-tracked-changes-controls" role="group" aria-label="Tracked changes" aria-busy={pending !== null}>
+      <span className="document-toolbar-tracked-changes-label">Tracked changes</span>
       <button
         type="button"
-        className="tracked-changes-accept"
+        className="document-toolbar-tracked-changes-accept"
         disabled={!acceptAll.enabled || pending !== null}
         title="Accept all tracked changes"
         onMouseDown={(event) => event.preventDefault()}
@@ -42,7 +42,7 @@ export function TrackedChangesControls() {
       </button>
       <button
         type="button"
-        className="tracked-changes-reject"
+        className="document-toolbar-tracked-changes-reject"
         disabled={!rejectAll.enabled || pending !== null}
         title="Reject all tracked changes"
         onMouseDown={(event) => event.preventDefault()}
@@ -50,7 +50,7 @@ export function TrackedChangesControls() {
       >
         {pending === 'reject' ? 'Rejecting…' : 'Reject all'}
       </button>
-      {error ? <span className="tracked-changes-error" role="status">{error}</span> : null}
+      {error ? <span className="document-toolbar-tracked-changes-error" role="status">{error}</span> : null}
     </div>
   );
 }

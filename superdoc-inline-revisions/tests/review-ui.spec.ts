@@ -7,7 +7,12 @@ test('loads floating comments and leaves tracked changes inline', async ({ page 
   await expect(page.getByLabel('Editable contract')).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'File' })).toHaveValue('');
   await expect(page.getByLabel('Document mode')).toHaveValue('suggesting');
-  await expect(page.getByRole('toolbar', { name: 'Document toolbar' })).toBeVisible();
+  const toolbar = page.getByRole('toolbar', { name: 'Document toolbar' });
+  await expect(toolbar).toBeVisible();
+  await expect(toolbar.locator(':scope > [role="group"]')).toHaveCount(3);
+  await expect(toolbar.getByRole('group', { name: 'Text options and formatting' })).toBeVisible();
+  await expect(toolbar.getByRole('group', { name: 'Format styles' })).toBeVisible();
+  await expect(toolbar.getByRole('group', { name: 'Tracked changes', exact: true })).toBeVisible();
   await expect(page.getByLabel('Font family')).toBeVisible();
   await expect(page.getByLabel('Font size')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Bold', exact: true })).toBeVisible();

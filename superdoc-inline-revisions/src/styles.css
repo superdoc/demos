@@ -12,7 +12,7 @@ button { cursor: pointer; }
 
 .app-shell { height: 100vh; min-height: 100vh; display: grid; grid-template-rows: 110px minmax(0, 1fr); overflow: hidden; }
 .app-shell > .topbar { z-index: 12; display: grid; grid-template-rows: 38px 72px; background-color: rgb(248, 248, 248) !important; border-bottom: 1px solid #cfd5dd; box-shadow: 0 1px 5px #11182712; }
-.app-shell > .topbar :is(.ribbon-tabs-row, .ribbon-controls-row) {
+.app-shell > .topbar .ribbon-tabs-row {
   background-color: rgb(248, 248, 248) !important;
 }
 .ribbon-tabs-row { position: relative; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #e1e5ea; }
@@ -34,13 +34,6 @@ button { cursor: pointer; }
 .download-button, .primary { color: #fff !important; background: #2563eb !important; border-color: #2563eb !important; }
 .download-button { padding: 8px 14px; border: 0; border-radius: 8px; font-size: 11px; font-weight: 700; }
 .download-button:disabled { opacity: .55; cursor: wait; }
-.ribbon-controls-row { width: min(1200px, calc(100% - 24px)); min-width: 0; margin-inline: auto; display: flex; align-items: center; gap: 9px; padding: 3px 8px; overflow: visible; }
-.style-gallery { display: flex; min-width: 0; height: 60px; flex: 1 1 460px; gap: 5px; padding: 4px; overflow-x: auto; overflow-y: hidden; background: #fff; border: 1px solid #b9bec6; border-radius: 6px; scrollbar-width: none; }
-.style-gallery::-webkit-scrollbar { display: none; }
-.style-gallery button { min-width: 132px; height: 50px; display: grid; grid-template-rows: 28px 18px; padding: 0; overflow: hidden; color: #17191d; background: #fff; border: 2px solid #d3d6dc; border-radius: 4px; outline: 0; }
-.style-gallery button:hover, .style-gallery button:focus-visible, .style-gallery button.is-active { border-color: #3b82f6; }
-.style-gallery button > span { display: block; padding: 5px 7px 2px; overflow: hidden; text-align: left; text-overflow: clip; white-space: nowrap; }
-.style-gallery button > small { display: block; width: 100%; max-width: 100%; padding: 2px 6px; overflow: hidden; background: #f2f2f2; border-radius: 0 0 3px 3px; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 
 .workspace { position: relative; min-height: 0; display: grid; grid-template-columns: 350px minmax(690px, 900px) 350px; justify-content: center; overflow: hidden; background: rgb(236, 236, 236); }
 .workspace::before {
@@ -196,8 +189,4 @@ button { cursor: pointer; }
   .workspace { grid-template-columns: minmax(560px, 1fr) 320px; }
   .document-stage { grid-column: 1; }
   .floating-comments-rail { grid-column: 2; }
-}
-
-@media (max-width: 1100px) {
-  .ribbon-controls-row { gap: 5px; padding-inline: 4px; }
 }

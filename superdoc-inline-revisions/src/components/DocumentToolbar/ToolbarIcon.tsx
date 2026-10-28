@@ -24,5 +24,5 @@ export function ToolbarIcon({ name }: { name: IconName }) {
     case 'spacing': content = <><path stroke={blue} d="M5 2v20M2 5l3-3 3 3M2 19l3 3 3-3" /><path d="M12 5h10M12 12h10M12 19h10" /></>; break;
     case 'table': content = <><rect x="3" y="4" width="20" height="18" rx="1" /><path fill="#dbeaf4" stroke="none" d="M4 5h18v5H4z" /><path d="M3 10h20M3 16h20M10 4v18M17 4v18" /></>; break;
   }
-  return <svg className={`word-icon word-icon-${name}`} viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{content}</svg>;
+  return <svg className={`document-toolbar-icon document-toolbar-icon-${name}`} viewBox="0 0 26 26" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{content}</svg>;
 }

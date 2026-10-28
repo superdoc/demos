@@ -75,7 +75,7 @@ export function Topbar() {
       const handle = await picker({
         suggestedName: 'reviewed-contract.docx',
         types: [{
-          description: 'Word document',
+          description: 'DOCX document',
           accept: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] },
         }],
       });

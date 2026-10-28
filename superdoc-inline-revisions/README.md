@@ -30,3 +30,17 @@ Run `pnpm browsers` once and `pnpm test` to exercise both review feeds in Chromi
 - Per-change and bulk accept/reject actions
 - Editing and suggesting mode switching
 - DOCX export from the browser
+
+## Reuse the toolbar
+
+Copy [`src/components/DocumentToolbar`](./src/components/DocumentToolbar) into your React
+app and import `DocumentToolbar` from that folder. It includes formatting controls,
+the heading/style gallery, and stacked tracked-change actions, with all styles
+and icons included:
+
+```tsx
+<DocumentToolbar superdoc={editorInstance} />
+```
+
+See the [integration guide](./src/components/DocumentToolbar/README.md) for both the
+standalone editor-instance and shared-provider setups, plus a complete example.

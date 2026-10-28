@@ -5,13 +5,13 @@ import type { SelectionCapture, SelectionTarget } from 'superdoc/ui';
 import { useSuperDocFontOptions, useSuperDocFontSizeOptions, useSuperDocHost, useSuperDocToolbar, useSuperDocUI } from 'superdoc/ui/react';
 import { ToolbarIcon } from './ToolbarIcon';
 import type { IconName } from './ToolbarIcon';
-import './WordToolbar.css';
+import './FormattingControls.css';
 
 type MenuId = 'table' | 'underline' | 'case' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'multilevel' | 'spacing';
 type OpenMenu = { id: MenuId; left: number; top: number; trigger: HTMLButtonElement };
 
 // These controls intentionally remain no-ops until their desired behavior is specified.
-export const WORD_TOOLBAR_PLACEHOLDERS = [
+export const DOCUMENT_TOOLBAR_PLACEHOLDERS = [
   'Multilevel list presets',
   'Define New Multilevel List', 'Define New List Style',
 ] as const;
@@ -37,11 +37,11 @@ const MULTILEVEL = [
 ];
 
 function ListPreview({ markers, nested = false }: { markers: string[]; nested?: boolean }) {
-  return <span className={`word-list-preview${nested ? ' is-nested' : ''}`} aria-hidden="true">{markers.map((marker, index) => <span key={index} style={nested ? { paddingLeft: index * 8 } : undefined}><span>{marker}</span><i /></span>)}</span>;
+  return <span className={`document-toolbar-list-preview${nested ? ' is-nested' : ''}`} aria-hidden="true">{markers.map((marker, index) => <span key={index} style={nested ? { paddingLeft: index * 8 } : undefined}><span>{marker}</span><i /></span>)}</span>;
 }
 
-/** Reusable SuperDoc toolbar. Render under SuperDocUIProvider; compose a style gallery separately. */
-export function WordToolbar({ className = '' }: { className?: string }) {
+/** Text and paragraph controls sharing the parent toolbar’s SuperDoc UI controller. */
+export function FormattingControls({ className = '' }: { className?: string }) {
   const ui = useSuperDocUI();
   const host = useSuperDocHost();
   const toolbar = useSuperDocToolbar();
@@ -148,20 +148,20 @@ export function WordToolbar({ className = '' }: { className?: string }) {
   };
   const placeholder = () => closeMenu();
   const button = (label: string, icon: IconName, options: { command?: string; payload?: unknown; menu?: MenuId; action?: () => void; active?: boolean; disabled?: boolean; className?: string } = {}) => (
-    <button type="button" className={`word-tool ${options.className ?? ''}${(options.active ?? (options.command ? state(options.command)?.active : false)) ? ' is-active' : ''}`} aria-label={label} title={!options.command && !options.menu && !options.action ? `${label} (no-op)` : label}
+    <button type="button" className={`document-toolbar-tool ${options.className ?? ''}${(options.active ?? (options.command ? state(options.command)?.active : false)) ? ' is-active' : ''}`} aria-label={label} title={!options.command && !options.menu && !options.action ? `${label} (no-op)` : label}
       data-noop={!options.command && !options.menu && !options.action || undefined}
       disabled={options.disabled ?? (options.command ? !state(options.command)?.enabled : readOnly)}
       aria-pressed={options.command || options.active !== undefined ? options.active ?? state(options.command ?? '')?.active ?? false : undefined}
       aria-haspopup={options.menu ? 'menu' : undefined} aria-expanded={options.menu ? menu?.id === options.menu : undefined}
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => options.menu ? openMenu(options.menu, event.currentTarget) : options.action ? options.action() : options.command ? void run(options.command, options.payload) : undefined}>
-      <ToolbarIcon name={icon} />{options.menu ? <span className="word-caret" aria-hidden="true" /> : null}
+      <ToolbarIcon name={icon} />{options.menu ? <span className="document-toolbar-caret" aria-hidden="true" /> : null}
     </button>
   );
   const split = (label: string, icon: IconName, command: string, id: MenuId, payload?: unknown) => (
-    <span className="word-split">{button(label, icon, { command, payload })}<button type="button" className="word-tool word-menu-arrow" aria-label={`${label} options`} title={`${label} options`} aria-haspopup="menu" aria-expanded={menu?.id === id} disabled={readOnly} onMouseDown={(event) => event.preventDefault()} onClick={(event) => openMenu(id, event.currentTarget)}><span className="word-caret" aria-hidden="true" /></button></span>
+    <span className="document-toolbar-split">{button(label, icon, { command, payload })}<button type="button" className="document-toolbar-tool document-toolbar-menu-arrow" aria-label={`${label} options`} title={`${label} options`} aria-haspopup="menu" aria-expanded={menu?.id === id} disabled={readOnly} onMouseDown={(event) => event.preventDefault()} onClick={(event) => openMenu(id, event.currentTarget)}><span className="document-toolbar-caret" aria-hidden="true" /></button></span>
   );
-  const item = (label: string, action: () => void, children?: ReactNode) => <button type="button" role="menuitem" className={children ? 'word-gallery-tile' : 'word-menu-item'} aria-label={label} title={action === placeholder ? `${label} (no-op)` : label} data-noop={action === placeholder || undefined} onMouseDown={(event) => event.preventDefault()} onClick={action}>{children ?? label}</button>;
+  const item = (label: string, action: () => void, children?: ReactNode) => <button type="button" role="menuitem" className={children ? 'document-toolbar-gallery-tile' : 'document-toolbar-menu-item'} aria-label={label} title={action === placeholder ? `${label} (no-op)` : label} data-noop={action === placeholder || undefined} onMouseDown={(event) => event.preventDefault()} onClick={action}>{children ?? label}</button>;
   const none = () => {
     // Both libraries' None tile removes either kind of list from the selected paragraphs.
     if (state('bullet-list')?.active) void run('bullet-list');
@@ -171,9 +171,9 @@ export function WordToolbar({ className = '' }: { className?: string }) {
   let menuContent: ReactNode;
   switch (menu?.id) {
     case 'table': menuContent = <>
-      <div className="word-menu-heading">Insert Table</div>
-      <div className="word-table-size">{tableSize.columns} × {tableSize.rows} Table</div>
-      <div className="word-table-grid" onPointerLeave={() => setTableSize({ rows: 1, columns: 1 })}>
+      <div className="document-toolbar-menu-heading">Insert Table</div>
+      <div className="document-toolbar-table-size">{tableSize.columns} × {tableSize.rows} Table</div>
+      <div className="document-toolbar-table-grid" onPointerLeave={() => setTableSize({ rows: 1, columns: 1 })}>
         {Array.from({ length: 48 }, (_, index) => {
           const rows = Math.floor(index / 8) + 1;
           const columns = index % 8 + 1;
@@ -181,66 +181,66 @@ export function WordToolbar({ className = '' }: { className?: string }) {
         })}
       </div>
     </>; break;
-    case 'bullets': menuContent = <><div className="word-menu-heading">Bullet Library</div><div className="word-bullet-grid">{item('No bullets', () => none(), <span>None</span>)}{[['Disc', 'disc', '●'], ['Circle', 'circle', '○'], ['Square', 'square', '▪']].map(([label, preset, glyph]) => <span key={preset}>{item(label, () => void run('bullet-list', { preset, behavior: 'toggleStyle' }), <span className="word-bullet-glyph">{glyph}</span>)}</span>)}</div></>; break;
-    case 'numbers': menuContent = <><div className="word-menu-heading">Numbering Library</div><div className="word-number-grid">{item('No numbering', () => none(), <span>None</span>)}{NUMBERS.map(({ label, preset, markers }) => <span key={preset}>{item(label, () => void run('numbered-list', { preset, behavior: 'toggleStyle' }), <ListPreview markers={markers} />)}</span>)}</div></>; break;
-    case 'multilevel': menuContent = <><div className="word-menu-heading">Current List</div><div className="word-current-list">{state('numbered-list')?.active || state('bullet-list')?.active ? <ListPreview nested markers={state('bullet-list')?.active ? ['•', '○', '▪'] : ['1.', 'a.', 'i.']} /> : <span>None</span>}</div><div className="word-menu-heading">List Library</div><div className="word-number-grid">{item('No multilevel list', () => none(), <span>None</span>)}{MULTILEVEL.map(({ label, markers }) => <span key={label}>{item(label, placeholder, <ListPreview nested markers={markers} />)}</span>)}</div>{item('Define New Multilevel List…', placeholder)}{item('Define New List Style…', placeholder)}</>; break;
+    case 'bullets': menuContent = <><div className="document-toolbar-menu-heading">Bullet Library</div><div className="document-toolbar-bullet-grid">{item('No bullets', () => none(), <span>None</span>)}{[['Disc', 'disc', '●'], ['Circle', 'circle', '○'], ['Square', 'square', '▪']].map(([label, preset, glyph]) => <span key={preset}>{item(label, () => void run('bullet-list', { preset, behavior: 'toggleStyle' }), <span className="document-toolbar-bullet-glyph">{glyph}</span>)}</span>)}</div></>; break;
+    case 'numbers': menuContent = <><div className="document-toolbar-menu-heading">Numbering Library</div><div className="document-toolbar-number-grid">{item('No numbering', () => none(), <span>None</span>)}{NUMBERS.map(({ label, preset, markers }) => <span key={preset}>{item(label, () => void run('numbered-list', { preset, behavior: 'toggleStyle' }), <ListPreview markers={markers} />)}</span>)}</div></>; break;
+    case 'multilevel': menuContent = <><div className="document-toolbar-menu-heading">Current List</div><div className="document-toolbar-current-list">{state('numbered-list')?.active || state('bullet-list')?.active ? <ListPreview nested markers={state('bullet-list')?.active ? ['•', '○', '▪'] : ['1.', 'a.', 'i.']} /> : <span>None</span>}</div><div className="document-toolbar-menu-heading">List Library</div><div className="document-toolbar-number-grid">{item('No multilevel list', () => none(), <span>None</span>)}{MULTILEVEL.map(({ label, markers }) => <span key={label}>{item(label, placeholder, <ListPreview nested markers={markers} />)}</span>)}</div>{item('Define New Multilevel List…', placeholder)}{item('Define New List Style…', placeholder)}</>; break;
     case 'spacing': menuContent = <>{[1, 1.15, 1.5, 2, 2.5, 3].map((value) => <span key={value}>{item(String(value), () => void run('line-height', value))}</span>)}</>; break;
-    case 'color': case 'highlight': menuContent = <><div className="word-menu-heading">{menu.id === 'color' ? 'Font Color' : 'Text Highlight Color'}</div><div className="word-color-grid">{COLORS.map((color) => <button type="button" role="menuitem" key={color} aria-label={`Apply ${color}`} title={color} style={{ backgroundColor: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => void run(menu.id === 'color' ? 'text-color' : 'highlight-color', color)} />)}</div>{menu.id === 'highlight' ? item('No Color', () => void run('highlight-color', 'none')) : item('Automatic', () => void run('text-color', '#000000'))}</>; break;
-    case 'case': menuContent = <>{item('Sentence case.', () => void changeCase((text) => text.toLowerCase().replace(/(^\s*\p{L}|[.!?]\s+\p{L})/gu, (letter) => letter.toUpperCase())))}{item('lowercase', () => void changeCase((text) => text.toLowerCase()))}{item('UPPERCASE', () => void changeCase((text) => text.toUpperCase()))}{item('Capitalize Each Word', () => void changeCase((text) => text.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())))}{item('tOGGLE cASE', () => void changeCase((text) => [...text].map((letter) => letter === letter.toLowerCase() ? letter.toUpperCase() : letter.toLowerCase()).join('')))}</>; break;
+    case 'color': case 'highlight': menuContent = <><div className="document-toolbar-menu-heading">{menu.id === 'color' ? 'Font Color' : 'Text Highlight Color'}</div><div className="document-toolbar-color-grid">{COLORS.map((color) => <button type="button" role="menuitem" key={color} aria-label={`Apply ${color}`} title={color} style={{ backgroundColor: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => void run(menu.id === 'color' ? 'text-color' : 'highlight-color', color)} />)}</div>{menu.id === 'highlight' ? item('No Color', () => void run('highlight-color', 'none')) : item('Automatic', () => void run('text-color', '#000000'))}</>; break;
+    case 'case': menuContent = <>{item('Sentence case.', () => void changeCase((text) => text.toLowerCase().replace(/(^\s*\p{L}|[.!?]\s+\p{L})/gu, (letter) => letter.toUpperCase())))}{item('lowercase', () => void changeCase((text) => text.toLowerCase()))}{item('UPPERCASE', () => void changeCase((text) => text.toUpperCase()))}{item('Title Case', () => void changeCase((text) => text.toLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toUpperCase())))}{item('tOGGLE cASE', () => void changeCase((text) => [...text].map((letter) => letter === letter.toLowerCase() ? letter.toUpperCase() : letter.toLowerCase()).join('')))}</>; break;
     case 'underline': menuContent = <>{item('Underline', () => void run('underline'))}</>; break;
   }
 
   return <>
-    <div ref={rootRef} className={`word-toolbar ${className}`} role="toolbar" aria-label="Document toolbar">
-      <div className="word-font-group" role="group" aria-label="Font">
-        <div className="word-tool-row">
-          <select aria-label="Font family" className="word-font-select" value={font} disabled={readOnly} onPointerDown={preserve} onChange={(event) => void run('font-family', event.target.value)}>
+    <div ref={rootRef} className={`document-toolbar-formatting-controls ${className}`} role="group" aria-label="Text options and formatting">
+      <div className="document-toolbar-font-group" role="group" aria-label="Font">
+        <div className="document-toolbar-tool-row">
+          <select aria-label="Font family" className="document-toolbar-font-select" value={font} disabled={readOnly} onPointerDown={preserve} onChange={(event) => void run('font-family', event.target.value)}>
             {!fonts.some((option) => option.value === font) ? <option value={font}>{font}</option> : null}
             {fonts.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
-          <select aria-label="Font size" className="word-size-select" value={size} disabled={readOnly} onPointerDown={preserve} onChange={(event) => void run('font-size', Number(event.target.value))}>
+          <select aria-label="Font size" className="document-toolbar-size-select" value={size} disabled={readOnly} onPointerDown={preserve} onChange={(event) => void run('font-size', Number(event.target.value))}>
             {!sizes.some((option) => option.value === size) ? <option value={size}>{size}</option> : null}
             {sizes.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           {button('Grow Font', 'grow', { command: 'font-size', payload: Math.min(1638, Number(size) + 1) })}
           {button('Shrink Font', 'shrink', { command: 'font-size', payload: Math.max(1, Number(size) - 1) })}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {button('Change Case', 'case', { menu: 'case' })}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {button('Clear All Formatting', 'clear', { command: 'clear-formatting' })}
         </div>
-        <div className="word-tool-row word-font-bottom">
+        <div className="document-toolbar-tool-row document-toolbar-font-bottom">
           {button('Bold', 'bold', { command: 'bold' })}{button('Italic', 'italic', { command: 'italic' })}
           {split('Underline', 'underline', 'underline', 'underline')}
           {button('Strikethrough', 'strike', { command: 'strikethrough' })}
           {button('Subscript', 'subscript', { action: () => void verticalAlign('subscript') })}
           {button('Superscript', 'superscript', { action: () => void verticalAlign('superscript') })}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {split('Text Highlight Color', 'highlight', 'highlight-color', 'highlight', '#fff200')}
           {split('Font Color', 'color', 'text-color', 'color', '#e50022')}
         </div>
       </div>
-      <div className="word-paragraph-group" role="group" aria-label="Paragraph">
-        <div className="word-tool-row">
+      <div className="document-toolbar-paragraph-group" role="group" aria-label="Paragraph">
+        <div className="document-toolbar-tool-row">
           {split('Bullets', 'bullets', 'bullet-list', 'bullets')}
           {split('Numbering', 'numbers', 'numbered-list', 'numbers')}
           {button('Multilevel List', 'multilevel', { menu: 'multilevel' })}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {button('Decrease Indent', 'outdent', { command: 'indent-decrease' })}
           {button('Increase Indent', 'indent', { command: 'indent-increase' })}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {button('Show/Hide Formatting Marks', 'marks', { command: 'formatting-marks' })}
         </div>
-        <div className="word-tool-row word-paragraph-bottom">
+        <div className="document-toolbar-tool-row document-toolbar-paragraph-bottom">
           {(['left', 'center', 'right', 'justify'] as const).map((value) => <span key={value}>{button(value === 'justify' ? 'Justify' : `Align ${value}`, value, { command: 'text-align', payload: value, active: state('text-align')?.value === value })}</span>)}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {button('Line and Paragraph Spacing', 'spacing', { menu: 'spacing' })}
-          <span className="word-divider" />
+          <span className="document-toolbar-divider" />
           {button('Insert Table', 'table', { menu: 'table', disabled: !state('table-insert')?.enabled })}
         </div>
       </div>
     </div>
-    {menu && menuContent ? createPortal(<div ref={menuRef} className={`word-toolbar-menu word-menu-${menu.id}`} role="menu" aria-label={`${menu.id} options`} style={{ left: menu.left, top: menu.top }} onKeyDown={(event) => {
+    {menu && menuContent ? createPortal(<div ref={menuRef} className={`document-toolbar-menu document-toolbar-menu-${menu.id}`} role="menu" aria-label={`${menu.id} options`} style={{ left: menu.left, top: menu.top }} onKeyDown={(event) => {
       const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
       const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
       if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
@@ -250,6 +250,6 @@ export function WordToolbar({ className = '' }: { className?: string }) {
       }
       if (event.key === 'Tab') closeMenu();
     }}>{menuContent}</div>, document.body) : null}
-    {status ? <div className="word-toolbar-status" role="status"><span>{status}</span><button type="button" aria-label="Dismiss toolbar message" onClick={() => setStatus('')}>×</button></div> : null}
+    {status ? <div className="document-toolbar-status" role="status"><span>{status}</span><button type="button" aria-label="Dismiss toolbar message" onClick={() => setStatus('')}>×</button></div> : null}
   </>;
 }

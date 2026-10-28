@@ -13,7 +13,8 @@ flowchart TB
     App[App]
     Topbar[Topbar]
     Ribbon[Ribbon]
-    WordToolbar[Reusable WordToolbar]
+    DocumentToolbar[Complete reusable DocumentToolbar]
+    FormattingControls[FormattingControls]
     StyleGallery[Separate StyleGallery]
     TrackedChangesControls[TrackedChangesControls]
     EditorMount[SuperDocEditor]
@@ -25,17 +26,18 @@ flowchart TB
   App --> EditorMount
   App --> CommentsRail
   Topbar --> Ribbon
-  Ribbon --> WordToolbar
-  Ribbon --> StyleGallery
-  Ribbon --> TrackedChangesControls
+  Ribbon --> DocumentToolbar
+  DocumentToolbar --> FormattingControls
+  DocumentToolbar --> StyleGallery
+  DocumentToolbar --> TrackedChangesControls
   TrackedChangesControls -->|acceptAllChanges / rejectAllChanges| Commands
   EditorMount -->|onReady / useSetSuperDoc| Provider
   Provider -->|instance-owned superdoc.ui| Controller
-  Controller -->|reactive command state / selection| WordToolbar
-  WordToolbar -->|built-in formatting| Commands
+  Controller -->|reactive command state / selection| FormattingControls
+  FormattingControls -->|built-in formatting| Commands
   StyleGallery -->|linked-style command| Commands
   Commands --> DocumentAPI
-  WordToolbar -->|vertical alignment / change case| DocumentAPI
+  FormattingControls -->|vertical alignment / change case| DocumentAPI
   DocumentAPI --> Engine
   EditorMount --> Engine
   EditorMount --> Ruler
@@ -44,7 +46,7 @@ flowchart TB
 The toolbar uses `superdoc/ui/react` hooks under the shared provider. The
 provider binds to the mounted editor's own `superdoc.ui` controller; it does not
 create a second editor or document. The vendor toolbar is disabled with
-`ui.toolbar: false` because `WordToolbar` supplies the visible controls.
+`ui.toolbar: false` because `DocumentToolbar` supplies the visible controls.
 
 Built-in formatting commands use `ui.commands.executeAsync`, which routes
 through SuperDoc's public command controller to document operations. The style
@@ -65,3 +67,12 @@ Pink placeholder controls intentionally perform no document mutation.
 The separate `TrackedChangesControls` component uses `useSuperDocCommand` for
 `acceptAllChanges` and `rejectAllChanges`. Buttons reflect the controller's live
 enabled state and stay disabled while a bulk decision is pending.
+
+`src/components/DocumentToolbar` is the self-contained toolbar distribution: the public
+`DocumentToolbar` component composes exactly `FormattingControls`, `StyleGallery`,
+and `TrackedChangesControls`. `Ribbon` renders that single public component.
+Section CSS, layout/reset CSS, icons, and portal styles live in the same folder;
+none depends on the demo stylesheet. `index.ts` exports the full toolbar and its
+three sections. Consumers can pass a `superdoc` instance to connect an internal
+provider, or omit the prop inside an existing provider. The supplied standalone
+example demonstrates the first approach without importing any demo components.

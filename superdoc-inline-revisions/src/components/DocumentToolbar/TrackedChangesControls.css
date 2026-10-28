@@ -1,4 +1,4 @@
-.tracked-changes-controls {
+.document-toolbar-tracked-changes-controls {
   position: relative;
   display: flex;
   flex: 0 0 92px;
@@ -11,13 +11,13 @@
   border-left: 1px solid #d6d8da;
   font-family: Calibri, Arial, sans-serif;
 }
-.tracked-changes-label {
+.document-toolbar-tracked-changes-label {
   color: #64748b;
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
 }
-.tracked-changes-controls button {
+.document-toolbar-tracked-changes-controls button {
   min-width: 72px;
   height: 20px;
   padding: 1px 5px;
@@ -28,13 +28,13 @@
   white-space: nowrap;
   text-align: left;
 }
-.tracked-changes-accept { color: #00843d; }
-.tracked-changes-reject { color: #db1734; }
-.tracked-changes-accept:hover:not(:disabled) { background: #e3f3e9; border-color: #b4dcc4; }
-.tracked-changes-reject:hover:not(:disabled) { background: #fde8ed; border-color: #f4bdca; }
-.tracked-changes-controls button:focus-visible { outline: 2px solid #4d97d1; outline-offset: 1px; }
-.tracked-changes-controls button:disabled { opacity: .42; cursor: default; }
-.tracked-changes-error {
+.document-toolbar-tracked-changes-accept { color: #00843d; }
+.document-toolbar-tracked-changes-reject { color: #db1734; }
+.document-toolbar-tracked-changes-accept:hover:not(:disabled) { background: #e3f3e9; border-color: #b4dcc4; }
+.document-toolbar-tracked-changes-reject:hover:not(:disabled) { background: #fde8ed; border-color: #f4bdca; }
+.document-toolbar-tracked-changes-controls button:focus-visible { outline: 2px solid #4d97d1; outline-offset: 1px; }
+.document-toolbar-tracked-changes-controls button:disabled { opacity: .42; cursor: default; }
+.document-toolbar-tracked-changes-error {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
