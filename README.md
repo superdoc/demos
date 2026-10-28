@@ -59,10 +59,13 @@ See each demo's directory for specific setup instructions.
 ## Automatic SuperDoc updates
 
 The **SuperDoc npm release** workflow polls `https://registry.npmjs.org/superdoc/latest`
-every 30 minutes. A new stable version runs **Update SuperDoc**, then **Deploy Demos V2**
+three times a day at 00:17, 08:17, and 16:17 UTC. A new stable version runs
+**Update SuperDoc**, then **Deploy Demos V2**
 to production after the builds and tests pass. It uses the existing Cloudflare and
 Railway secrets; no token or change to the SuperDoc source repository is needed.
 GitHub schedules run from the default branch and may be delayed.
+Merged pull requests into `main` also run this workflow to deploy the current
+source, and manual runs remain available.
 
 `.github/superdoc-release.json` records the last successful automated deployment.
 The first scheduled run establishes that baseline by validating and deploying npm's
