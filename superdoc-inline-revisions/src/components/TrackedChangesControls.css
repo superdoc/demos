@@ -1,0 +1,49 @@
+.tracked-changes-controls {
+  position: relative;
+  display: flex;
+  flex: 0 0 92px;
+  height: 58px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding-left: 6px;
+  border-left: 1px solid #d6d8da;
+  font-family: Calibri, Arial, sans-serif;
+}
+.tracked-changes-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.tracked-changes-controls button {
+  min-width: 72px;
+  height: 20px;
+  padding: 1px 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font: 700 12px Calibri, Arial, sans-serif;
+  white-space: nowrap;
+  text-align: left;
+}
+.tracked-changes-accept { color: #00843d; }
+.tracked-changes-reject { color: #db1734; }
+.tracked-changes-accept:hover:not(:disabled) { background: #e3f3e9; border-color: #b4dcc4; }
+.tracked-changes-reject:hover:not(:disabled) { background: #fde8ed; border-color: #f4bdca; }
+.tracked-changes-controls button:focus-visible { outline: 2px solid #4d97d1; outline-offset: 1px; }
+.tracked-changes-controls button:disabled { opacity: .42; cursor: default; }
+.tracked-changes-error {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 230px;
+  padding: 8px 10px;
+  border: 1px solid #f4bdca;
+  border-radius: 4px;
+  background: #fff;
+  color: #9d2727;
+  box-shadow: 0 3px 12px #0002;
+  font-size: 12px;
+}

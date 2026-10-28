@@ -33,32 +33,7 @@ export function SuperDocEditor({
       rulers: true,
       rulerContainer: rulerRef.current ?? undefined,
       ui: {
-        toolbar: {
-          container: '#default-toolbar',
-          hideButtons: false,
-          texts: {
-            fontFamily: '',
-            fontSize: '',
-            clearFormatting: '',
-            numberedList: '',
-            bulletList: '',
-            indentLeft: '',
-            indentRight: '',
-            lineHeight: '',
-            formatText: '',
-            linkedStyles: '',
-          },
-          groups: {
-            center: [
-              'clearFormatting',
-              'numberedlist',
-              'list',
-              'indentleft',
-              'indentright',
-              'lineHeight',
-            ],
-          },
-        },
+        toolbar: false,
         comments: false,
         contextMenu: false,
         loading: false,
