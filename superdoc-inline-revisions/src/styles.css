@@ -12,7 +12,7 @@ button { cursor: pointer; }
 
 .app-shell { height: 100vh; min-height: 100vh; display: grid; grid-template-rows: 110px minmax(0, 1fr); overflow: hidden; }
 .app-shell > .topbar { z-index: 12; display: grid; grid-template-rows: 38px 72px; background-color: rgb(248, 248, 248) !important; border-bottom: 1px solid #cfd5dd; box-shadow: 0 1px 5px #11182712; }
-.app-shell > .topbar :is(.ribbon-tabs-row, .ribbon-controls-row, .default-toolbar, .superdoc-toolbar, .button-group) {
+.app-shell > .topbar .ribbon-tabs-row {
   background-color: rgb(248, 248, 248) !important;
 }
 .ribbon-tabs-row { position: relative; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid #e1e5ea; }
@@ -34,56 +34,6 @@ button { cursor: pointer; }
 .download-button, .primary { color: #fff !important; background: #2563eb !important; border-color: #2563eb !important; }
 .download-button { padding: 8px 14px; border: 0; border-radius: 8px; font-size: 11px; font-weight: 700; }
 .download-button:disabled { opacity: .55; cursor: wait; }
-.ribbon-controls-row { min-width: 0; display: flex; align-items: center; justify-content: center; padding: 3px 8px; overflow-x: auto; overflow-y: hidden; }
-.custom-ribbon-controls[hidden] { display: none; }
-.default-toolbar-row { gap: 7px; }
-.default-toolbar { width: auto; background: rgb(248, 248, 248); }
-.default-toolbar :is(.superdoc-toolbar, .toolbar) { width: 100%; background: rgb(248, 248, 248) !important; box-shadow: none !important; border: 0 !important; }
-.sd-tooltip-content { display: none !important; }
-.default-toolbar .button-group { flex-grow: 0 !important; }
-.default-toolbar .sd-toolbar-item-ctn svg { width: 16px !important; height: 16px !important; }
-.default-toolbar .sd-toolbar-item-ctn [class*="chevron"] svg,
-.default-toolbar .sd-toolbar-item-ctn [class*="arrow"] svg,
-.default-toolbar .sd-toolbar-item-ctn .sd-dropdown-caret,
-.default-toolbar .sd-toolbar-item-ctn .sd-dropdown-caret svg { width: 8px !important; height: 8px !important; }
-.default-toolbar .sd-toolbar-item-ctn:has([data-item="btn-clearFormatting"]) { order: 3; }
-.default-toolbar .sd-toolbar-item-ctn:has([data-item="btn-numberedlist"]) { order: 4; }
-.default-toolbar .sd-toolbar-item-ctn:has([data-item="btn-list"]) { order: 5; }
-.default-toolbar .sd-toolbar-item-ctn:has([data-item="btn-indentleft"]) { order: 6; }
-.default-toolbar .sd-toolbar-item-ctn:has([data-item="btn-indentright"]) { order: 7; }
-.default-toolbar .sd-toolbar-item-ctn:has([data-item="btn-lineHeight"]) { order: 8; }
-.native-font-controls { display: flex; align-items: center; gap: 4px; }
-.native-font-controls select { height: 32px; padding: 3px 26px 3px 8px; color: #17191d; background: #fff; border: 1px solid #b9bec6; border-radius: 7px; outline: none; font-size: 14px; }
-.native-font-controls select:first-child { width: 180px; }
-.native-font-controls select:last-child { width: 88px; }
-.native-font-controls select:focus { border-color: #3b82f6; box-shadow: 0 0 0 2px #3b82f626; }
-.native-font-controls select:disabled { color: #727780; background: #f4f4f4; }
-.style-gallery { position: sticky; z-index: 2; right: 8px; display: flex; width: 460px; height: 64px; flex: 0 0 460px; gap: 5px; padding: 4px; overflow-x: auto; overflow-y: hidden; background: #fff; border: 1px solid #b9bec6; border-radius: 6px; scrollbar-width: none; }
-.style-gallery::-webkit-scrollbar { display: none; }
-.style-gallery button { min-width: 132px; height: 54px; display: grid; grid-template-rows: 30px 18px; padding: 0; overflow: hidden; color: #17191d; background: #fff; border: 2px solid #d3d6dc; border-radius: 4px; outline: 0; }
-.style-gallery button:hover, .style-gallery button:focus-visible, .style-gallery button.is-active { border-color: #3b82f6; }
-.style-gallery button > span { display: block; padding: 5px 7px 2px; overflow: hidden; text-align: left; text-overflow: clip; white-space: nowrap; }
-.style-gallery button > small { display: block; width: 100%; max-width: 100%; padding: 2px 6px; overflow: hidden; background: #f2f2f2; border-radius: 0 0 3px 3px; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.ribbon-group { position: relative; display: flex; align-content: flex-start; align-items: center; gap: 3px; padding: 0 10px; border-right: 1px solid #dfe3e8; }
-.ribbon-group:first-child { padding-left: 2px; }
-.history-group { flex-direction: column; justify-content: center; gap: 4px; }
-.history-group select { width: 76px; height: 25px; padding: 2px 4px; background: #fff; border: 1px solid #cfd4db; font-size: 10px; }
-.font-group, .paragraph-group { display: grid; grid-template-rows: 29px 29px; align-content: center; }
-.ribbon-selects, .ribbon-tool-row { display: flex; align-items: center; gap: 2px; }
-.ribbon-selects select { height: 26px; padding: 3px 22px 3px 6px; border: 1px solid #cfd4db; background: #fff; font-size: 10px; }
-.ribbon-selects select:first-child { width: 118px; }
-.ribbon-selects select:last-child { width: 55px; }
-.ribbon-tool { display: grid; min-width: 27px; height: 27px; padding: 0 6px; place-items: center; color: #252a32; background: transparent; border: 0; border-radius: 4px; font-size: 12px; font-weight: 650; }
-.ribbon-tool:hover:not(:disabled), .ribbon-tool.is-active { color: #174ea6; background: #dbeafe; }
-.ribbon-tool:disabled { opacity: .35; cursor: default; }
-.font-group .ribbon-tool:nth-child(2) { font-family: Georgia, serif; font-style: italic; }
-.font-group .ribbon-tool:nth-child(3) { text-decoration: underline; }
-.color-tool { color: #2563eb; border-bottom: 3px solid #2563eb; }
-.highlight-tool { color: #a47c00; border-bottom: 3px solid #facc15; }
-.insert-group { min-width: 105px; justify-content: center; }
-.paragraph-group { min-width: 250px; }
-.paragraph-group .ribbon-tool-row:nth-child(2) .ribbon-tool:nth-child(2) { text-align: center; }
-.paragraph-group .ribbon-tool-row:nth-child(2) .ribbon-tool:nth-child(3) { text-align: right; }
 
 .workspace { position: relative; min-height: 0; display: grid; grid-template-columns: 350px minmax(690px, 900px) 350px; justify-content: center; overflow: hidden; background: rgb(236, 236, 236); }
 .workspace::before {
