@@ -5,7 +5,7 @@ import test from 'node:test';
 process.env.COLLABORATION_AUTH = 'none';
 const { registerRoomRoutes } = await import('./routes.js');
 
-async function fixture({ roomExists = true } = {}) {
+async function fixture({ roomExists = true, jobService = null } = {}) {
   const app = Fastify();
   app.decorate('httpErrors', {
     badRequest(message) {
@@ -27,7 +27,7 @@ async function fixture({ roomExists = true } = {}) {
   };
   registerRoomRoutes(app, {
     rooms,
-    jobService: null,
+    jobService,
     createCollaborationToken(documentId, userId) {
       issued.push({ documentId, userId });
       return `token:${documentId}:${userId}`;
@@ -67,4 +67,18 @@ test('does not issue a token for a missing room', async () => {
   } finally {
     await app.close();
   }
+});
+
+test('a paused job sends its conflict notice and closes the event stream', async () => {
+  const record = { id: 'paused-job', room_id: 'contract-42', status: 'paused', error: 'Select the edited passage and run the prompt again.' };
+  let unsubscribed = 0;
+  const { app } = await fixture({ jobService: { get: () => record, subscribe: () => () => { unsubscribed++; } } });
+  try {
+    const response = await app.inject({ method: 'GET', url: '/api/rooms/contract-42/jobs/paused-job/events' });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers['content-type'], 'text/event-stream');
+    assert.deepEqual(JSON.parse(response.body.trim().slice('data: '.length)), record);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(unsubscribed, 1);
+  } finally { await app.close(); }
 });

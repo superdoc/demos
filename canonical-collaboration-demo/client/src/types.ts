@@ -19,7 +19,7 @@ export type Job = {
   prompt: string;
   selectedText?: string;
   isSuggesting: boolean;
-  status: 'queued' | 'running' | 'applying_edit' | 'completed' | 'failed' | 'cancelled';
+  status: 'queued' | 'running' | 'applying_edit' | 'completed' | 'failed' | 'cancelled' | 'paused';
   created_at: string;
   updated_at: string;
   answer?: string;

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JobService } from './job-service.js';
+import { targetChanged } from './reference-integration/native/stream-conflicts.js';
 
 test('jobs forward a snapshot of selected text to the agent separately from the prompt', async () => {
   let finish;
@@ -48,4 +49,32 @@ test('job subscribers receive answer prefixes before the agent finishes', async 
   await finished;
   assert.equal(job.status, 'completed');
   unsubscribe();
+});
+
+test('target conflicts pause the job, notify subscribers and release the room without model retries', async () => {
+  let finish;
+  let fail;
+  let runs = 0;
+  const finished = new Promise((resolve) => { finish = resolve; });
+  const room = { document: {}, conversation: [], startJob() {}, finishJob: finish, updateLastActivityAt() {} };
+  const jobs = new JobService({ require: () => room }, { async run(_doc, _prompt, _history, _mode, _signal, callbacks) {
+    runs++;
+    callbacks.onToolCall({ id: 'stream', status: 'generating' });
+    await new Promise((_resolve, reject) => { fail = reject; });
+  } });
+  const job = jobs.create('room', { prompt: 'Rewrite this.' });
+  const events = [];
+  const unsubscribe = jobs.subscribe('room', job.id, (record) => events.push(structuredClone(record)));
+  fail(targetChanged());
+  await finished;
+  assert.equal(runs, 1);
+  assert.equal(job.status, 'paused');
+  assert.match(job.error, /target text was changed, deleted, or became ambiguous/);
+  assert.match(job.error, /Select the passage/);
+  assert.equal(events.at(-1).status, 'paused');
+  assert.equal(job.toolCalls[0].status, 'failed');
+  assert.equal(jobs.cancel('room', job.id).status, 'paused');
+  unsubscribe();
+  job.updated_at = '2000-01-01T00:00:00.000Z';
+  assert.deepEqual(jobs.expire(), [job.id]);
 });
