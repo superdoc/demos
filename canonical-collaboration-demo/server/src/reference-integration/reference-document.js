@@ -15,6 +15,9 @@ import { removeCitationInSnapshot } from './workarounds/citation-remove.js';
 import { insertCitationInSnapshot } from './workarounds/citation-insert.js';
 import { resolveReferenceAnchor, verifyInsertedReference } from './workarounds/reference-anchors.js';
 import { referenceAnchorInstructions } from './tools/reference-anchor-contract.js';
+import { streamTextTool } from './tools/stream-text-tool.js';
+import { createTextStream } from './native/stream-text.js';
+import { streamingTools, streamingInstructions } from './agent/streaming-policy.js';
 
 export class ReferenceDocument {
   #handle;
@@ -75,7 +78,18 @@ export class ReferenceDocument {
     if (tool === citationTool.function.name) return this.insertCitation(citationInput(args));
     if (tool === referenceTool.function.name) return this.manageReferences(referenceInput(args));
     if (tool === bibliographyTool.function.name) return this.manageBibliographies(bibliographyInput(args));
+    if (tool === streamTextTool.function.name) return this.#streamText(args);
     return this.#toolkit.dispatch(this.#handle, tool, args);
+  }
+
+  createTextStream(options) {
+    this.#requireOpen();
+    return createTextStream(this.#handle, options);
+  }
+
+  async #streamText(args) {
+    const stream = this.createTextStream({ tag: 'document-text', changeMode: args.changeMode });
+    return stream.commit(args);
   }
 
   async citationSources() {
@@ -372,8 +386,8 @@ export class ReferenceDocument {
 
 export function createReferenceToolkit(coreToolkit) {
   return {
-    tools: [...coreToolkit.tools, footnoteTool, citationTool, referenceTool, bibliographyTool],
-    systemPrompt: `${coreToolkit.systemPrompt}\n\n${footnoteInstructions}\n\n${citationInstructions}\n\n${referenceAnchorInstructions}\n\n${referenceInstructions}\n\n${bibliographyInstructions}`,
+    tools: streamingTools([...coreToolkit.tools, footnoteTool, citationTool, referenceTool, bibliographyTool, streamTextTool]),
+    systemPrompt: `${coreToolkit.systemPrompt}\n\n${footnoteInstructions}\n\n${citationInstructions}\n\n${referenceAnchorInstructions}\n\n${referenceInstructions}\n\n${bibliographyInstructions}\n\n${streamingInstructions}`,
   };
 }
 

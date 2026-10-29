@@ -253,6 +253,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .chat-panel form { padding: 16px; border-top: 1px solid #e5e7eb; display: grid; gap: 8px; }
 .chat-panel form label { font-size: 12px; font-weight: 700; }
 .prompt-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.selection-preview { min-width: 0; padding: 10px 12px; border: 1px solid #dbe3ee; border-radius: 7px; background: #f8fafc; }
+.selection-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: #475569; font-size: 12px; font-weight: 700; }
+.chat-panel .clear-selection { padding: 2px 4px; border: 0; background: transparent; color: #64748b; font-size: 12px; font-weight: 400; }
+.chat-panel .clear-selection:hover { background: #e2e8f0; }
+.selection-preview-text { max-height: 160px; overflow-y: auto; overscroll-behavior: contain; white-space: pre-wrap; overflow-wrap: anywhere; color: #334155; font-size: 13px; line-height: 1.5; }
 .prompt-options select { padding: 5px 26px 5px 8px; color: #303640; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
 .chat-panel textarea { min-height: 96px; resize: vertical; padding: 10px; border: 1px solid #cbd5e1; border-radius: 7px; }
 .banner { position: fixed; z-index: 10; left: 50%; transform: translateX(-50%); top: 95px; padding: 10px 16px; background: #fff1f1; border-radius: 7px; box-shadow: 0 5px 20px #0002; }

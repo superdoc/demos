@@ -86,11 +86,11 @@ export class ApiClient {
     });
   }
 
-  createJob(roomId: string, prompt: string, isSuggesting: boolean): Promise<Job> {
+  createJob(roomId: string, prompt: string, isSuggesting: boolean, selectedText?: string): Promise<Job> {
     return this.request(`${this.roomPath(roomId)}/jobs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, isSuggesting }),
+      body: JSON.stringify({ prompt, isSuggesting, selectedText }),
     });
   }
 

@@ -140,8 +140,11 @@ The client creates a random room ID and adds it to the URL as `?room=...`. Keep 
 2. Use the four file buttons, left to right: **New Document**, **Replace document**, **Save As**, and **Delete document**. New Document creates a blank document; Replace document imports a `.docx` file.
 3. Edit the document directly in SuperDoc.
 4. Enter an instruction in the agent panel and select **Run agent**. Enter submits; Shift+Enter adds a new line.
+   Select document text first to target a passage. The panel previews its plain text in a scrollable area up to 160px tall and includes it as target context with the prompt. The selection remains available while typing the prompt; choose **Clear** to remove the target and work with the whole document again.
 5. While a job is running, select **Stop agent** to cancel remaining work. Edits already applied before cancellation are not rolled back.
 6. Use **Save As** to export the collaborative document, or **Delete Document** to remove it.
+
+The agent uses OpenAI streaming. Ordinary text writes always use the streaming tool: alternative paragraph insertion, heading insertion, text replacement, block rewriting and placeholder replacement actions are removed from the agent’s tool schema and rejected by the host if called. No special prompt is needed. Plain-text rewrites and new paragraphs appear progressively in the editor through the existing collaboration connection, and the agent’s chat reply streams into the panel. Streaming handles one paragraph per tool call, including new paragraphs before or after existing passages. Headings and styled prose stream their words first and apply formatting afterward. Structured edits (including tables, lists, citations and footnotes) apply through their dedicated tools after their arguments finish generating. Stopping or losing a stream preserves text already applied. Each chunk uses the host’s Reviewing/Editing mode and verifies its current document target before insertion.
 
 Set `DEFAULT_DOCUMENT_PATH` in the local `.env` file to override the bundled room template. Initialization preserves an existing room and coalesces simultaneous requests for the same new room.
 

@@ -5,6 +5,7 @@ import { logEvent } from './logging.js';
 
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
 const maximumPromptCharacters = 20_000;
+const maximumSelectedTextCharacters = 100_000;
 
 export class JobService {
   #rooms;
@@ -35,11 +36,18 @@ export class JobService {
       error.statusCode = 400;
       throw error;
     }
+    if (input?.selectedText !== undefined && (typeof input.selectedText !== 'string' || input.selectedText.length > maximumSelectedTextCharacters)) {
+      const error = new Error(`selectedText must be a string of at most ${maximumSelectedTextCharacters} characters.`);
+      error.name = 'HttpError';
+      error.statusCode = 400;
+      throw error;
+    }
     const timestamp = new Date().toISOString();
     const record = {
       id: `job_${randomUUID().replaceAll('-', '')}`,
       room_id: roomId,
       prompt,
+      selectedText: input.selectedText?.trim() ? input.selectedText : undefined,
       isSuggesting: input.isSuggesting ?? true,
       status: 'queued',
       created_at: timestamp,
@@ -80,6 +88,7 @@ export class JobService {
     const record = this.get(roomId, jobId);
     if (terminalStatuses.has(record.status)) return record;
     record.status = 'cancelled';
+    for (const call of record.toolCalls) if (['generating', 'running'].includes(call.status)) call.status = 'failed';
     record.updated_at = new Date().toISOString();
     if (this.#active?.record.id === jobId) this.#active.controller.abort(new Error('Agent job cancelled.'));
     this.#publish(record);
@@ -129,6 +138,12 @@ export class JobService {
             controller.signal,
             {
               messageId: record.id,
+              selectedText: record.selectedText,
+              onTextDelta: (delta) => {
+                if (record.status === 'cancelled') return;
+                record.answer = (record.answer ?? '') + delta;
+                this.#publish(record);
+              },
               onToolCall: (toolCall) => {
                 const index = record.toolCalls.findIndex((call) => call.id === toolCall.id);
                 if (index === -1) record.toolCalls.push(toolCall);
@@ -152,6 +167,9 @@ export class JobService {
             logEvent('worker', 'job.failed', { jobId, roomId: record.room_id, error: record.error });
           }
         } finally {
+          if (record.status !== 'completed') {
+            for (const call of record.toolCalls) if (['generating', 'running'].includes(call.status)) call.status = 'failed';
+          }
           record.updated_at = new Date().toISOString();
           this.#publish(record);
           room?.finishJob();

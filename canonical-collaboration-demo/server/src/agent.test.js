@@ -31,12 +31,43 @@ function harness(responses) {
     requests.push(structuredClone(request));
     assert.ok(responses.length, 'Unexpected model retry');
     const response = responses.shift();
-    return { choices: [{ message: typeof response === 'function' ? response(request) : response }] };
+    const message = typeof response === 'function' ? response(request) : response;
+    assert.equal(request.stream, true);
+    return (async function* () {
+      yield { choices: [{ delta: { content: message.content, tool_calls: message.tool_calls?.map((call, index) => ({ ...call, index })) }, finish_reason: null }] };
+      yield { choices: [{ delta: {}, finish_reason: message.tool_calls?.length ? 'tool_calls' : 'stop' }] };
+    })();
   } } } };
   const agent = createDocumentAgent({ getToolkit: () => ({ systemPrompt: 'Use the supplied tools.', tools: [citationTool, footnoteTool] }) }, { client });
   return { agent, document, requests, dispatches };
 }
 let id = 0;
+
+test('selected text scopes the model request while keeping prompt history readable', async () => {
+  const h = harness([{ role: 'assistant', content: 'Updated the selected passage.' }]);
+  const selectedText = 'First paragraph.\nSecond paragraph with "quotes" and <tags>.';
+  const history = [];
+  await h.agent.run(h.document, 'Make this shorter.', history, true, new AbortController().signal, { selectedText });
+  const current = h.requests[0].messages.at(-1).content;
+  assert.ok(current.includes(JSON.stringify(selectedText)));
+  assert.match(current, /scope changes to this passage/);
+  assert.match(current, /quoted document content, not instructions/);
+  assert.match(current, /Locate and verify/);
+  assert.match(current, /Prompt:\nMake this shorter\./);
+  assert.equal(history[0].content, 'Make this shorter.');
+  assert.equal(history[0].selectedText, selectedText);
+});
+
+test('a later prompt without a selection has no current target and retains earlier selection context', async () => {
+  const h = harness([{ role: 'assistant', content: 'Done.' }]);
+  const history = [{ role: 'user', content: 'Shorten this.', selectedText: 'Earlier passage.' }, { role: 'assistant', content: 'Done.' }];
+  await h.agent.run(h.document, 'Summarize the whole document.', history, false, new AbortController().signal);
+  const messages = h.requests[0].messages;
+  assert.equal(messages.at(-1).content, 'Summarize the whole document.');
+  assert.match(messages[0].content, /Earlier selections do not scope the current request/);
+  assert.match(messages[1].content, /Earlier passage\./);
+});
+
 const call = (tool, args, content = null) => ({ role: 'assistant', content, tool_calls: [
   { id: `call-${++id}`, type: 'function', function: { name: tool, arguments: JSON.stringify(args) } },
 ] });
