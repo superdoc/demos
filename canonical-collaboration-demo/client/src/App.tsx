@@ -282,6 +282,8 @@ export default function App() {
         {agentEnabled && <ChatPanel
           hidden={!agentOpen}
           roomId={roomId}
+          superdoc={superdoc}
+          documentKey={room ? `${room.document_id}:${room.generation}` : undefined}
           disabled={!room || busy || referenceBusy}
           width={chatWidth}
           onWidthChange={setChatWidth}

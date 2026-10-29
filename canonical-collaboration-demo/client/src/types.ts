@@ -17,6 +17,7 @@ export type Job = {
   id: string;
   room_id: string;
   prompt: string;
+  selectedText?: string;
   isSuggesting: boolean;
   status: 'queued' | 'running' | 'applying_edit' | 'completed' | 'failed' | 'cancelled';
   created_at: string;
@@ -30,7 +31,7 @@ export type ToolCall = {
   id: string;
   tool: string;
   action?: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'generating' | 'running' | 'completed' | 'failed';
   startedAt: string;
   durationMs?: number;
 };
@@ -39,5 +40,6 @@ export type ChatMessage = {
   id?: string;
   role: 'user' | 'assistant';
   content: string;
+  selectedText?: string;
   toolCalls?: ToolCall[];
 };

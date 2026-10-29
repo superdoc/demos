@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js",
-    "test": "node --test src/config.test.js src/collaboration/*.test.js src/collaboration/**/*.test.js src/rooms/*.test.js",
+    "test": "node --test src/config.test.js src/agent.test.js src/job-service.test.js src/streaming.test.js src/collaboration/*.test.js src/collaboration/**/*.test.js src/rooms/*.test.js",
     "test:collaboration": "node --test src/collaboration/*.test.js src/collaboration/**/*.test.js"
   },
   "dependencies": {

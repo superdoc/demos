@@ -43,7 +43,7 @@ test('portable registration composes all four custom tools and preserves native 
   let dispatched;
   const core = { tools: [native], systemPrompt: 'Native instructions.', dispatch: (...args) => { dispatched = args; return 'native-result'; } };
   const toolkit = createReferenceToolkit(core);
-  assert.deepEqual(toolkit.tools.map((t) => t.function.name), ['native_test', 'superdoc_insert_footnote', 'superdoc_insert_citation', 'superdoc_references', 'superdoc_bibliographies']);
+  assert.deepEqual(toolkit.tools.map((t) => t.function.name), ['native_test', 'superdoc_insert_footnote', 'superdoc_insert_citation', 'superdoc_references', 'superdoc_bibliographies', 'superdoc_stream_text']);
   assert.match(toolkit.systemPrompt, /sectionEnd/);
   const handle = {};
   const document = new ReferenceDocument({ id: 'test', filename: 'test.docx', path: 'unused', handle, toolkit: core, importedCitations: { records: [], style: 'APA' } });

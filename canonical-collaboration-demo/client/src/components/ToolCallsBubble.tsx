@@ -23,14 +23,14 @@ export function ToolCallsBubble({ calls }: { calls?: ToolCall[] }) {
         {[...calls].reverse().map((call) => (
           <span role="listitem" className="tool-call-row" key={call.id}>
             <span className={`tool-call-icon ${call.status}`} aria-hidden="true">
-              {call.status === 'running' ? <span className="spinner" /> : <svg viewBox="0 0 20 20">
+              {['generating', 'running'].includes(call.status) ? <span className="spinner" /> : <svg viewBox="0 0 20 20">
                 {call.status === 'failed' ? <path d="m6 6 8 8M14 6l-8 8" /> : <path d="m4 10 4 4 8-8" />}
               </svg>}
             </span>
             <span className="tool-call-detail">
               <span className="tool-call-name" title={call.action ? `${call.tool}: ${call.action}` : call.tool}>{call.action || call.tool}</span>
               <span className="tool-call-meta">
-                {call.status === 'running' ? 'Running' : call.status === 'failed' ? 'Failed' : 'Completed'}
+                {call.status === 'generating' ? 'Generating' : call.status === 'running' ? 'Running' : call.status === 'failed' ? 'Failed' : 'Completed'}
                 {call.durationMs !== undefined && ` · ${call.durationMs < 1000 ? `${call.durationMs} ms` : `${(call.durationMs / 1000).toFixed(1)} s`}`}
               </span>
             </span>

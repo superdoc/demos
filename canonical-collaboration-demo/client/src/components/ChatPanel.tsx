@@ -1,5 +1,6 @@
 import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
+import type { SuperDoc } from 'superdoc';
 import { api } from '../api';
 import type { ChatMessage, Job } from '../types';
 import { ToolCallsBubble } from './ToolCallsBubble';
@@ -12,6 +13,8 @@ type ChatPanelProps = {
   onWidthChange: (width: number) => void;
   reservedWidth?: number;
   onDocumentUpdated?: () => void;
+  superdoc?: SuperDoc;
+  documentKey?: string;
 };
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
@@ -61,8 +64,9 @@ function JobStatus({ job }: { job: Job }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false }: ChatPanelProps) {
+export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false, superdoc, documentKey }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
+  const [selectedText, setSelectedText] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(true);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -73,6 +77,22 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
   const resizeStartRef = useRef<{ x: number; width: number } | undefined>(undefined);
   const streamRef = useRef<EventSource | undefined>(undefined);
   const activeJob = jobs.find((job) => !TERMINAL.has(job.status));
+
+  useEffect(() => {
+    setSelectedText('');
+    if (!superdoc) return;
+    const clear = () => setSelectedText('');
+    const unsubscribe = superdoc.ui.selection.subscribe(({ snapshot }) => {
+      // Wait for the editor's plain-text read, and retain it when focus moves
+      // into the prompt. A collapsed document selection clears the target.
+      if (snapshot.status === 'ready') setSelectedText(snapshot.empty ? '' : snapshot.quotedText);
+    });
+    superdoc.on('document-replaced', clear);
+    return () => {
+      unsubscribe();
+      superdoc.off('document-replaced', clear);
+    };
+  }, [superdoc, documentKey]);
 
   function startResize(event: PointerEvent<HTMLDivElement>) {
     resizeStartRef.current = { x: event.clientX, width };
@@ -187,7 +207,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
     promptNavigationRef.current = null;
     setPrompt('');
     try {
-      const job = await api.createJob(roomId, message, isSuggesting);
+      const job = await api.createJob(roomId, message, isSuggesting, selectedText || undefined);
       setJobs((current) => [...current, job]);
       await watchJob(job);
     } catch (caught) {
@@ -266,6 +286,13 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
       </div>
 
       <form onSubmit={submit}>
+        {selectedText && <section className="selection-preview" aria-label="Selected text">
+          <div className="selection-preview-heading">
+            <span>Selected text</span>
+            <button type="button" className="clear-selection" onClick={() => setSelectedText('')} aria-label="Clear selected text">Clear</button>
+          </div>
+          <div className="selection-preview-text" tabIndex={0}>{selectedText}</div>
+        </section>}
         <div className="prompt-options">
           <label htmlFor="agent-prompt">Prompt</label>
           <select
