@@ -5,6 +5,7 @@ import { parseToolArguments, toolErrorResult } from './tool-errors.js';
 import { createRunProgress, toolFailed } from './agent-run-progress.js';
 import { createReferenceProgress } from './reference-tool-progress.js';
 import { nonStreamingTextActions } from './streaming-policy.js';
+import { isStreamPauseError } from '../native/stream-conflicts.js';
 
 // Create one adapter per prompt. The host keeps its own model, agent loop, and UI.
 export async function createReferenceAgentAdapter({ document, toolkit, prompt, changeMode,
@@ -30,6 +31,9 @@ export async function createReferenceAgentAdapter({ document, toolkit, prompt, c
       if (['superdoc_perform_action', 'superdoc_stream_text', footnoteTool.function.name, citationTool.function.name, bibliographyTool.function.name].includes(tool)) args.changeMode = changeMode;
       result = await dispatch(tool, args);
     } catch (error) {
+      // A concurrent edit requires a new user request, not an automatic model
+      // retry that could replace the human's newly changed passage.
+      if (isStreamPauseError(error) || error?.streamWriteAttempted) throw error;
       result = toolErrorResult(error);
     }
     const failed = toolFailed(result);

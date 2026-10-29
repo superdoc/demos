@@ -17,7 +17,7 @@ type ChatPanelProps = {
   documentKey?: string;
 };
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'paused']);
 
 function MarkdownMessage({ content }: { content: string }) {
   return <div className="message-markdown"><Markdown>{content}</Markdown></div>;

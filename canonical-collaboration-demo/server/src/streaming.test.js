@@ -4,6 +4,7 @@ import { partialTextArguments, streamCompletion } from './reference-integration/
 import { createTextStream } from './reference-integration/native/stream-text.js';
 import { streamingTools, nonStreamingTextActions } from './reference-integration/agent/streaming-policy.js';
 import { createReferenceAgentAdapter } from './reference-integration/agent/reference-agent-adapter.js';
+import { targetChanged } from './reference-integration/native/stream-conflicts.js';
 
 const chunk = (delta, finish_reason = null) => ({ choices: [{ delta, finish_reason }] });
 const tool = (arguments_, first = false) => chunk({ tool_calls: [{ index: 0,
@@ -162,4 +163,18 @@ test('new paragraphs beside existing text stream into a newly created block', as
     assert.equal(calls[1].value, ' paragraph');
     assert.equal(current, 'New paragraph');
   }
+});
+
+test('target conflict at final tool commit bypasses model retry and completion claims', async () => {
+  const conflict = targetChanged();
+  const document = { async waitForReferences() {}, async citationSources() { return { items: [] }; }, async dispatch() { throw conflict; } };
+  const adapter = await createReferenceAgentAdapter({ document, toolkit: { tools: [], systemPrompt: '' }, prompt: 'Rewrite.', changeMode: 'direct' });
+  await assert.rejects(adapter.execute('superdoc_stream_text', { mode: 'append', anchor: null, text: 'Generated text' }), (error) => error === conflict);
+});
+
+test('an uncertain streamed write cannot be replayed by the model after final dispatch', async () => {
+  const error = Object.assign(new Error('Transport disconnected after write'), { streamWriteAttempted: true });
+  const document = { async waitForReferences() {}, async citationSources() { return { items: [] }; }, async dispatch() { throw error; } };
+  const adapter = await createReferenceAgentAdapter({ document, toolkit: { tools: [], systemPrompt: '' }, prompt: 'Rewrite.', changeMode: 'direct' });
+  await assert.rejects(adapter.execute('superdoc_stream_text', { mode: 'append', anchor: null, text: 'Generated text' }), (caught) => caught === error);
 });

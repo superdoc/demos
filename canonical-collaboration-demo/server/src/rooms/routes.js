@@ -216,7 +216,7 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     const send = (record) => {
       if (reply.raw.destroyed || reply.raw.writableEnded) return;
       reply.raw.write(`data: ${JSON.stringify(record)}\n\n`);
-      if (['completed', 'failed', 'cancelled'].includes(record.status)) reply.raw.end();
+      if (['completed', 'failed', 'cancelled', 'paused'].includes(record.status)) reply.raw.end();
     };
     const unsubscribe = jobService.subscribe(roomId, jobId, send);
     const heartbeat = setInterval(() => {
