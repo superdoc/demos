@@ -60,6 +60,10 @@ fixture. It checks that copying the toolbar includes locked-control formatting,
 keyboard shortcuts, Undo, and review decisions without any demo setup. The test
 server and temporary app are removed when the test finishes.
 
+Review-mode formatting tests enter Reviewing mode before selecting and locking
+their target. Changing modes refreshes worker-backed selection and toolbar state;
+an existing selection is not used as a readiness signal across that transition.
+
 Font-menu, table-picker, and inserted-table screenshots are attached to their
 Playwright results. Failures also retain screenshots and traces under the ignored
 `test-results/` directory. To inspect a failure:
