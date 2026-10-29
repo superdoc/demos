@@ -145,8 +145,10 @@ test('bullet and number presets operate on locked content controls', async ({ pa
 });
 
 test('review mode records formatting while preserving the lock', async ({ page }) => {
-  await lockSample(page);
   await page.getByLabel('Document mode').selectOption('suggesting');
+  // Establish the selection in Reviewing mode; a mode transition can refresh
+  // the worker selection/toolbar state after the dropdown change returns.
+  await lockSample(page);
   await tool(page, 'Bold').click();
   await expect(sampleRun(page)).toHaveCSS('font-weight', '700');
   await expect(tool(page, 'Reject all')).toBeEnabled();
