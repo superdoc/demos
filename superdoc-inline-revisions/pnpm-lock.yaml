@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@vitejs/plugin-react':
         specifier: latest
-        version: 6.1.1(vite@8.3.0(@types/node@26.6.5))
+        version: 6.1.1(vite@8.3.0(@types/node@26.6.6))
       react:
         specifier: latest
         version: 19.3.0
@@ -18,14 +18,14 @@ importers:
         specifier: latest
         version: 19.3.0(react@19.3.0)
       superdoc:
-        specifier: 2.27.0
-        version: 2.27.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32)
+        specifier: 2.28.0
+        version: 2.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32)
       typescript:
         specifier: latest
         version: 7.0.2
       vite:
         specifier: latest
-        version: 8.3.0(@types/node@26.6.5)
+        version: 8.3.0(@types/node@26.6.6)
     devDependencies:
       '@playwright/test':
         specifier: latest
@@ -47,8 +47,8 @@ packages:
     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/parser@7.29.11':
-    resolution: {integrity: sha512-OZ6+oaK7GMyg3IfCpj8JOmn8n+w2rJbDT0LLfVDTLb1ZFeKDh3AiNELgCMUw175IJHSkLl74hG0M0VLsvx+gag==}
+  '@babel/parser@7.29.12':
+    resolution: {integrity: sha512-WJ7JBp/Q4+z/ImydtI7jS6NVco5++632ExBemSX+Ysb+G1lCwQ5BVo3SY+jGGOcZXI4ZccbZSUSJLNBW6eEpJg==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -172,8 +172,8 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@superdoc/docx-engine@0.26.0':
-    resolution: {integrity: sha512-7kUOZ4uEWpqOKB01dvipevqmAOTqsg8d0td2Nllig9mGkYbvWCTOkjWMz014ZbTw2Nz4JKqZiaBn/sNADYK6zw==}
+  '@superdoc/docx-engine@0.27.0':
+    resolution: {integrity: sha512-VrPGZbsVMHfma8YAPdFV3G5GrFt4z6c1HLNlQQZbZ1pc1bv88dmKqn3n8Yb1kL+qSgUC2PONoiDbwvgwj0jRSA==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -191,8 +191,8 @@ packages:
       y-websocket:
         optional: true
 
-  '@types/node@26.6.5':
-    resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
+  '@types/node@26.6.6':
+    resolution: {integrity: sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==}
 
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
@@ -587,8 +587,8 @@ packages:
     resolution: {integrity: sha512-1POYv7uv2gXoyGFpBCmpDVSNV74IfsWlDW216UPjbWufNf+bSU6GdbDsxdcxtfwb4xlI3yxzOTKClUosxARYrQ==}
     engines: {node: '>=0.10.0'}
 
-  superdoc@2.27.0:
-    resolution: {integrity: sha512-OdrIU1jljJsLwOMkbiEI+xx734mCPoSZ2mK2uhhIt3Fw4G1XdLrP5ic76hZvRI89dQzetHE7TBq1PFjuITGNlw==}
+  superdoc@2.28.0:
+    resolution: {integrity: sha512-fgzzBi1gN4OOjCsJDaqXWDII56bD2wkEbhge8Km3C/+BbLoBR+vWLqbM3W8oghaFQrctbr7K+2hKYq2v/Guk3A==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -720,7 +720,7 @@ snapshots:
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
-  '@babel/parser@7.29.11':
+  '@babel/parser@7.29.12':
     dependencies:
       '@babel/types': 7.29.11
 
@@ -802,7 +802,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@superdoc/docx-engine@0.26.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
+  '@superdoc/docx-engine@0.27.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       vue: 3.5.44(typescript@7.0.2)
       xml-js: 1.6.11
@@ -811,7 +811,7 @@ snapshots:
       '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       y-websocket: 3.1.0(yjs@13.6.32)
 
-  '@types/node@26.6.5':
+  '@types/node@26.6.6':
     dependencies:
       undici-types: 8.9.0
 
@@ -825,7 +825,7 @@ snapshots:
 
   '@types/ws@8.18.2':
     dependencies:
-      '@types/node': 26.6.5
+      '@types/node': 26.6.6
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true
@@ -887,14 +887,14 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@26.6.5))':
+  '@vitejs/plugin-react@6.1.1(vite@8.3.0(@types/node@26.6.6))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.3.0(@types/node@26.6.5)
+      vite: 8.3.0(@types/node@26.6.6)
 
   '@vue/compiler-core@3.5.44':
     dependencies:
-      '@babel/parser': 7.29.11
+      '@babel/parser': 7.29.12
       '@vue/shared': 3.5.44
       entities: 7.0.1
       estree-walker: 2.0.2
@@ -907,7 +907,7 @@ snapshots:
 
   '@vue/compiler-sfc@3.5.44':
     dependencies:
-      '@babel/parser': 7.29.11
+      '@babel/parser': 7.29.12
       '@vue/compiler-core': 3.5.44
       '@vue/compiler-dom': 3.5.44
       '@vue/compiler-ssr': 3.5.44
@@ -1121,10 +1121,10 @@ snapshots:
 
   speakingurl@14.0.1: {}
 
-  superdoc@2.27.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32):
+  superdoc@2.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32):
     dependencies:
       '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@superdoc/docx-engine': 0.26.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
+      '@superdoc/docx-engine': 0.27.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
       '@types/ws': 8.18.2
       eventemitter3: 5.0.4
       konva: 10.9.0
@@ -1181,7 +1181,7 @@ snapshots:
 
   uuid@11.1.1: {}
 
-  vite@8.3.0(@types/node@26.6.5):
+  vite@8.3.0(@types/node@26.6.6):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -1189,7 +1189,7 @@ snapshots:
       rolldown: 1.2.9
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 26.6.5
+      '@types/node': 26.6.6
       fsevents: 2.3.3
 
   vue@3.5.44(typescript@7.0.2):
