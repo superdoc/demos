@@ -133,7 +133,7 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
     if (typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('A document revision is required.');
     try {
-      const result = await room.document.dispatch('superdoc_bibliographies', {
+      const result = await room.document.manageBibliographies({
         action: 'create', position: 'documentEnd', changeMode: 'direct', expectedRevision,
       });
       room.updateLastActivityAt();

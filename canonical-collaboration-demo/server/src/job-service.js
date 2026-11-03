@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { config } from './config.js';
 import { logEvent } from './logging.js';
-import { isStreamPauseError } from './reference-integration/native/stream-conflicts.js';
 
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'paused']);
 const maximumPromptCharacters = 20_000;
@@ -163,7 +162,7 @@ export class JobService {
           if (controller.signal.aborted || record.status === 'cancelled') {
             record.status = 'cancelled';
           } else {
-            record.status = isStreamPauseError(error) ? 'paused' : 'failed';
+            record.status = 'failed';
             record.error = error instanceof Error ? error.message : String(error);
             logEvent('worker', `job.${record.status}`, { jobId, roomId: record.room_id, error: record.error });
           }

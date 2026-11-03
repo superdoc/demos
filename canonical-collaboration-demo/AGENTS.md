@@ -1,67 +1,49 @@
-# Integrate citations and footnotes into an existing app
+# Canonical collaboration demo
 
-The intended outcome is for a user to prompt **their own app's existing agent** to
-create reference sources and reliably insert real Word citations and footnotes.
-Use the maintained source in this repository. There is no generated bundle or
-separately maintained customer implementation.
+The agent uses the published SDK `full` preset. Inspect `server/package.json` for
+the exact prerelease pin; stable SDK 2.24.0 does not include this preset.
 
-Start with [the integration guide](docs/customer-integration.md) and consult the
-[workaround inventory](docs/reference-integration.md) for specific fixes.
+## Agent integration
 
-## Integration workflow
+- `server/src/document-service.js` owns one SDK client and direct/tracked full
+  toolkits. Reviewing uses `enforceChangeMode: 'tracked'`; Editing uses the ordinary
+  full toolkit. Keep SDK tools, prompt, and dispatcher from the same toolkit.
+- `server/src/reference-integration/agent/create-agent.js` owns the model loop,
+  selection context, cancellation boundaries, tool status, and bounded retries.
+  Dispatch through `toolkit.dispatch(document.handle, name, args)`.
+- Expose the SDK full tools plus the app-level `superdoc_references` library tool.
+  Keep source CRUD, imported-source context, validation, and snapshot persistence
+  in the application. These metadata operations work in both host modes. Do not
+  restore custom citation-insertion, bibliography, footnote, or streaming Document
+  API tools; those operations use the SDK full preset.
+- Model replies stream; document writes execute after full tool arguments arrive.
+  SDK batches may retain earlier committed edits after a later operation fails.
+  Mark partial batches failed and report partial completion honestly.
 
-1. Inspect the target app's SuperDoc versions, SDK document lifecycle, collaboration
-   connection, agent tool registry/dispatch, host edit mode, and document authorization.
-   Keep its agent framework, model provider, prompt UI, and document identity.
-2. Reuse `server/src/reference-integration/`. Its three functional parts must stay
-   connected: native SDK operations, custom tool contracts, and compatibility fixes.
-   The native APIs alone do not reproduce this demo's behavior. Retain the supporting
-   agent policy and CSL assets; do not reimplement snapshot edits in the target app.
-3. Wrap the app's SDK document with `ReferenceDocument`. For new document sessions,
-   `openReferenceDocument` accepts the app's existing SDK client/core toolkit and
-   collaboration configuration. See the guide for already-open handles. Use one
-   wrapper per document, on disposable working files; it removes old working files
-   during replacement/close. The host owns the SDK client and lifecycle.
-4. Register `createReferenceToolkit(coreToolkit)` with the existing agent. Before each
-   prompt, call `createReferenceAgentAdapter` with that toolkit, document, prompt, and
-   trusted host change mode. Add its system instructions and fresh source context to
-   the app's existing messages. Route SDK/reference calls through `adapter.execute`;
-   other application tools keep their existing dispatch. Honor `stop` and its receipt-
-   based message, and use `interruptionReport` on turn exhaustion. The guide shows the
-   exact adapter contract; copying our OpenAI runner or room server is unnecessary.
-5. Mount browser fixes from `client/src/reference-integration/` when the app supports
-   interactive editing/review. Bind its `ReferenceTransport` to the existing app's
-   authenticated document transport, and supply `getContainer` for its editor/input/
-   review container. Reset state on document identity/generation changes. Toolbar,
-   modal, chat, and panel designs belong to the target app.
-6. Verify the target app with the guide's acceptance scenarios. Check saved sources,
-   exact anchor placement, tracked changes, unchanged body text, and Word export;
-   a successful model answer alone is not evidence of successful insertion.
+## Reference UI and export compatibility
 
-## Preserve these boundaries and safeguards
+`server/src/reference-integration/reference-document.js` still owns working-file
+lifecycle and the reference toolbar's HTTP operations. Its `handle` is the native
+SDK document. Its generic HTTP dispatch forwards directly to the SDK full toolkit;
+it does not intercept native agent calls. The app library tool calls
+`manageReferences(referenceInput(args))`; other tools dispatch to the native SDK.
+Keep manual UI fixes separate from native agent execution. See [integration](docs/customer-integration.md) and
+[the inventory](docs/reference-integration.md) for the compatibility boundary.
 
-- Native session entry: `server/src/reference-integration/native/`; custom tools:
-  `server/src/reference-integration/tools/`; compatibility repairs:
-  `server/src/reference-integration/workarounds/`; agent context, policy, and retry
-  handling: `server/src/reference-integration/agent/`. The wrapper joins these layers.
-- Keep `server/src/reference-integration/assets/csl/` and its attribution/license
-  links alongside the renderer. Use the owning app's dependency manifests; the guide
-  records the validated SDK/browser/dependency versions.
-- Agent insertion uses semantic anchors, never LLM-counted offsets. Preserve strict
-  schemas, exact source IDs, fresh revisions, host-enforced tracked/direct modes,
-  verification receipts, no-duplicate handling, and bounded retries. Metadata creation
-  is distinct from inserting a citation. Do not substitute imitation citations/notes.
-- Await reference work before replacing/closing a document. The revision check and
-  snapshot replacement are not atomic compare-and-swap; the host must coordinate
-  concurrent writers if it needs to exclude that race. Do not claim a distributed lock.
-- Browser integration must not import demo room types, API clients, CSS shell selectors,
-  model keys, or configuration. The thin demo adapters live outside the shared folders.
-- After upgrading SuperDoc, verify each fix against its inventory removal condition.
-  Keep customer documents, exports, traces, and credentials in ignored `artifacts/`.
+Native source changes must appear in the reference panel and exports. Read the
+current package, not only the import-time source cache or SDK session-local source
+list. Never overwrite native additions/deletions with cached source metadata.
+
+Retain CSL assets and attribution with manual rendering. Browser integrations must
+stay independent of demo room types, API clients, and CSS shell selectors. Await
+reference work before replacement/close. Revision checks and snapshot replacement
+are not an atomic distributed lock.
 
 ## Verification
 
-Use the commands in the integration guide. The portability test checks source module
-boundaries, native dispatch, mutation serialization, and the shared adapter contract.
-Changes to the adapter must also pass `server/src/agent.test.js`: the demo's runner
-uses the same policy code as a customer's existing loop.
+Run the server suite, focused reference preservation/placement tests, portability
+checks, and the client build after agent or SDK changes. Exercise the actual prompt
+UI with the native full tools and verify the resulting document. In Reviewing,
+check real tracked edits and rejection of direct-only operations. In Editing,
+check source creation in both modes and export/reopen. Keep customer documents and evidence in
+ignored `artifacts/`, never in committed fixtures.

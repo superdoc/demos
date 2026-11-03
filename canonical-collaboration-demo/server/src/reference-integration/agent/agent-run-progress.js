@@ -1,10 +1,14 @@
 export function toolFailed(result) {
   return result?.ok === false || result?.success === false || result?.result?.success === false
-    || result?.status === 'failed' || Boolean(result?.error);
+    || result?.receipt?.success === false || result?.status === 'failed' || Boolean(result?.error)
+    || Boolean(result?.failure)
+    || (Number.isInteger(result?.completed) && Number.isInteger(result?.total) && result.completed < result.total);
 }
 
 function errorDetail(result) {
-  const detail = result?.error ?? result?.failure?.message ?? result?.result?.failure?.message;
+  const failedCall = result?.receipts?.find((receipt) => receipt.ok === false);
+  const detail = result?.error ?? result?.failure?.message ?? result?.result?.failure?.message
+    ?? result?.receipt?.failure?.message ?? failedCall?.error ?? failedCall?.result?.failure?.message ?? result?.reason;
   return typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : 'The tool reported a failure.';
 }
 
@@ -31,6 +35,9 @@ export function createRunProgress(describeCall = ({ tool }) => ({ operation: too
       return { failed: false, repeatedFailure: false };
     }
     const error = errorDetail(call.result);
+    if (Number.isInteger(call.result?.completed) && call.result.completed > 0 && Array.isArray(call.result.receipts)) {
+      completed.push(`${call.result.completed} of ${call.result.total} batch operations completed before the failure.`);
+    }
     const issues = Array.isArray(call.result?.issues)
       ? call.result.issues.map(stableArguments).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))) : undefined;
     const signature = JSON.stringify({ tool: call.tool, args: stableArguments(call.args), code: call.result?.code,

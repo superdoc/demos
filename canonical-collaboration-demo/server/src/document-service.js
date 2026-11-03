@@ -1,12 +1,12 @@
 import { createAgentToolkit, SuperDocClient } from '@superdoc/sdk';
 import { logEvent } from './logging.js';
-import { ReferenceDocument as Document, createReferenceToolkit, openReferenceDocument } from './reference-integration/index.js';
+import { ReferenceDocument as Document, openReferenceDocument } from './reference-integration/index.js';
 
 export { Document };
 
 export class DocumentService {
   #client;
-  #toolkit;
+  #toolkits = new Map();
   #documents = new Map();
 
   async initialize() {
@@ -18,18 +18,23 @@ export class DocumentService {
       user: { name: 'Document service', email: 'document-service@demo.local' },
     });
     await this.#client.connect();
-    this.#toolkit = await createAgentToolkit({ provider: 'openai', preset: 'core' });
+    for (const changeMode of ['direct', 'tracked']) {
+      this.#toolkits.set(changeMode, await createAgentToolkit({ provider: 'openai', preset: 'full',
+        ...(changeMode === 'tracked' ? { enforceChangeMode: 'tracked' } : {}) }));
+    }
     logEvent('document-service', 'service.ready');
   }
 
-  getToolkit() {
-    return createReferenceToolkit(this.#toolkit);
+  getToolkit(changeMode = 'direct') {
+    const toolkit = this.#toolkits.get(changeMode);
+    if (!toolkit) throw new Error(`Unknown document change mode: ${changeMode}`);
+    return toolkit;
   }
 
   async open({ id, filename, path, collaboration, collaborationAuth }) {
     if (this.#documents.has(id)) throw new Error(`Document is already open: ${id}`);
     const document = await openReferenceDocument({
-      client: this.#client, toolkit: this.#toolkit, id, filename, path, collaboration, collaborationAuth, logEvent,
+      client: this.#client, toolkit: this.getToolkit(), id, filename, path, collaboration, collaborationAuth, logEvent,
       onClose: (documentId) => this.#documents.delete(documentId),
     });
     this.#documents.set(id, document);

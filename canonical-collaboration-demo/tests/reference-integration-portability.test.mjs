@@ -4,8 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { ReferenceDocument, createReferenceToolkit, prepareReferenceDocument,
-  createReferenceAgent, createReferenceAgentAdapter } from '../server/src/reference-integration/index.js';
+import { ReferenceDocument, prepareReferenceDocument } from '../server/src/reference-integration/index.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 async function files(directory) {
@@ -38,19 +37,15 @@ test('portable server and browser imports stay within their own module boundarie
   }
 });
 
-test('portable registration composes all four custom tools and preserves native dispatch', async () => {
-  const native = { type: 'function', function: { name: 'native_test' } };
+test('the document lifecycle exposes the native handle and forwards only SDK tools', async () => {
   let dispatched;
-  const core = { tools: [native], systemPrompt: 'Native instructions.', dispatch: (...args) => { dispatched = args; return 'native-result'; } };
-  const toolkit = createReferenceToolkit(core);
-  assert.deepEqual(toolkit.tools.map((t) => t.function.name), ['native_test', 'superdoc_insert_footnote', 'superdoc_insert_citation', 'superdoc_references', 'superdoc_bibliographies', 'superdoc_stream_text']);
-  assert.match(toolkit.systemPrompt, /sectionEnd/);
   const handle = {};
-  const document = new ReferenceDocument({ id: 'test', filename: 'test.docx', path: 'unused', handle, toolkit: core, importedCitations: { records: [], style: 'APA' } });
-  assert.equal(await document.dispatch('native_test', { value: 1 }), 'native-result');
-  assert.deepEqual(dispatched, [handle, 'native_test', { value: 1 }]);
-  assert.throws(() => document.dispatch('superdoc_insert_footnote', { content: 'x' }), /anchor/i);
-  assert.throws(() => createReferenceAgent({ getToolkit: () => toolkit }), /client/);
+  const toolkit = { dispatch: (...args) => { dispatched = args; return 'native-result'; } };
+  const document = new ReferenceDocument({ id: 'test', filename: 'test.docx', path: 'unused', handle, toolkit,
+    importedCitations: { records: [], style: 'APA' } });
+  assert.equal(document.handle, handle);
+  assert.equal(await document.dispatch('superdoc_api_call', { operationId: 'doc.info' }), 'native-result');
+  assert.deepEqual(dispatched, [handle, 'superdoc_api_call', { operationId: 'doc.info' }]);
 });
 
 test('portable source mutations serialize and stale queued requests cannot replace a newer revision', async () => {
@@ -69,7 +64,7 @@ test('portable source mutations serialize and stale queued requests cannot repla
   };
   const document = new ReferenceDocument({ id: 'synthetic', filename: 'working.docx', path: input, handle,
     toolkit: { dispatch: () => { throw new Error('Custom tools must not use native dispatch.'); } }, importedCitations });
-  const create = (title, expectedRevision) => document.dispatch('superdoc_references', {
+  const create = (title, expectedRevision) => document.manageReferences({
     action: 'create', type: 'report', fields: { title, year: '2026', corporateAuthor: 'Synthetic Organization' }, expectedRevision,
   });
   try {
@@ -92,57 +87,4 @@ test('portable source mutations serialize and stale queued requests cannot repla
     await document.close();
     await fs.rm(directory, { recursive: true, force: true });
   }
-});
-
-test('an existing agent loop gets fresh context and host-enforced modes through the shared adapter', async () => {
-  let revision = '1';
-  const calls = [];
-  const document = {
-    waitForReferences: async () => {},
-    citationSources: async () => ({ items: [{ sourceId: 'saved-report', fields: { title: 'Saved report' } }],
-      evaluatedRevision: revision, bibliographyStyle: 'APA' }),
-    dispatch: async (tool, args) => { calls.push({ tool, args }); return { success: true, evaluatedRevision: '2' }; },
-  };
-  const toolkit = createReferenceToolkit({ tools: [], systemPrompt: 'Host native toolkit.' });
-  const adapter = await createReferenceAgentAdapter({ document, toolkit, prompt: 'Insert a citation.', changeMode: 'tracked' });
-  assert.equal(adapter.tools, toolkit.tools);
-  assert.match(adapter.systemPrompt, /changeMode=tracked/);
-  assert.match(adapter.contextMessage.content, /saved-report/);
-  assert.equal(JSON.parse(adapter.contextMessage.content.split('\n')[1]).evaluatedRevision, '1');
-  const args = { sourceId: 'saved-report', expectedRevision: '1', changeMode: 'direct' };
-  const receipt = await adapter.execute('superdoc_insert_citation', args);
-  assert.equal(receipt.failed, false);
-  assert.equal(calls[0].args.changeMode, 'tracked');
-  assert.equal(args.changeMode, 'direct', 'Do not mutate host-owned arguments.');
-  revision = '2';
-  const next = await createReferenceAgentAdapter({ document, toolkit, prompt: 'Add a footnote.', changeMode: 'direct' });
-  assert.equal(JSON.parse(next.contextMessage.content.split('\n')[1]).evaluatedRevision, '2');
-  await next.execute('superdoc_insert_footnote', JSON.stringify({ content: 'Note', changeMode: 'tracked' }));
-  assert.equal(calls[1].args.changeMode, 'direct');
-  await assert.rejects(createReferenceAgentAdapter({ document, toolkit, prompt: '', changeMode: 'invented' }), /host must supply/);
-});
-
-test('the shared adapter stops repeated failures across inspections and preserves saved-reference receipts', async () => {
-  const document = {
-    waitForReferences: async () => {},
-    citationSources: async () => ({ items: [], evaluatedRevision: '1', bibliographyStyle: 'APA' }),
-    dispatch: async (tool) => {
-      if (tool === 'superdoc_references') return { success: true, action: 'create',
-        source: { sourceId: 'report', fields: { title: 'Saved report' } } };
-      if (tool === 'superdoc_inspect') return { revision: '2' };
-      throw new Error('Anchor is ambiguous.');
-    },
-  };
-  const toolkit = createReferenceToolkit({ tools: [], systemPrompt: '' });
-  const adapter = await createReferenceAgentAdapter({ document, toolkit, prompt: 'Create and insert a citation.', changeMode: 'tracked' });
-  await adapter.execute('superdoc_references', { action: 'create', fields: { title: 'Saved report' } });
-  const first = await adapter.execute('superdoc_insert_citation', { sourceId: 'report', expectedRevision: '1' });
-  assert.equal(first.failed, true);
-  assert.equal(first.stop, undefined);
-  await adapter.execute('superdoc_inspect', {});
-  const second = await adapter.execute('superdoc_insert_citation', { sourceId: 'report', expectedRevision: '2' });
-  assert.equal(second.stop, 'repeated_failure');
-  assert.match(second.message, /Saved reference "Saved report"/);
-  assert.doesNotMatch(second.message, /Inserted citation/);
-  assert.match(adapter.interruptionReport('turn_limit'), /Saved reference "Saved report"/);
 });

@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js",
-    "test": "node --test src/config.test.js src/agent.test.js src/job-service.test.js src/streaming.test.js src/streaming-concurrency.test.js src/collaboration/*.test.js src/collaboration/**/*.test.js src/rooms/*.test.js",
+    "test": "node --test src/*.test.js src/collaboration/*.test.js src/collaboration/**/*.test.js src/rooms/*.test.js ../tests/*.test.mjs",
     "test:collaboration": "node --test src/collaboration/*.test.js src/collaboration/**/*.test.js"
   },
   "dependencies": {
@@ -13,7 +13,7 @@
     "@fastify/multipart": "9.2.1",
     "@fastify/websocket": "11.2.0",
     "@hocuspocus/server": "2.15.3",
-    "@superdoc/sdk": "2.23.0",
+    "@superdoc/sdk": "2.25.0-next.16",
     "@xmldom/xmldom": "0.9.12",
     "citeproc": "2.4.63",
     "fastify": "5.12.4",
