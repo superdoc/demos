@@ -6,6 +6,12 @@ Live at [demos.superdoc.dev](https://demos.superdoc.dev)
 
 ## Demos
 
+### [`version-history/`](./version-history) — Version History
+
+Edit a document, save DOCX versions, browse their tracked-edit changelogs in a read-only preview, and return to the current editor.
+
+**Stack**: React, SuperDoc
+
 ### [`rag/`](./rag) — DocRAG
 
 Ask your documents. Get cited answers. Upload `.docx` files and get AI-powered answers with citations that scroll to the exact paragraph, comment, or tracked change in the source document.

@@ -1,6 +1,7 @@
 dist/
 .DS_Store
 worker-dist/
+pages-worker-dist/
 node_modules/
 /dist-gallery/
 **/test-results/

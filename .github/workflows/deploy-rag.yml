@@ -69,6 +69,18 @@ jobs:
         with:
           version: 10.25.0
 
+      - name: Validate version history deployment settings
+        if: inputs.dry_run == false
+        env:
+          VERSION_HISTORY_BACKEND_URL: ${{ vars.VERSION_HISTORY_BACKEND_URL }}
+          VERSION_HISTORY_RAILWAY_SERVICE_ID: ${{ secrets.VERSION_HISTORY_RAILWAY_SERVICE_ID }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          test -n "$VERSION_HISTORY_BACKEND_URL" || { echo 'Set the VERSION_HISTORY_BACKEND_URL repository variable.' >&2; exit 1; }
+          if [ "$TARGET_ENVIRONMENT" = production ]; then
+            test -n "$VERSION_HISTORY_RAILWAY_SERVICE_ID" || { echo 'Set the VERSION_HISTORY_RAILWAY_SERVICE_ID repository secret.' >&2; exit 1; }
+          fi
+
       - name: Build DocRAG
         working-directory: rag
         env:
@@ -99,12 +111,30 @@ jobs:
           npm ci
           npm run build
 
+      - name: Build Version History
+        working-directory: version-history
+        env:
+          BASE_PATH: /version-history/
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
       - name: Compile DocRAG Worker without deploying
         working-directory: rag/apps/api
         run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
 
       - name: Assemble release bundle
-        run: node scripts/assemble-release.mjs
+        env:
+          VERSION_HISTORY_BACKEND_URL: ${{ vars.VERSION_HISTORY_BACKEND_URL }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = true ] && [ -z "$VERSION_HISTORY_BACKEND_URL" ]; then
+            export VERSION_HISTORY_BACKEND_URL=https://version-history.invalid
+          fi
+          node scripts/assemble-release.mjs
+
+      - name: Compile Pages API and WebSocket proxy without deploying
+        run: bunx wrangler pages functions build --build-output-directory=dist --outdir=pages-worker-dist
 
       - name: Upload tested release bundle
         uses: actions/upload-artifact@v4
@@ -113,6 +143,7 @@ jobs:
           path: |
             dist/
             worker-dist/
+            pages-worker-dist/
           retention-days: 7
 
       - name: Deploy DocRAG API Worker
@@ -145,6 +176,23 @@ jobs:
           echo "Collaboration API did not become healthy." >&2
           exit 1
 
+      - name: Deploy Version History backend
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        working-directory: version-history
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          VERSION_HISTORY_RAILWAY_SERVICE_ID: ${{ secrets.VERSION_HISTORY_RAILWAY_SERVICE_ID }}
+          RAILWAY_CALLER: skill:use-railway@1.2.1
+          RAILWAY_AGENT_SESSION: version-history-release-${{ github.run_id }}
+        run: npx -y @railway/cli@4.58.0 up . --path-as-root --service "$VERSION_HISTORY_RAILWAY_SERVICE_ID" --environment production --ci -m "Version history $GITHUB_SHA"
+
+      - name: Verify Version History backend
+        if: ${{ inputs.dry_run == false }}
+        env:
+          VERSION_HISTORY_BACKEND_URL: ${{ vars.VERSION_HISTORY_BACKEND_URL }}
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 --max-time 15 "$VERSION_HISTORY_BACKEND_URL/api/health"
+
       - name: Deploy gallery and demos to production
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         env:
@@ -160,6 +208,12 @@ jobs:
       - name: Verify production gallery version
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         run: node scripts/verify-production-gallery.mjs
+
+      - name: Verify production Version History route and API proxy
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 --max-time 15 https://demos.superdoc.dev/version-history/ | grep -q 'id="root"'
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 --max-time 15 https://demos.superdoc.dev/version-history/api/health
 
       - name: Deploy gallery and demos to staging
         id: staging

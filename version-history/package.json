@@ -1,0 +1,37 @@
+{
+  "name": "superdoc-version-history",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.25.0",
+  "scripts": {
+    "dev": "concurrently -k -n server,client \"node --watch server/server.mjs\" \"vite\"",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:browser": "playwright test",
+    "dev:client": "vite",
+    "dev:server": "node --watch server/server.mjs",
+    "start": "node server/server.mjs",
+    "test:server": "node --test server/*.test.mjs"
+  },
+  "dependencies": {
+    "@hocuspocus/provider": "2.15.3",
+    "@hocuspocus/server": "2.15.3",
+    "@vitejs/plugin-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "superdoc": "2.28.0",
+    "typescript": "latest",
+    "vite": "latest",
+    "ws": "8.18.3",
+    "yjs": "13.6.32"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "concurrently": "9.2.1",
+    "fflate": "0.8.2"
+  }
+}

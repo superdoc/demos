@@ -34,7 +34,7 @@ export async function checkRelease({ env = process.env, root = process.cwd(), fe
   const deployCurrent = env.DEPLOY_CURRENT === "true" && !simulation;
   const state = JSON.parse(await readFile(`${root}/.github/superdoc-release.json`, "utf8"));
   const deployed = env.SIMULATED_DEPLOYED || state.version;
-  const manifests = ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client"];
+  const manifests = ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client", "version-history"];
   const installed = await Promise.all(manifests.map(async (directory) => {
     const manifest = JSON.parse(await readFile(`${root}/${directory}/package.json`, "utf8"));
     return manifest.dependencies.superdoc;
