@@ -48,7 +48,7 @@ function Workspace({ session }: { session: RoomSession }) {
   return <div className="app-shell">
     <div className="document-column">
       <header className="topbar">
-        <h1>{selected ? timestamp(selected.createdAt) : 'Current version'}</h1>
+        <h1>{selected ? timestamp(selected.createdAt) : <>Current version <span className="room-name">· {session.roomId}</span></>}</h1>
         {selected && <button className="primary-button" disabled={saving} onClick={() => void selectVersion(null)}>Back to current version</button>}
         <span className="toolbar-status" role="status">{selected ? 'You’re viewing an earlier version' : saveLabels[history.status]}</span>
         <span className="connection-status" role="status">{connected ? 'Connected' : 'Reconnecting…'}</span>

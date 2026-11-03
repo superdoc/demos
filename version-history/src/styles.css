@@ -15,6 +15,7 @@ button:focus-visible, select:focus-visible { outline: 2px solid #1558d6; outline
 .document-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .topbar { display: flex; align-items: center; gap: 16px; min-height: 60px; padding: 0 24px; }
 .topbar h1 { margin: 0; font-size: 16px; font-weight: 600; }
+.room-name { color: #5f6368; font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
 .primary-button { padding: 12px 22px; color: #fff; background: #1558d6; border: 0; border-radius: 24px; font-size: 14px; font-weight: 600; }
 .primary-button:hover { background: #104bbd; }
 .mode-badge { font-size: 13px; color: #444746; }
