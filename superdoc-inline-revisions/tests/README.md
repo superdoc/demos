@@ -54,6 +54,13 @@ partial selections, nested locks, and wrapping a range across paragraphs.
 The same tests cover clicking existing locked controls, formatting shortcuts on
 partial selections, and rejecting keyboard-applied formatting in Reviewing mode.
 
+`document-actions.spec.ts` controls delayed selection reads to verify that a
+queued worker selection must match the intended range before the action queue
+releases formatting. It also checks capture restoration, mismatched targets,
+timeouts, refused selections, and worker failures. UI selection apply/restore
+only acknowledges queuing; one subsequent selection read is not a completion
+barrier.
+
 `standalone-toolbar.spec.ts` creates a separate temporary Vite app with a copy of
 only `src/components/DocumentToolbar`, the public integration example, and a DOCX
 fixture. It checks that copying the toolbar includes locked-control formatting,
