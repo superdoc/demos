@@ -1,7 +1,7 @@
 import type { ContextMenuConfig, ContextMenuSelectPayload } from 'superdoc';
 import type { BorrowedSuperDocUI, ContentControlInfo, ContentControlTarget, PartialBrowserDocumentApi, SelectionCapture } from 'superdoc/ui';
 import { checkReceipt } from '../components/DocumentToolbar/operationResults';
-import { runDocumentAction } from '../components/DocumentToolbar/documentActions';
+import { applyDocumentSelection, restoreDocumentSelection, runDocumentAction } from '../components/DocumentToolbar/documentActions';
 
 /** Extend the standard menu; capture the clicked control separately from the text range. */
 export function createContentControlMenu(getUI: () => BorrowedSuperDocUI | null, getDoc: () => PartialBrowserDocumentApi | null | undefined, onError: (message: string) => void) {
@@ -46,8 +46,7 @@ export function createContentControlMenu(getUI: () => BorrowedSuperDocUI | null,
       onError('');
       try {
         if (savedSelection) {
-          const restored = ui.selection.restore(savedSelection);
-          if (!restored.success) throw new Error('Select the text again before opening the menu.');
+          await restoreDocumentSelection(doc, ui, savedSelection);
         }
         const epoch = readiness.getRenderEpoch();
         if (action === 'wrap') {
@@ -62,7 +61,7 @@ export function createContentControlMenu(getUI: () => BorrowedSuperDocUI | null,
           if (result.success) {
             await readiness.whenPainted({ afterEpoch: epoch });
             const created = await doc.contentControls.get({ target: result.contentControl });
-            if (created.selectionTarget) ui.selection.apply(created.selectionTarget);
+            if (created.selectionTarget) await applyDocumentSelection(doc, ui, created.selectionTarget);
           }
         } else if (selectedControl) {
           const current = await doc.contentControls.get({ target: selectedControl.target });
@@ -70,9 +69,8 @@ export function createContentControlMenu(getUI: () => BorrowedSuperDocUI | null,
           checkReceipt(result);
           await readiness.whenPainted({ afterEpoch: epoch });
           const updated = await doc.contentControls.get({ target: current.target });
-          if (updated.selectionTarget) ui.selection.apply(updated.selectionTarget);
+          if (updated.selectionTarget) await applyDocumentSelection(doc, ui, updated.selectionTarget);
         }
-        await doc.selection.current();
       } catch (error) {
         onError(error instanceof Error ? error.message : 'The content control could not be updated.');
       }

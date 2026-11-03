@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ContentControlTarget } from 'superdoc/ui';
 import { useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import { useSelectionFormatting } from './useSelectionFormatting';
-import { runDocumentAction } from './documentActions';
+import { applyDocumentSelection, runDocumentAction } from './documentActions';
 import { isContentLocked } from './contentControlSelection';
 
 function shortcut(event: KeyboardEvent): { command: string; payload?: unknown } | null {
@@ -42,8 +42,7 @@ export function FormattingShortcuts() {
         if (!selection.empty && range?.start.kind === 'text' && range.end.kind === 'text' && (range.start.blockId !== range.end.blockId || range.start.offset !== range.end.offset)) return;
         const control = await getControl({ target });
         if (!isContentLocked(control) || !control.selectionTarget) return;
-        ui.selection.apply(control.selectionTarget);
-        await readSelection();
+        await applyDocumentSelection(doc, ui, control.selectionTarget);
       }).catch(() => setError('The content control could not be selected.'));
     };
     const handle = (event: KeyboardEvent) => {

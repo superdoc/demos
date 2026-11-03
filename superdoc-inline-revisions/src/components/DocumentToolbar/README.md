@@ -136,6 +136,7 @@ document through a sequence of separate calls.
 | `mutationPlanner.ts` | Converts typed text changes into SDK mutation steps and commits unlock → mutate → restore atomically. |
 | `contentControlSelection.ts` | Resolves text/SDT selections and finds the controls that intersect the selected range. |
 | `useSelectionFormatting.ts` | Routes toolbar and shortcut commands to the shared planner. |
+| `documentActions.ts` | Queues document actions and confirms the worker's restored selection before formatting proceeds. |
 | `FormattingShortcuts.tsx` | Intercepts editor formatting shortcuts in the capture phase and selects clicked locked controls. |
 | `DocumentToolbar.tsx` | Automatically mounts the sections and editor interactions, and binds the optional editor instance. |
 
@@ -152,6 +153,13 @@ pending. Viewing mode disables document mutations.
 
 Selection-dependent menus preserve the editor selection. Escape and outside
 click dismiss menus; arrow keys navigate menu options.
+
+UI selection apply/restore queues worker input and returns before it settles.
+`documentActions.ts` reads `doc.selection.current()` until the requested endpoints,
+story, and coordinate space match. Content-control actions keep their queue open
+through this acknowledgement, and toolbar-menu restoration awaits it too. A
+refused or unresolved restoration reports an error instead of treating one
+selection read as a completion barrier.
 
 
 The font-family menu previews each font name using the SDK's `previewFamily`

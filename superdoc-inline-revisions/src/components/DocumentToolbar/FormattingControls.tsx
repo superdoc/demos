@@ -6,6 +6,7 @@ import { useSuperDocFontOptions, useSuperDocFontSizeOptions, useSuperDocHost, us
 import { ToolbarIcon } from './ToolbarIcon';
 import type { IconName } from './ToolbarIcon';
 import { useSelectionFormatting } from './useSelectionFormatting';
+import { applyDocumentSelection, restoreDocumentSelection, waitForDocumentAction } from './documentActions';
 import './FormattingControls.css';
 
 type MenuId = 'fonts' | 'table' | 'underline' | 'case' | 'highlight' | 'color' | 'bullets' | 'numbers' | 'spacing';
@@ -47,7 +48,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const captureRef = useRef<SelectionCapture | null>(null);
   const tableTargetRef = useRef<SelectionTarget | null>(null);
   const state = (command: string) => toolbar.commands[command];
-  const readOnly = formatting.readOnly || formatting.pending;
+  const readOnly = formatting.readOnly || formatting.pending || formattingPending;
   const font = String(state('font-family')?.value ?? 'Calibri');
   const size = String(state('font-size')?.value ?? '11');
   const fontOptions = fonts.some((option) => option.value === font) ? fonts : [{ label: font, value: font, previewFamily: font }, ...fonts];
@@ -61,21 +62,31 @@ export function FormattingControls({ className = '' }: { className?: string }) {
     captureRef.current = null;
     tableTargetRef.current = null;
   };
-  const restore = () => {
+  const restore = async () => {
     const capture = captureRef.current;
     captureRef.current = null;
-    if (capture) ui?.selection.restore(capture);
+    const doc = host?.activeEditor?.doc;
+    if (capture && ui && doc) {
+      await waitForDocumentAction(doc);
+      await restoreDocumentSelection(doc, ui, capture);
+    }
     return capture;
   };
   const reportError = (message: string) => setStatus(message);
   const run = async (command: string, payload?: unknown) => {
-    restore();
-    if (command === 'table-insert' && tableTargetRef.current) ui?.selection.apply(tableTargetRef.current);
-    closeMenu();
+    if (readOnly) return;
+    setFormattingPending(true);
     setStatus('');
+    const tableTarget = tableTargetRef.current;
+    const restored = restore();
+    closeMenu();
     try {
+      await restored;
+      const doc = host?.activeEditor?.doc;
+      if (command === 'table-insert' && tableTarget && ui && doc) await applyDocumentSelection(doc, ui, tableTarget);
       await formatting.execute(command, payload);
     } catch { reportError('The formatting could not be applied to this selection.'); }
+    finally { setFormattingPending(false); }
   };
   const openMenu = (id: MenuId, trigger: HTMLButtonElement) => {
     if (menu?.id === id) return closeMenu();
@@ -128,23 +139,23 @@ export function FormattingControls({ className = '' }: { className?: string }) {
 
   const verticalAlign = async (value: 'subscript' | 'superscript') => {
     if (readOnly || formattingPending) return;
-    restore();
     const doc = host?.activeEditor?.doc;
     if (!doc?.selection?.current || !doc.format?.apply) return;
     setFormattingPending(true);
     try {
+      await restore();
       await formatting.execute(value);
     } catch { reportError('This formatting could not be applied.'); }
     finally { setFormattingPending(false); }
   };
   const changeCase = async (transform: (text: string) => string) => {
     if (readOnly || formattingPending) return;
-    restore();
-    closeMenu();
     const doc = host?.activeEditor?.doc;
     if (!doc?.selection?.current || !doc.invoke) return;
     setFormattingPending(true);
     try {
+      await restore();
+      closeMenu();
       const selection = await formatting.getSelection();
       if (selection.empty || !selection.selectionTarget || selection.text === undefined) return;
       const text = transform(selection.text);
@@ -155,7 +166,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   };
   const button = (label: string, icon: IconName, options: ToolOptions) => (
     <button type="button" className={`document-toolbar-tool ${options.className ?? ''}${(options.active ?? (options.command ? state(options.command)?.active : false)) ? ' is-active' : ''}`} aria-label={label} title={label}
-      disabled={formatting.pending || (options.disabled ?? (options.command ? !formatting.canExecute(options.command) : readOnly))}
+      disabled={readOnly || (options.disabled ?? (options.command ? !formatting.canExecute(options.command) : false))}
       aria-pressed={options.command || options.active !== undefined ? options.active ?? state(options.command ?? '')?.active ?? false : undefined}
       aria-haspopup={options.menu ? 'menu' : undefined} aria-expanded={options.menu ? menu?.id === options.menu : undefined}
       onMouseDown={(event) => event.preventDefault()}
