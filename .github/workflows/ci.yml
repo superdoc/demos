@@ -165,6 +165,11 @@ jobs:
             manager: npm
             install: npm ci
             build: npm run build
+          - demo: version-history
+            directory: version-history
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+            build: pnpm build
     steps:
       - uses: actions/checkout@v6
         with:
@@ -191,12 +196,19 @@ jobs:
           ${{ matrix.install }}
           ${{ matrix.build }}
       - name: Install browser test runner
+        if: matrix.demo != 'version-history'
         working-directory: tests
         run: pnpm install
       - name: Install Chromium
+        if: matrix.demo != 'version-history'
         working-directory: tests
         run: pnpm exec playwright install --with-deps chromium
+      - name: Install standalone demo Chromium
+        if: matrix.demo == 'version-history'
+        working-directory: ${{ matrix.directory }}
+        run: pnpm exec playwright install --with-deps chromium
       - name: Run gallery smoke test
+        if: matrix.demo != 'version-history'
         working-directory: tests
         env:
           DEMO: ${{ matrix.demo }}
