@@ -8,7 +8,8 @@ the public HTTP routes.
 The main idea is to record native Word tracked changes while presenting an
 ordinary editing experience. A user explicitly saves a DOCX version. Opening
 that immutable file exposes its revisions as a changelog, with native highlights
-and application-owned review UI.
+and application-owned review UI. After successful storage, the application
+accepts the captured live revisions to start a fresh edit interval.
 
 ## Ownership and component boundaries
 
@@ -19,6 +20,7 @@ and application-owned review UI.
 | [src/DocumentEditor.tsx](src/DocumentEditor.tsx) | Own one SuperDoc instance, its native toolbar, document mode, collaboration configuration, readiness, and destruction. Reused for live and historical documents. |
 | [src/session.ts](src/session.ts) | Resolve URL identity, acquire a room session, and provide HTTP paths, bearer headers, response checking, and the WebSocket URL. |
 | [src/useVersionHistory.ts](src/useVersionHistory.ts) | Own HTTP version-list polling, manual export/upload, download caching, save state, and stale-response protection. |
+| [src/snapshot.ts](src/snapshot.ts) | Capture the live document revision and revision-preserving DOCX; accept its changes after storage using an atomic guarded Document API decision. |
 | [src/HistoricalVersion.tsx](src/HistoricalVersion.tsx) | Bind the historical editor to its own SuperDoc custom UI provider, portal the changelog into the sidebar, and implement author hover bubbles. |
 | [src/ChangesPanel.tsx](src/ChangesPanel.tsx) | Read the selected snapshot's revisions through Document API; use custom UI readiness, active state, and navigation. |
 | [src/changes.ts](src/changes.ts) | Format revision text, authors, dates, occurrence keys, and sorting. Contains no storage or editor lifecycle logic. |
@@ -70,7 +72,7 @@ SuperDoc configuration in `DocumentEditor` is:
 
 ```ts
 documentMode: 'suggesting',
-role: 'suggester',
+role: 'editor',
 trackChanges: { enabled: false },
 interaction: { trackedChanges: { allowDecisions: false } },
 ```
@@ -79,7 +81,8 @@ interaction: { trackedChanges: { allowDecisions: false } },
 disable recording in suggesting mode. Supported edits still become revisions
 with their native author, date, and change type. Do not change the underlying
 mode to `editing`: that would make new edits direct and remove them from this
-revision-based changelog.
+revision-based changelog. Keep the live role as `editor`: the `suggester` role
+denies the programmatic acceptance required to close an edit interval.
 
 The native toolbar excludes `document-mode`, `track-changes-accept-selection`,
 and `track-changes-reject-selection`. Built-in comments and the context menu
@@ -91,7 +94,9 @@ events as an audit stream, or attach custom metadata to every typed character.
 SuperDoc owns recording and range identity. Adjacent typing can merge into one
 revision, and undo can remove a revision. The changelog is the set of pending
 revisions contained in a snapshot, not a permanent per-keystroke audit log or a
-diff against the previous version.
+computed diff. Successful saves accept the captured live revisions, so following
+versions list changes from the next interval. Native acceptance is undoable;
+undoing it can restore revisions from an earlier interval.
 
 The browser session's `user` config supplies edit author identity. A version's
 server-stamped `createdBy` identifies the person saving the snapshot; that file
@@ -117,9 +122,29 @@ existing version instead of overwriting its file. A new explicit save uses a
 new ID. Do not export with `final` or `original` policies: those resolve pending
 revisions and remove the information needed by the changelog.
 
+Only after the upload succeeds and the immutable file is cached/listed does
+`finishCheckpoint` accept changes in the live editor. `captureSnapshot` reads
+`api.info({}).revision` before export. `acceptSnapshotChanges` paginates
+`trackChanges.list({ in: 'all', limit: 200, offset })`, checks each page's
+`evaluatedRevision`, and accepts the collected IDs in one atomic
+`trackChanges.decide({ decision: 'accept', target: { kind: 'ids', ids } },
+{ expectedRevision })`. Explicit IDs surface permission errors instead of
+silently skipping changes during a bulk decision. A successful no-op receipt
+with nonempty IDs is not considered a completed reset.
+
+Export/upload failures leave live changes untouched. If the revision changes
+during the save, leave all live revisions pending and report that the snapshot
+was saved but the reset was skipped. Never retry against a newer revision:
+doing so could accept another user's edits without snapshotting them. Until
+the next successful reset, adjacent snapshots may contain overlapping edits.
+For other cleanup failures, retain the saved version and offer a guarded
+cleanup retry without another export/upload. Report this separately from a
+failed snapshot save. Successful live acceptance propagates through the native
+collaboration connection and does not modify any historical file.
+
 Saving is manual, including the first version. Typing, mounting, and browsing
 history must not create snapshots. The app disables local editor input and
-version navigation during export/upload and coalesces in-flight save calls.
+version navigation during export/upload/acceptance and coalesces in-flight save calls.
 This only locks this browser's UI; it is not a distributed lock on other editors.
 A snapshot contains the state available to the exporting editor, rather than
 an atomic global checkpoint of every client's outstanding work.
@@ -288,6 +313,10 @@ read-only previews, hidden revisions, sorting, pointer navigation/hover,
 pagination past 200 changes, and two-editor collaboration with polled history.
 Check that source edits remain attributed to their original authors and that
 viewing an old snapshot never modifies or replaces the current room.
+`snapshot-boundaries.spec.ts` checks noncumulative snapshots, retained revisions
+on upload failure, and concurrent edits during a delayed upload.
+`snapshot-api.spec.ts` checks pagination, guarded acceptance, capture policies,
+cleanup retries, and detection of a no-op acceptance.
 
 Keep generated documents, live room state, screenshots, and test output in the
 ignored `server/data/`, `artifacts/`, or test-output directories. Commit the

@@ -89,7 +89,7 @@ test('switching snapshots uses each reopened document catalog', async ({ page })
   await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();
   await openInitialVersion(page);
   await page.getByRole('button', { name: /^Version 2 ·/ }).click();
-  await expect(rows(page)).toHaveCount(4);
+  await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).filter({ hasText: 'A new hidden edit.' })).toContainText('You');
   await page.getByRole('button', { name: /^Version 1 ·/ }).click();
   await expect(rows(page)).toHaveCount(3);
@@ -104,6 +104,7 @@ test('the catalog includes edits beyond the first Document API page', async ({ p
   await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Save version', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button', { name: /^Version 1 ·/ }).click();
   await expect(rows(page)).toHaveCount(205);
   const lastEdit = rows(page).filter({ hasText: 'Recorded edit 205.' });
@@ -111,4 +112,10 @@ test('the catalog includes edits beyond the first Document API page', async ({ p
   await lastEdit.click();
   await expect(lastEdit).toHaveAttribute('aria-current', 'true');
   await expect(page.getByLabel('Historical document', { exact: true }).locator('.track-insert-dec').filter({ hasText: 'Recorded edit 205.' })).toBeInViewport();
+  await page.getByRole('button', { name: 'Current version Live Continue editing You' }).click();
+  await page.getByRole('button', { name: 'Save version', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Version 2 ·/ }).click();
+  await expect(rows(page)).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Version edits' })).toContainText('No tracked edits in this version.');
 });

@@ -55,6 +55,16 @@ test('two editors share live edits, poll saved versions, and retain both authors
     await expect(live(bob)).toContainText('A later shared edit.');
     await expect(version(bob, 1)).toBeVisible();
     await expect(version(bob, 2)).toBeVisible();
+    await edit(bob, 'Bob started the next checkpoint. ');
+    await bob.getByRole('button', { name: 'Save version', exact: true }).click();
+    await expect(bob.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();
+    await expect(bob.getByRole('alert')).toHaveCount(0);
+    await version(bob, 3).click();
+    await expect(changes.locator('.change-card')).toHaveCount(1);
+    await expect(changes.locator('.change-card')).toContainText('Bob started the next checkpoint.');
+    await expect(changes.locator('.change-card')).toContainText('Bob');
+    await expect(bob.getByLabel('Historical document', { exact: true })).toContainText('Alice wrote this.');
+    await expect(bob.getByLabel('Historical document', { exact: true })).toContainText('A later shared edit.');
   } finally {
     await aliceContext.close();
     await bobContext.close();
