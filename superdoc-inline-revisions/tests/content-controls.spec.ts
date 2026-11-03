@@ -214,12 +214,12 @@ test('a range spanning paragraphs wraps in a block content control', async ({ pa
   await openControlFixture(page);
   const first = sampleRun(page, 'First paragraph.');
   const second = sampleRun(page, 'Second paragraph.');
-  const a = (await first.boundingBox())!;
-  const b = (await second.boundingBox())!;
-  await page.mouse.move(a.x + 1, a.y + a.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(b.x + b.width - 1, b.y + b.height / 2, { steps: 12 });
-  await page.mouse.up();
+  // Locator clicks wait for layout stability after the fixture replaces the editor.
+  // Shift-click spans both paragraphs without racing raw drag coordinates.
+  await first.click({ position: { x: 1, y: 5 } });
+  const bounds = (await second.boundingBox())!;
+  await second.click({ modifiers: ['Shift'], position: { x: bounds.width - 1, y: bounds.height / 2 } });
+  await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toBeVisible();
   await first.click({ button: 'right' });
   await menuItem(page, 'Wrap in content control').click();
   const control = first.locator('xpath=ancestor::*[@data-sdt-scope="block"][1]');
