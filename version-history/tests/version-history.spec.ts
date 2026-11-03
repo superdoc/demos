@@ -115,6 +115,8 @@ test('native toolbar edits are saved and historical formatting controls stay dis
   await expect(toolbar).toBeVisible();
   await expect(live(page).locator('.superdoc-text-run').filter({ hasText: /^DISCLOSURE$/ })).toHaveCSS('font-style', 'italic');
   await toolbar.locator('[data-item="btn-undo"]').click();
+  // Acceptance is a native undo step; undo it before undoing the formatting.
+  await toolbar.locator('[data-item="btn-undo"]').click();
   await expect(live(page).locator('.superdoc-text-run').first()).toHaveCSS('font-style', 'normal');
   await page.getByRole('button', { name: 'Save version', exact: true }).click();
   await expect(versions(page)).toHaveCount(4);
@@ -150,7 +152,8 @@ test('snapshots preserve suggested insertions and deletions as visible review ma
 
   await page.getByRole('button', { name: /^Version 3 ·/ }).click();
   await expect(preview(page)).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
-  await expect(preview(page).locator('.track-insert-dec').filter({ hasText: 'Suggested insertion.' })).toBeVisible();
+  await expect(preview(page).locator('.track-insert-dec').filter({ hasText: 'Suggested insertion.' })).toHaveCount(0);
+  await expect(preview(page)).toContainText('Suggested insertion.');
   await expect(preview(page).locator('.track-delete-dec').filter({ hasText: 'AGREEMENT' })).toBeVisible();
   await expect(page.locator('#version-document-toolbar [data-item="btn-acceptTrackedChangeBySelection"]:not(.sd-disabled), #version-document-toolbar [data-item="btn-rejectTrackedChangeOnSelection"]:not(.sd-disabled)')).toHaveCount(0);
   await page.screenshot({ path: 'artifacts/suggestions-preview.png' });

@@ -64,6 +64,10 @@ function Workspace({ session }: { session: RoomSession }) {
         <span>{history.error}</span>
         <button onClick={() => void history.save().catch(() => {})}>Retry</button>
       </div>}
+      {history.checkpointWarning && <div className="save-error" role="alert">
+        <span>{history.checkpointWarning.message}</span>
+        {history.checkpointWarning.retry && <button disabled={saving || !connected} onClick={() => void history.retryCheckpoint()}>Retry resetting edit history</button>}
+      </div>}
 
       <main ref={stage} className="document-stage" aria-label={selected ? 'Version preview' : 'Current document'}>
         <div className="editor-session" hidden={selected !== null} inert={selected !== null || saving}>

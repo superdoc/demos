@@ -58,7 +58,8 @@ export function DocumentEditor({ document, readOnly = false, toolbarContainer, o
       viewing: { trackedChanges: 'markup' },
       trackChanges: { enabled: readOnly },
       interaction: { trackedChanges: { allowDecisions: false } },
-      role: readOnly ? 'viewer' : 'suggester',
+      // The editor role permits the post-save API acceptance; UI decisions stay disabled.
+      role: readOnly ? 'viewer' : 'editor',
       allowSelectionInViewMode: true,
       user: session?.user ?? { name: 'You', email: 'you@example.com' },
       ui: {
