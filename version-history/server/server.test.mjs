@@ -4,8 +4,21 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { Map as YMap } from 'yjs';
 import { createBackend } from './server.mjs';
+
+test('Railway startup refuses ephemeral storage and data outside its persistent volume', () => {
+  for (const mountPath of ['', '/different-volume']) {
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('./server.mjs', import.meta.url))], {
+      env: { ...process.env, RAILWAY_ENVIRONMENT_ID: 'test', RAILWAY_VOLUME_MOUNT_PATH: mountPath, DATA_DIRECTORY: '/data' },
+      encoding: 'utf8', timeout: 10_000,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /Attach a persistent volume/);
+  }
+});
 
 async function start(directory) {
   const backend = createBackend({ dataDirectory: directory });

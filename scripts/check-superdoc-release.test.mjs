@@ -34,7 +34,7 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(`${root}/.github`);
   await writeFile(`${root}/.github/superdoc-release.json`, JSON.stringify({ version: "2.24.0" }));
-  for (const directory of ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client"]) {
+  for (const directory of ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client", "version-history"]) {
     await mkdir(`${root}/${directory}`, { recursive: true });
     await writeFile(`${root}/${directory}/package.json`, JSON.stringify({ dependencies: { superdoc: "2.24.0" } }));
   }

@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { renderGallery } from "./render-gallery.mjs";
+import { assembleVersionHistory } from "./version-history-release.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const output = path.join(root, "dist");
@@ -30,4 +31,6 @@ await cp(
 );
 
 await renderGallery({ mode: "production", output: path.join(output, "index.html") });
+// Publish this route independently of demos.json so it stays off the homepage.
+await assembleVersionHistory({ root, output, backendUrl: process.env.VERSION_HISTORY_BACKEND_URL });
 console.log(`Assembled ${manifest.length} demos from demos.json`);

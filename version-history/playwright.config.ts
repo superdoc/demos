@@ -17,8 +17,8 @@ export default defineConfig({
     url: 'http://127.0.0.1:4193/api/health',
     reuseExistingServer: !process.env.CI,
   }, {
-    command: 'pnpm build && BACKEND_URL=http://127.0.0.1:4193 pnpm preview --host 127.0.0.1 --port 4194 --strictPort',
-    url: 'http://127.0.0.1:4194',
+    command: 'BASE_PATH=/version-history/ pnpm build && BASE_PATH=/version-history/ BACKEND_URL=http://127.0.0.1:4193 pnpm preview --host 127.0.0.1 --port 4194 --strictPort',
+    url: 'http://127.0.0.1:4194/version-history/',
     reuseExistingServer: !process.env.CI,
   }],
 });

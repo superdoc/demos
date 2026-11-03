@@ -4,6 +4,8 @@ superdoc-inline-revisions/package.json
 superdoc-inline-revisions/pnpm-lock.yaml
 template-builder-document-api-v2-demo/package.json
 template-builder-document-api-v2-demo/pnpm-lock.yaml
+version-history/package.json
+version-history/pnpm-lock.yaml
 canonical-collaboration-demo/client/package.json
 canonical-collaboration-demo/client/package-lock.json
 canonical-collaboration-demo/server/package.json

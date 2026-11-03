@@ -14,6 +14,7 @@ async function typeAtStart(page: Page, text: string) {
 test.beforeEach(async ({ page }) => {
   await page.goto(`/?room=${crypto.randomUUID()}&user=You`);
   await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled({ timeout: 30_000 });
+  expect(new URL(page.url()).pathname).toBe('/version-history/');
   await expect(versions(page)).toHaveCount(1);
   await page.getByRole('button', { name: 'Save version', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();

@@ -67,6 +67,8 @@ jobs:
           bun run --cwd rag build:web
           pnpm --dir superdoc-inline-revisions build
           pnpm --dir template-builder-document-api-v2-demo build
+          BASE_PATH=/version-history/ pnpm --dir version-history build
+          pnpm --dir version-history test:server
           npm ci --prefix canonical-collaboration-demo/client
           VITE_API_URL="$COLLAB_API_URL" npm run build --prefix canonical-collaboration-demo/client
       - name: Run unit tests when present
@@ -90,6 +92,8 @@ jobs:
           node scripts/run-optional-tests.mjs superdoc-inline-revisions browser pnpm
           node scripts/run-optional-tests.mjs template-builder-document-api-v2-demo browser pnpm
           node scripts/run-optional-tests.mjs canonical-collaboration-demo/client browser npm
+          pnpm --dir version-history exec playwright install --with-deps chromium
+          node scripts/run-optional-tests.mjs version-history browser pnpm
       - name: Rebuild DocRAG for its production base path
         working-directory: rag
         env:
@@ -100,6 +104,8 @@ jobs:
         working-directory: rag/apps/api
         run: bunx wrangler deploy --dry-run --outdir ../../../worker-dist
       - name: Assemble release candidate
+        env:
+          VERSION_HISTORY_BACKEND_URL: ${{ vars.VERSION_HISTORY_BACKEND_URL || 'https://version-history.invalid' }}
         run: node scripts/assemble-release.mjs
       - name: Upload release candidate
         uses: actions/upload-artifact@v4

@@ -53,3 +53,22 @@ pnpm test
 ```
 
 `pnpm start` serves the built frontend, API and WebSockets from one origin on port 4191. Browser tests run an isolated backend and frontend on ports 4193/4194 with generated rooms and data under ignored `artifacts/`.
+
+## Gallery deployment
+
+The release bundle publishes this demo at **https://demos.superdoc.dev/version-history/** without adding a homepage card or changing `demos.json`. The production build uses `BASE_PATH=/version-history/`. API and collaboration URLs resolve relative to that application path, so requests stay on the gallery origin:
+
+- `/version-history/api/*` forwards to the backend's `/api/*`.
+- `/version-history/collaboration` forwards WebSocket upgrades to `/collaboration`.
+
+`scripts/assemble-release.mjs` copies the frontend and emits a Cloudflare Pages `_worker.js` proxy plus `_routes.json`. Only the API and collaboration routes invoke the Worker; the homepage and frontend assets remain static. The backend origin is baked into the release bundle from `VERSION_HISTORY_BACKEND_URL`; it is public configuration, not a credential. The proxy forwards room tokens and DOCX bodies without enabling cross-origin browser access.
+
+Before the first live release:
+
+1. Create a dedicated Railway service in the project accessible to the existing GitHub `RAILWAY_TOKEN`. Deployments upload `version-history/` as the service root and use its `Dockerfile` and `railway.json`. Keep a single replica.
+2. Attach a persistent Railway volume at `/data`. The Docker image sets `DATA_DIRECTORY=/data` and listens on `0.0.0.0` using Railway's `PORT`. Startup refuses Railway deployments whose data directory is outside the attached volume. Give the service a public HTTPS domain and use `/api/health` for its health check.
+3. Set the GitHub repository **variable** `VERSION_HISTORY_BACKEND_URL` to that HTTPS origin, without a path or query. Set the repository **secret** `VERSION_HISTORY_RAILWAY_SERVICE_ID` to the new service ID. The existing `RAILWAY_TOKEN` must have access to this service.
+
+The deployment workflow checks those settings before a live release, deploys the backend, verifies health, and then publishes the Pages bundle. It verifies the public frontend and API route after production deployment. Staging Pages releases use the same configured backend; use a different room query parameter to isolate documents. Dry runs can build with a reserved `.invalid` placeholder when the backend URL has not been configured; they do not deploy services or create storage.
+
+CI runs the backend and browser integration tests. The browser suite builds and serves the app under `/version-history/`, including two-editor collaboration and version saving, rather than only testing the root path. Release automation also tests proxy forwarding, WebSocket upgrade handling, and unlisted bundle assembly. Automated SuperDoc dependency updates include this demo's manifest and lockfile.

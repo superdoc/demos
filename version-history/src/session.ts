@@ -20,9 +20,15 @@ let clientId = sessionStorage.getItem('version-history-client');
 if (!clientId) { clientId = crypto.randomUUID(); sessionStorage.setItem('version-history-client', clientId); }
 const identity = { clientId, name };
 
-export const apiPath = (session: RoomSession, suffix: string) => `/api/rooms/${encodeURIComponent(session.roomId)}/${suffix}`;
+const applicationUrl = new URL(import.meta.env.BASE_URL, window.location.href);
+const roomApiPath = (room: string, suffix: string) => new URL(`api/rooms/${encodeURIComponent(room)}/${suffix}`, applicationUrl).pathname;
+export const apiPath = (session: RoomSession, suffix: string) => roomApiPath(session.roomId, suffix);
 export const authHeaders = (session: RoomSession) => ({ Authorization: `Bearer ${session.token}` });
-export const collaborationUrl = () => `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/collaboration`;
+export const collaborationUrl = () => {
+  const target = new URL('collaboration', applicationUrl);
+  target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
+  return target.href;
+};
 
 export async function checked(response: Response): Promise<Response> {
   if (!response.ok) {
@@ -42,7 +48,7 @@ export function useRoomSession() {
     setError('');
     void (async () => {
       while (!controller.signal.aborted) {
-        const response = await checked(await fetch(`/api/rooms/${encodeURIComponent(roomId)}/session`, {
+        const response = await checked(await fetch(roomApiPath(roomId, 'session'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(identity), signal: controller.signal,
         }));

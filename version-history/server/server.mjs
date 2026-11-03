@@ -204,7 +204,13 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const backend = createBackend({ dataDirectory: process.env.DATA_DIRECTORY });
+  const mountPath = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  const dataDirectory = process.env.DATA_DIRECTORY || mountPath;
+  if (process.env.RAILWAY_ENVIRONMENT_ID && (!mountPath || !dataDirectory
+    || (path.resolve(dataDirectory) !== path.resolve(mountPath) && !path.resolve(dataDirectory).startsWith(path.resolve(mountPath) + path.sep)))) {
+    throw new Error('Attach a persistent volume and set DATA_DIRECTORY inside it before deploying version history to Railway');
+  }
+  const backend = createBackend({ dataDirectory });
   const port = Number(process.env.PORT ?? 4191);
   backend.server.listen(port, process.env.HOST ?? '127.0.0.1', () => console.log(`Version history backend: http://127.0.0.1:${port}`));
   let closing = false;

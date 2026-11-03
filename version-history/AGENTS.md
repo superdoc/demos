@@ -24,11 +24,25 @@ and application-owned review UI.
 | [src/changes.ts](src/changes.ts) | Format revision text, authors, dates, occurrence keys, and sorting. Contains no storage or editor lifecycle logic. |
 | [server/server.mjs](server/server.mjs) | Serve HTTP API/static assets, attach Hocuspocus WebSockets, coordinate room initialization, and persist room state and immutable versions. |
 | [vite.config.ts](vite.config.ts) | Proxy `/api` and `/collaboration` during development and preview. |
+| [../scripts/version-history-release.mjs](../scripts/version-history-release.mjs) | Copy the frontend into the gallery's `/version-history/` route and generate Pages proxy artifacts without adding a homepage entry. |
+| [../scripts/version-history-proxy.mjs](../scripts/version-history-proxy.mjs) | Forward the published route's API and WebSocket requests to the configured Railway backend. |
+| [Dockerfile](Dockerfile), [railway.json](railway.json) | Package and health-check the single-replica backend; live room/version data requires an attached persistent volume. |
 
 The HTTP API and WebSocket service are logically separate but currently live in
 the same backend file and listen on the same HTTP server. There is no separate
 backend changelog processor: revision extraction happens in the browser after
 opening a saved DOCX.
+
+Production uses static Cloudflare Pages assets at `/version-history/` and a
+Pages Worker proxy for `/version-history/api/*` and
+`/version-history/collaboration`. It strips the application prefix before
+forwarding requests to Railway. Keep frontend URLs relative to the application
+base; hardcoded `/api` or `/collaboration` paths bypass that proxy when deployed.
+The release workflow requires `VERSION_HISTORY_BACKEND_URL` (repository
+variable), `VERSION_HISTORY_RAILWAY_SERVICE_ID` (repository secret), and access
+through the existing `RAILWAY_TOKEN`. Attach a volume at `/data` before the first
+backend deployment. The demo stays outside `demos.json` so it has no homepage
+card. See [README deployment setup](README.md#gallery-deployment).
 
 ```text
 Live SuperDoc <---- WebSocket /collaboration ----> Hocuspocus <--> room.yjs
@@ -264,7 +278,9 @@ pnpm test        # Browser integration checks
 
 Backend environment variables: `PORT`, `HOST`, `DATA_DIRECTORY`.
 Vite proxy override: `BACKEND_URL`. See `playwright.config.ts` for the isolated
-test ports and storage paths.
+test ports and storage paths. `BASE_PATH=/version-history/` builds the frontend
+for the gallery route; browser tests exercise that prefix. The Docker image is
+backend-only; the release workflow publishes frontend assets through Pages.
 
 For behavior changes, run the relevant tests. Backend coverage lives in
 `server/server.test.mjs`; browser coverage in `tests/` exercises manual saving,
