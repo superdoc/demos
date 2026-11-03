@@ -41,6 +41,11 @@ jobs:
             manager: pnpm
             install: pnpm install --frozen-lockfile
             check: pnpm build
+          - demo: version-history
+            directory: version-history
+            manager: pnpm
+            install: pnpm install --frozen-lockfile
+            check: pnpm build && pnpm test:server
           - demo: template-builder-api-v2
             directory: template-builder-document-api-v2-demo
             manager: pnpm
