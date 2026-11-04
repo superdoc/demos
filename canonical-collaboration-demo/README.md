@@ -148,6 +148,8 @@ The agent uses OpenAI streaming. Ordinary text writes always use the streaming t
 
 Set `DEFAULT_DOCUMENT_PATH` in the local `.env` file to override the bundled room template. Initialization preserves an existing room and coalesces simultaneous requests for the same new room.
 
+In the agent panel's **Reviewing** mode, the system prompt instructs the agent to add an **Agent** comment immediately after each suggested edit, with a brief rationale anchored to the affected passage or paragraph. This includes streamed paragraphs once they finish. Editing mode does not include this instruction. Comment creation uses the existing native comment tools; compliance is guided by the prompt rather than enforced by the host.
+
 A room contains one document with one stable document ID. Creating or uploading another document calls the Node SDK's `replaceFile()` on the existing backend document session. This atomically resets the shared content without replacing the collaboration identity. Replacement starts a new metadata generation and clears the previous chat history.
 
 The chat panel is isolated in `client/src/components/ChatPanel.tsx`. It communicates only through the public HTTP API and can be replaced with another agent interface.

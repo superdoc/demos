@@ -58,6 +58,20 @@ test('selected text scopes the model request while keeping prompt history readab
   assert.equal(history[0].selectedText, selectedText);
 });
 
+test('Reviewing asks for a brief rationale comment after every suggestion; Editing does not', async () => {
+  for (const isSuggesting of [true, false]) {
+    const h = harness([{ role: 'assistant', content: 'Done.' }]);
+    await h.agent.run(h.document, 'Revise this passage.', [], isSuggesting, new AbortController().signal);
+    const instructions = h.requests[0].messages[0].content;
+    if (isSuggesting) {
+      assert.match(instructions, /REVIEWING MODE: EXPLAIN EACH SUGGESTION/);
+      assert.match(instructions, /action="add_comments"/);
+      assert.match(instructions, /brief user-facing rationale/);
+      assert.match(instructions, /immediately after each edit/);
+    } else assert.doesNotMatch(instructions, /REVIEWING MODE: EXPLAIN EACH SUGGESTION/);
+  }
+});
+
 test('a later prompt without a selection has no current target and retains earlier selection context', async () => {
   const h = harness([{ role: 'assistant', content: 'Done.' }]);
   const history = [{ role: 'user', content: 'Shorten this.', selectedText: 'Earlier passage.' }, { role: 'assistant', content: 'Done.' }];
@@ -73,6 +87,19 @@ const call = (tool, args, content = null) => ({ role: 'assistant', content, tool
 ] });
 const createSource = (title) => call('superdoc_references', { action: 'create', type: 'report', fields: { title }, expectedRevision: '1' });
 const citation = (sourceId, anchor, expectedRevision = '1', content) => call('superdoc_insert_citation', { sourceId, anchor, expectedRevision }, content);
+
+test('Reviewing saves comments directly while keeping document edits tracked', async () => {
+  const actions = ['add_comments', 'comment_paragraphs', 'reply_to_comment', 'resolve_comments'];
+  const h = harness([
+    ...actions.map((action) => call('superdoc_perform_action', { action, changeMode: 'tracked' })),
+    call('superdoc_perform_action', { action: 'format_text', changeMode: 'direct' }),
+    { role: 'assistant', content: 'Suggested edits and rationale comments added.' },
+  ]);
+  await h.agent.run(h.document, 'Revise and explain.', [], true, new AbortController().signal);
+  assert.deepEqual(h.dispatches.map(({ args }) => [args.action, args.changeMode]), [
+    ...actions.map((action) => [action, 'direct']), ['format_text', 'tracked'],
+  ]);
+});
 
 test('repeated invalid anchors stop across inspections and report only successful mutations', async () => {
   const h = harness([

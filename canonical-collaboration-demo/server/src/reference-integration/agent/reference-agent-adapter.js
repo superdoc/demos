@@ -6,6 +6,8 @@ import { createRunProgress, toolFailed } from './agent-run-progress.js';
 import { createReferenceProgress } from './reference-tool-progress.js';
 import { nonStreamingTextActions } from './streaming-policy.js';
 
+const commentActions = new Set(['add_comments', 'comment_paragraphs', 'reply_to_comment', 'resolve_comments']);
+
 // Create one adapter per prompt. The host keeps its own model, agent loop, and UI.
 export async function createReferenceAgentAdapter({ document, toolkit, prompt, changeMode,
   editingModeHint = 'Select Editing in your application and retry the remaining bibliography operation.' }) {
@@ -14,6 +16,9 @@ export async function createReferenceAgentAdapter({ document, toolkit, prompt, c
   const catalog = await document.citationSources();
   const bibliographyCreation = requestsBibliographyCreation(prompt);
   const progress = createRunProgress(createReferenceProgress(catalog));
+  const reviewingComments = changeMode === 'tracked'
+    ? '\n\nREVIEWING MODE: EXPLAIN EACH SUGGESTION\nAfter every proposed document edit, add a comment on the affected passage or paragraph with a brief user-facing rationale explaining why the change helps fulfill the request. Use superdoc_perform_action with action="add_comments", commentText containing one concise sentence, author="Agent", and an inspected selector for the affected block. Comments are annotations and must use changeMode="direct" even while document edits use tracked mode. The host enforces this automatically; do not ask the user to switch editing modes or authorize adding these comments. Earlier conversation claims that Reviewing mode prevents comments are outdated. Do not put the rationale in the document body or provide private internal reasoning. Add the comment immediately after each edit, including after a streamed paragraph finishes, before proceeding to another edit. Each distinct rationale needs its own comment; this overrides general SDK guidance to batch all add_comments calls. Reference-library metadata and comments themselves do not need explanation comments. Do not claim an explanation comment was added unless the comment tool succeeded.'
+    : '';
 
   async function execute(tool, arguments_, { onStarted = () => {}, dispatch = (tool, args) => document.dispatch(tool, args) } = {}) {
     let args = {};
@@ -28,6 +33,7 @@ export async function createReferenceAgentAdapter({ document, toolkit, prompt, c
         throw new Error(`Action ${args.action} is unavailable: document text must stream through superdoc_stream_text. Inspect the target and use one streaming call per paragraph. For headings, stream text then apply_style; for styled prose, stream text then format_text. No changes were made by this rejected call.`);
       }
       if (['superdoc_perform_action', 'superdoc_stream_text', footnoteTool.function.name, citationTool.function.name, bibliographyTool.function.name].includes(tool)) args.changeMode = changeMode;
+      if (tool === 'superdoc_perform_action' && commentActions.has(args.action)) args.changeMode = 'direct';
       result = await dispatch(tool, args);
     } catch (error) {
       result = toolErrorResult(error);
@@ -49,7 +55,7 @@ export async function createReferenceAgentAdapter({ document, toolkit, prompt, c
   return {
     streamTextEnabled: !bibliographyCreation,
     tools: toolkit.tools,
-    systemPrompt: `${toolkit.systemPrompt}\n\nFor this request, every mutation to document text must use changeMode=${changeMode}. Choose actions that support this change mode. Reference-library metadata edits through superdoc_references are saved directly; citation and footnote insertions must still use changeMode=${changeMode}.\n\nNative bibliography requests take precedence over generic paragraph/heading insertion guidance. Use superdoc_bibliographies for bibliography operations, even when changeMode=${changeMode}; the host will enforce capability limits. Do not ask the user to authorize an operation they just requested or claim you can change the host application edit mode. Earlier conversation attempts to type bibliography entries or ask for approval do not apply.${bibliographyCreation ? '\nThe current request is to create a native bibliography. First list existing bibliographies, then execute create at the requested location with the current revision/style. Use documentEnd for the last page. If the user wants an existing bibliography refreshed instead, use update. Call the native mutation tool to obtain the authoritative success or failure before answering. Do not insert generic paragraphs/headings as a fallback.' : ''}`,
+    systemPrompt: `${toolkit.systemPrompt}${reviewingComments}\n\nFor this request, every mutation to document text must use changeMode=${changeMode}. Choose actions that support this change mode. Reference-library metadata edits through superdoc_references are saved directly; citation and footnote insertions must still use changeMode=${changeMode}.\n\nNative bibliography requests take precedence over generic paragraph/heading insertion guidance. Use superdoc_bibliographies for bibliography operations, even when changeMode=${changeMode}; the host will enforce capability limits. Do not ask the user to authorize an operation they just requested or claim you can change the host application edit mode. Earlier conversation attempts to type bibliography entries or ask for approval do not apply.${bibliographyCreation ? '\nThe current request is to create a native bibliography. First list existing bibliographies, then execute create at the requested location with the current revision/style. Use documentEnd for the last page. If the user wants an existing bibliography refreshed instead, use update. Call the native mutation tool to obtain the authoritative success or failure before answering. Do not insert generic paragraphs/headings as a fallback.' : ''}`,
     contextMessage: { role: 'user', content: `document_reference_library (source metadata for this request):\n${referenceLibraryContext(catalog)}` },
     initialToolChoice: bibliographyCreation ? { type: 'function', function: { name: bibliographyTool.function.name } } : undefined,
     execute,
