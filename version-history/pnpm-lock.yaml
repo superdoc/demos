@@ -24,8 +24,8 @@ importers:
         specifier: latest
         version: 19.3.0(react@19.3.0)
       superdoc:
-        specifier: 2.28.0
-        version: 2.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32)
+        specifier: 2.29.0
+        version: 2.29.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32)
       typescript:
         specifier: latest
         version: 7.0.2
@@ -196,8 +196,8 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@superdoc/docx-engine@0.27.0':
-    resolution: {integrity: sha512-VrPGZbsVMHfma8YAPdFV3G5GrFt4z6c1HLNlQQZbZ1pc1bv88dmKqn3n8Yb1kL+qSgUC2PONoiDbwvgwj0jRSA==}
+  '@superdoc/docx-engine@0.28.0':
+    resolution: {integrity: sha512-458PT3msaxa7Ho4Epv7lQAeOlbTntjr3Vyh/ZLMjZUZsIdgjcQLk6UuCmyIIRfdWp+K7zhqe0XexYR+jhNWV8g==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -502,8 +502,8 @@ packages:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
 
-  konva@10.9.0:
-    resolution: {integrity: sha512-3NOOlcbimFDp4+/DfXGTBkfn3cn3VP1BESPySQ6ayCzgMA9JSMGJNNxeIKw5jpHL6SAl6gHsrv10DUEjNRL0Qg==}
+  konva@10.9.1:
+    resolution: {integrity: sha512-m49x+GatSxEUSvqahYhxpTjgKbtrLtw4P4o4B4iux953ZFpceaK52Ea+CFsAsd7W4I0Y5u6mMoRUsY/eltNZmw==}
     peerDependencies:
       canvas: ^3.0.0
       skia-canvas: ^3.0.0
@@ -687,8 +687,8 @@ packages:
     resolution: {integrity: sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A==}
     engines: {node: '>=8'}
 
-  superdoc@2.28.0:
-    resolution: {integrity: sha512-fgzzBi1gN4OOjCsJDaqXWDII56bD2wkEbhge8Km3C/+BbLoBR+vWLqbM3W8oghaFQrctbr7K+2hKYq2v/Guk3A==}
+  superdoc@2.29.0:
+    resolution: {integrity: sha512-RgjTH3V6IsAmlObL8gjBX2JN4x0AsJ0eVFYPZIhKE1HNmIb/xLp8LxQsxGjoMMzlD+ZzAJVYj/Z2aKwBpCt+aw==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -947,7 +947,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@superdoc/docx-engine@0.27.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
+  '@superdoc/docx-engine@0.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       vue: 3.5.44(typescript@7.0.2)
       xml-js: 1.6.11
@@ -1182,7 +1182,7 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  konva@10.9.0: {}
+  konva@10.9.1: {}
 
   lib0@0.2.119:
     dependencies:
@@ -1332,13 +1332,13 @@ snapshots:
     dependencies:
       ansi-regex: 5.0.1
 
-  superdoc@2.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32):
+  superdoc@2.29.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.0)(typescript@7.0.2)(yjs@13.6.32):
     dependencies:
       '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@superdoc/docx-engine': 0.27.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
+      '@superdoc/docx-engine': 0.28.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.44(typescript@7.0.2))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
       '@types/ws': 8.18.2
       eventemitter3: 5.0.4
-      konva: 10.9.0
+      konva: 10.9.1
       pinia: 3.0.4(typescript@7.0.2)(vue@3.5.44(typescript@7.0.2))
       use-sync-external-store: 1.7.0(react@19.3.0)
       uuid: 11.1.1
