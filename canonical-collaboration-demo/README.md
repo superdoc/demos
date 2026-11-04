@@ -152,6 +152,14 @@ A room contains one document with one stable document ID. Creating or uploading 
 
 The chat panel is isolated in `client/src/components/ChatPanel.tsx`. It communicates only through the public HTTP API and can be replaced with another agent interface.
 
+### Add metadata to text
+
+Select text and right-click **Add metadata**. The field editor opens at the menu position. Each field has a label and a value; use **+** to add fields, **×** to remove them, **Cancel** to discard the draft, and **Done** to attach the fields to the captured selection. Labels must be non-empty and unique. If the document changes while the editor is open, cancel and select the text again.
+
+Right-click an annotated range to choose **Edit metadata** or **Remove metadata**, even when highlighting is off. Edit opens the same field editor with the saved fields and updates the existing annotation. Unchanged nested values retain their original types. Remove deletes the annotation and leaves its document text in place.
+
+Enable **Highlight metadata** and hover over an annotated range to read its fields. Hover previews are hidden when highlighting is off. Nested objects and arrays from imported metadata appear as JSON strings beneath their top-level labels. **Highlight metadata**, immediately left of **Tracked changes**, toggles amber overlays computed with `ui.viewport.getRect`. The overlays follow scrolling, zoom, layout changes, and document edits without changing text formatting. The toggle is local to your browser; metadata itself uses the native `doc.metadata` API, travels through collaboration, and is retained in DOCX exports. Viewing mode permits hover previews and highlighting but does not offer **Add metadata**.
+
 ### Insert citations
 
 Choose **References** to switch from the editor toolbar to the References toolbar; **Home** switches back. Place the cursor in document text, or select a passage, then choose **Insert citation**. Choose a saved reference or enter a new source with its type, title, authors, year, publisher, pages, DOI, and URL. The citation is inserted at the cursor or after the selection, using the document's Editing/Reviewing mode. Sources are stored with the document and included in DOCX exports.
@@ -276,6 +284,10 @@ COLLABORATION_CLIENT=off COLLABORATION_AGENT=off npm run build
 ## Deployment
 
 The shared demos release workflow builds the client with a relative asset base and publishes it to [https://demos.superdoc.dev/collab/](https://demos.superdoc.dev/collab/). The production build reads the backend origin from the GitHub Actions variable `COLLAB_API_URL`, falling back to the canonical Railway domain.
+
+After publishing to production or staging, the workflow downloads each emitted editor worker from the published `/collab/assets/` URL and compares its complete bytes with the release bundle. Requests have a 10-second timeout and three attempts. Missing assets, HTML fallbacks, stale or truncated files, and persistent delivery timeouts fail the release verification. The gallery version and API health checks alone do not verify that the editor can start.
+
+To repeat this check against an assembled release, run `node scripts/verify-collab-workers.mjs` from the repository root. Set `DEMOS_VERIFY_URL` to the staging deployment origin to check that deployment instead. Use the `dist/` bundle for the deployment being checked; a different build can have different worker filenames or contents. A passing download check verifies asset delivery; browser startup still depends on the worker executing successfully.
 
 The same production workflow deploys `server/` to Railway and then verifies `/api/health` before publishing the frontend. It requires these GitHub Actions secrets:
 

@@ -50,6 +50,8 @@ type TopbarProps = {
   onDownload: () => void;
   onDelete: () => void;
   onModeChange: (mode: DocumentMode) => void;
+  metadataHighlighted: boolean;
+  onMetadataHighlightToggle: () => void;
   references: Omit<ReferencesToolbarProps, 'superdoc' | 'room' | 'mode' | 'disabled'>;
 };
 
@@ -68,6 +70,8 @@ export function Topbar({
   onDownload,
   onDelete,
   onModeChange,
+  metadataHighlighted,
+  onMetadataHighlightToggle,
   references,
 }: TopbarProps) {
   const fileInput = useRef<HTMLInputElement>(null);
@@ -165,6 +169,12 @@ export function Topbar({
           inert={busy} />
         {room && referencesActive && <ReferencesToolbar key={`${room.document_id}:${room.generation}`}
           {...references} superdoc={superdoc} room={room} mode={mode} disabled={busy || !room || !superdoc} />}
+        {room && !referencesActive && <button type="button" className={`reference-command metadata-toggle${metadataHighlighted ? ' is-active' : ''}`}
+          aria-pressed={metadataHighlighted} disabled={busy || !superdoc}
+          onPointerDown={(event) => event.preventDefault()} onClick={onMetadataHighlightToggle}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v16H4zM7 8h10M7 12h6M7 16h8" /></svg>
+          Highlight metadata
+        </button>}
         {room && !referencesActive && <TrackedChangeActions key={`${room.document_id}:${room.generation}`} superdoc={superdoc}
           disabled={busy || mode === 'viewing'} onUpdated={references.onInserted} />}
         {room && agentEnabled && !referencesActive && <button type="button" className={`reference-command agent-toggle${agentOpen ? ' is-active' : ''}`}

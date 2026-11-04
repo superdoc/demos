@@ -20,11 +20,30 @@ const editorModules: SuperDocEditorProps['modules'] = {
     visible: true,
   },
 };
-const editorUi: SuperDocEditorProps['ui'] = {
+const baseEditorUi: SuperDocEditorProps['ui'] = {
   toolbar: { container: '#superdoc-toolbar', excludeItems: ['ruler'], responsiveTo: 'container', overflow: 'menu' },
   loading: false,
 };
 export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActivity, onConnectedUsersChange, onReady }: DocumentEditorProps) {
+  const instance = useRef<SuperDoc | undefined>(undefined);
+  const editorUi = useMemo<SuperDocEditorProps['ui']>(() => ({
+    ...baseEditorUi,
+    contextMenu: { sections: [{ id: 'metadata', items: [{
+      id: 'demo.addMetadata', label: 'Add metadata',
+      showWhen: (context) => context.hasSelection && context.isEditable,
+      onSelect: () => { instance.current?.ui.commands.get('demo.addMetadata').execute(); },
+    }, {
+      id: 'demo.editMetadata', label: 'Edit metadata',
+      showWhen: (context) => context.isEditable && !!instance.current
+        && !instance.current.ui.commands.get('demo.editMetadata').getState().disabled,
+      onSelect: () => { instance.current?.ui.commands.get('demo.editMetadata').execute(); },
+    }, {
+      id: 'demo.removeMetadata', label: 'Remove metadata',
+      showWhen: (context) => context.isEditable && !!instance.current
+        && !instance.current.ui.commands.get('demo.removeMetadata').getState().disabled,
+      onSelect: () => { instance.current?.ui.commands.get('demo.removeMetadata').execute(); },
+    }] }] },
+  }), []);
   const editorUser = useMemo(() => {
     const sessionId = crypto.randomUUID();
     return { name: `Demo user ${sessionId.slice(0, 8)}`, email: `${sessionId}@demo.example` };
@@ -49,6 +68,8 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
   }, [room.document_id, onConnectedUsersChange, onReady]);
   const [documentBlob, setDocumentBlob] = useState<Blob>();
   const [loadError, setLoadError] = useState<string>();
+  const [editorReady, setEditorReady] = useState(false);
+  const mountedEditor = useRef(false);
   const documents = useMemo<SuperDocEditorProps['documents']>(() => documentBlob ? [
     {
       id: room.document_id,
@@ -77,11 +98,16 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
     return () => controller.abort();
   }, [room.document_id, room.room_id]);
 
-  if (loadError) return <div className="editor-state error">{loadError}</div>;
-  if (!documentBlob) return <div className="editor-state">Loading document…</div>;
+  if (loadError) return <div className="editor-state" role="alert">Error loading editor</div>;
 
   return (
-    <div className="editor-shell" onPointerDown={onActivity} onKeyDown={onActivity}>
+    <div className="editor-shell" aria-busy={!editorReady} onPointerDown={onActivity} onKeyDown={onActivity}>
+      {!editorReady && (
+        <div className="editor-loading-overlay" role="status" aria-label="Loading editor">
+          <span className="spinner" aria-hidden="true" />
+        </div>
+      )}
+      {documentBlob && <div className="editor-content" inert={!editorReady} aria-hidden={!editorReady}>
       <SuperDocEditor
         key={room.document_id}
         documentMode={mode}
@@ -94,12 +120,21 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
         onAwarenessUpdate={handleAwarenessUpdate}
         onCollaborationConnectionChange={handleConnectionChange}
         onReady={({ superdoc }) => {
+          instance.current = superdoc;
+          mountedEditor.current = true;
+          setEditorReady(true);
           onReady(superdoc);
         }}
         onException={(event) => {
           console.error('SuperDoc error', event);
+          if (!mountedEditor.current || ('code' in event && event.code === 'worker-init-failed')) {
+            setLoadError('Error loading editor');
+            onReady(undefined);
+            onConnectedUsersChange(null);
+          }
         }}
       />
+      </div>}
     </div>
   );
 });
