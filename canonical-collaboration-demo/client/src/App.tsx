@@ -13,6 +13,7 @@ import { FootnoteReviewLabels } from './components/FootnoteReviewLabels';
 import { TrackedReplacementCaret } from './components/TrackedReplacementCaret';
 import { BibliographyDeletion } from './components/BibliographyDeletion';
 import { CitationDeletion } from './components/CitationDeletion';
+import { MetadataRanges } from './components/MetadataRanges';
 
 function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room | undefined) {
   if (!currentRoom || !nextRoom) return currentRoom === nextRoom;
@@ -59,6 +60,7 @@ export default function App() {
   const [renderingBusy, setRenderingBusy] = useState(false);
   const [citationsHighlighted, setCitationsHighlighted] = useState(false);
   const [footnotesHighlighted, setFootnotesHighlighted] = useState(false);
+  const [metadataHighlighted, setMetadataHighlighted] = useState(false);
   const refreshReferences = useCallback(() => setReferenceRefresh((current) => current + 1), []);
   const onBibliographyDeletionBusy = useCallback((pending: boolean) => {
     setBibliographyDeletionBusy(pending);
@@ -105,6 +107,7 @@ export default function App() {
   useEffect(() => { setFieldCodes(false); }, [room?.room_id, room?.generation]);
   useEffect(() => { setCitationsHighlighted(false); }, [room?.room_id, room?.generation]);
   useEffect(() => { setFootnotesHighlighted(false); }, [room?.room_id, room?.generation]);
+  useEffect(() => { setMetadataHighlighted(false); }, [room?.room_id, room?.generation]);
 
   useEffect(() => {
     let active = true;
@@ -228,6 +231,8 @@ export default function App() {
         }}
         onDelete={() => void remove()}
         onModeChange={setMode}
+        metadataHighlighted={metadataHighlighted}
+        onMetadataHighlightToggle={() => setMetadataHighlighted((current) => !current)}
         superdoc={superdoc}
         agentOpen={agentOpen}
         agentEnabled={agentEnabled}
@@ -255,6 +260,7 @@ export default function App() {
           ) : room ? (
             <div className="live-document" inert={referenceBusy && !pendingBibliographyStyle && !footnoteBusy && !bibliographyBusy && !bibliographyDeletionBusy && !citationDeletionBusy && !citationInsertionBusy && !renderingBusy}>
             <DocumentEditor
+              key={`${room.document_id}:${room.generation}`}
               room={room}
               mode={pendingBibliographyStyle || footnoteBusy || bibliographyBusy || bibliographyDeletionBusy || citationDeletionBusy || citationInsertionBusy || renderingBusy ? 'viewing' : mode}
               onActivity={updateRoomActivity}
@@ -262,6 +268,9 @@ export default function App() {
               onReady={setSuperdoc}
             />
             <FootnoteReviewLabels superdoc={superdoc} />
+            <MetadataRanges key={`metadata:${room.document_id}:${room.generation}`} superdoc={superdoc}
+              documentKey={`${room.document_id}:${room.generation}`} highlighted={metadataHighlighted}
+              disabled={busy || referenceBusy || mode === 'viewing'} onActivity={updateRoomActivity} />
             <TrackedReplacementCaret superdoc={superdoc} mode={mode} disabled={busy || referenceBusy} />
             <CitationDeletion superdoc={superdoc} room={room} mode={mode} disabled={busy || referenceBusy}
               onBusyChange={onCitationDeletionBusy} onUpdated={refreshReferences} onError={setError} />

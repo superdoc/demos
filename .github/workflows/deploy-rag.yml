@@ -209,6 +209,10 @@ jobs:
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         run: node scripts/verify-production-gallery.mjs
 
+      - name: Verify production collaboration editor workers
+        if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
+        run: node scripts/verify-collab-workers.mjs
+
       - name: Verify production Version History route and API proxy
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         run: |
@@ -231,6 +235,12 @@ jobs:
           url=$(grep -Eo 'https://[^[:space:]]+\.pages\.dev' staging-deploy.log | head -1)
           test -n "$url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify staging collaboration editor workers
+        if: ${{ steps.staging.outputs.url != '' }}
+        env:
+          DEMOS_VERIFY_URL: ${{ steps.staging.outputs.url }}
+        run: node scripts/verify-collab-workers.mjs
 
       - name: Publish staging URL
         if: ${{ steps.staging.outputs.url != '' }}
