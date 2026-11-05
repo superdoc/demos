@@ -9,11 +9,11 @@ build: install
 install: client/node_modules/.installed server/node_modules/.installed
 
 client/node_modules/.installed: client/package.json client/package-lock.json
-	@cd client && npm install
+	@cd client && npm ci
 	@touch $@
 
 server/node_modules/.installed: server/package.json server/package-lock.json
-	@cd server && npm install
+	@cd server && npm ci
 	@touch $@
 
 clean:

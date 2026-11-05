@@ -31,6 +31,6 @@ await cp(
 );
 
 await renderGallery({ mode: "production", output: path.join(output, "index.html") });
-// Publish this route independently of demos.json so it stays off the homepage.
-await assembleVersionHistory({ root, output, backendUrl: process.env.VERSION_HISTORY_BACKEND_URL });
+// Attach the version-history API and WebSocket proxy to the static release.
+await assembleVersionHistory({ output, backendUrl: process.env.VERSION_HISTORY_BACKEND_URL });
 console.log(`Assembled ${manifest.length} demos from demos.json`);

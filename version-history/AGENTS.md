@@ -26,7 +26,8 @@ accepts the captured live revisions to start a fresh edit interval.
 | [src/changes.ts](src/changes.ts) | Format revision text, authors, dates, occurrence keys, and sorting. Contains no storage or editor lifecycle logic. |
 | [server/server.mjs](server/server.mjs) | Serve HTTP API/static assets, attach Hocuspocus WebSockets, coordinate room initialization, and persist room state and immutable versions. |
 | [vite.config.ts](vite.config.ts) | Proxy `/api` and `/collaboration` during development and preview. |
-| [../scripts/version-history-release.mjs](../scripts/version-history-release.mjs) | Copy the frontend into the gallery's `/version-history/` route and generate Pages proxy artifacts without adding a homepage entry. |
+| [../scripts/assemble-release.mjs](../scripts/assemble-release.mjs) | Copy the frontend into the gallery's `/version-history/` route using its `demos.json` entry. |
+| [../scripts/version-history-release.mjs](../scripts/version-history-release.mjs) | Generate the Pages API and WebSocket proxy artifacts. |
 | [../scripts/version-history-proxy.mjs](../scripts/version-history-proxy.mjs) | Forward the published route's API and WebSocket requests to the configured Railway backend. |
 | [Dockerfile](Dockerfile), [railway.json](railway.json) | Package and health-check the single-replica backend; live room/version data requires an attached persistent volume. |
 
@@ -43,8 +44,9 @@ base; hardcoded `/api` or `/collaboration` paths bypass that proxy when deployed
 The release workflow requires `VERSION_HISTORY_BACKEND_URL` (repository
 variable), `VERSION_HISTORY_RAILWAY_SERVICE_ID` (repository secret), and access
 through the existing `RAILWAY_TOKEN`. Attach a volume at `/data` before the first
-backend deployment. The demo stays outside `demos.json` so it has no homepage
-card. See [README deployment setup](README.md#gallery-deployment).
+backend deployment. The `demos.json` entry supplies the homepage card, screenshot,
+and hover video; `hidden: true` currently hides the card without disabling deployment.
+See [README deployment setup](README.md#gallery-deployment).
 
 ```text
 Live SuperDoc <---- WebSocket /collaboration ----> Hocuspocus <--> room.yjs

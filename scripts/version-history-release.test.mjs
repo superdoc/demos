@@ -51,16 +51,15 @@ test('the proxy leaves the homepage, other demos, and version-history assets on 
   }
 });
 
-test('release assembly publishes the unlisted route and scopes Worker invocation to its API and WebSocket', async (t) => {
+test('release assembly preserves gallery assets and scopes Worker invocation to its API and WebSocket', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'version-release-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const output = path.join(root, 'dist');
-  await mkdir(path.join(root, 'version-history/dist/assets'), { recursive: true });
-  await mkdir(output);
+  await mkdir(path.join(output, 'version-history/assets'), { recursive: true });
   await writeFile(path.join(output, 'index.html'), '<main>Existing gallery</main>');
-  await writeFile(path.join(root, 'version-history/dist/index.html'), '<main>Version history</main>');
-  await writeFile(path.join(root, 'version-history/dist/assets/app.js'), 'application');
-  await assembleVersionHistory({ root, output, backendUrl: backend });
+  await writeFile(path.join(output, 'version-history/index.html'), '<main>Version history</main>');
+  await writeFile(path.join(output, 'version-history/assets/app.js'), 'application');
+  await assembleVersionHistory({ output, backendUrl: backend });
   assert.equal(await readFile(path.join(output, 'index.html'), 'utf8'), '<main>Existing gallery</main>');
   assert.equal(await readFile(path.join(output, 'version-history/index.html'), 'utf8'), '<main>Version history</main>');
   assert.equal(await readFile(path.join(output, 'version-history/assets/app.js'), 'utf8'), 'application');
@@ -73,7 +72,7 @@ test('release assembly publishes the unlisted route and scopes Worker invocation
 });
 
 test('release configuration rejects missing or unsafe backend targets before publishing', async () => {
-  await assert.rejects(assembleVersionHistory({ root: '/unused', output: '/unused' }), /VERSION_HISTORY_BACKEND_URL/);
+  await assert.rejects(assembleVersionHistory({ output: '/unused' }), /VERSION_HISTORY_BACKEND_URL/);
   for (const target of ['http://remote.example', 'https://user:password@example.com', 'https://example.com/api', 'https://example.com?token=secret', 'https://example.com/#fragment']) {
     assert.throws(() => createVersionHistoryProxy(target), /HTTPS origin/);
   }

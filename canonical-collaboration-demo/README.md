@@ -113,7 +113,21 @@ OPENAI_API_KEY=your-key-here
 
 The checked-in example profile enables the API, client, and agent while using unauthenticated,
 in-memory collaboration with DOCX autosave disabled. These are the same quick-start flags shown
-by **Build this app** in the client.
+by **Build this** in the client.
+
+The gallery's **Build this** button and the client's modal both use
+`client/src/build-app.sh`. Change that file to update both commands. CI compares
+the gallery's rendered command with the client's imported command, then runs the
+complete snippet in an isolated checkout with `SUPERDOC_BUILD_ONLY=1`. That flag
+exits after `make build`, before requesting an API key or starting servers. The
+test clone uses the PR's source (including dependency-update artifacts), and
+`make build` installs from the checked-in lockfiles with `npm ci`.
+
+Run the same check locally from the repository root:
+
+```bash
+node scripts/verify-build-this.mjs --demo agentic-collaboration --run
+```
 
 Start the complete stack:
 

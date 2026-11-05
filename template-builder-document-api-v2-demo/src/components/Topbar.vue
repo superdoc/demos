@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import BuildThis from './BuildThis.vue';
 
 type DocumentMode = 'suggesting' | 'editing' | 'viewing';
 
@@ -77,7 +78,8 @@ const chooseFileAction = (event: Event) => {
         <option value="save-as">Save As…{{ variablesRendered ? ' (rendered)' : '' }}</option>
       </select>
 
-      <a class="more-demos-button" href="/">Demos</a>
+      <a class="more-demos-button" href="/">More demos</a>
+      <div class="build-this-slot"><BuildThis /></div>
 
       <label class="mode-select">
         <select
@@ -205,10 +207,16 @@ const chooseFileAction = (event: Event) => {
   box-shadow: 0 0 0 3px #3b82f638;
 }
 
-.mode-select {
+.build-this-slot {
   display: flex;
   align-items: center;
   margin-left: auto;
+}
+
+.mode-select {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
 }
 
 .mode-select select {

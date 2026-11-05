@@ -11,6 +11,13 @@ pnpm dev
 
 The app uses the latest published `superdoc` package and does not depend on the Orbit workspace.
 
+The app and gallery's **Build this** modals share `src/build-app.sh`. Their
+copyable quickstart clones the demos repository, enters this directory, and runs
+`npm install` followed by `npm run dev`; no backend or API key is needed. Open
+the URL Vite prints. CI compares the commands, runs the quickstart in a clean
+clone of the tested source, checks the document and modal in Chromium, and builds
+the installed app. See the root README for the quickstart test runner.
+
 ## Production build
 
 ```bash

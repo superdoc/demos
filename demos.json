@@ -1,6 +1,9 @@
 [
   {
     "id": "inline-revisions",
+    "buildCommandSource": "superdoc-inline-revisions/src/build-app.sh",
+    "buildCommandConsumer": "superdoc-inline-revisions/src/demo/components/topbar/BuildThis.tsx",
+    "buildCommandCheck": "dev",
     "screenshot": "inline-revisions-poster.jpg",
     "video": "inline-revisions-preview.mp4",
     "title": "Inline Revisions",
@@ -12,6 +15,10 @@
   },
   {
     "id": "agentic-collaboration",
+    "buildCommandSource": "canonical-collaboration-demo/client/src/build-app.sh",
+    "buildCommandConsumer": "canonical-collaboration-demo/client/src/components/Topbar.tsx",
+    "buildCommandCheck": "build",
+    "buildCommandNote": "Requires Node.js 22+, Git, Make, and an OpenAI API key. The command prompts for a key if needed. This demo uses in-memory storage, DOCX autosave off, and no WebSocket authentication.",
     "screenshot": "agentic-collaboration-poster.png",
     "title": "Agentic Collaboration",
     "description": "Real time collaboration with agents and humans",
@@ -22,6 +29,9 @@
   },
   {
     "id": "template-builder-api-v2",
+    "buildCommandSource": "template-builder-document-api-v2-demo/src/build-app.sh",
+    "buildCommandConsumer": "template-builder-document-api-v2-demo/src/components/BuildThis.vue",
+    "buildCommandCheck": "dev",
     "screenshot": "template-builder-poster.jpg",
     "video": "template-builder-preview.mp4",
     "title": "Template Builder",
@@ -41,5 +51,17 @@
     "localLiveDemoUri": "https://demos.superdoc.dev/docrag/",
     "sourceUri": "https://github.com/superdoc/demos/tree/main/rag",
     "packageDirectory": "rag/apps/web"
+  },
+  {
+    "id": "version-history",
+    "hidden": true,
+    "screenshot": "version-history-poster.png",
+    "video": "version-history-preview.mp4",
+    "title": "Version History",
+    "description": "Collaborative editing with saved versions and an attributed changelog.",
+    "liveDemoUri": "/version-history/",
+    "localLiveDemoUri": "https://demos.superdoc.dev/version-history/",
+    "sourceUri": "https://github.com/superdoc/demos/tree/main/version-history",
+    "packageDirectory": "version-history"
   }
 ]

@@ -1,3 +1,4 @@
+import buildCommand from '../build-app.sh?raw';
 import { useEffect, useRef, useState } from 'react';
 import type { SuperDoc } from 'superdoc';
 import { ReferencesToolbar, type ReferencesToolbarProps } from './ReferencesToolbar';
@@ -5,35 +6,6 @@ import { TrackedChangeActions } from './TrackedChangeActions';
 import type { Room } from '../types';
 
 export type DocumentMode = 'suggesting' | 'editing' | 'viewing';
-
-const buildCommand = `bash <<'SUPERDOC_QUICKSTART'
-set -euo pipefail
-
-git clone https://github.com/superdoc/demos.git
-cd demos/canonical-collaboration-demo
-
-# Build configuration
-export COLLABORATION_API=on
-export COLLABORATION_CLIENT=on
-export COLLABORATION_AGENT=on
-
-# Validate the production build for these components
-make build
-
-# Runtime configuration for this demo
-export COLLABORATION_AUTH=none
-export COLLABORATION_STORAGE=memory
-export COLLABORATION_DOCX=off
-
-if [[ -z "\${OPENAI_API_KEY:-}" ]]; then
-  read -r -s -p "OpenAI API key: " OPENAI_API_KEY < /dev/tty
-  echo
-  export OPENAI_API_KEY
-fi
-
-touch .env
-make dev
-SUPERDOC_QUICKSTART`;
 
 type TopbarProps = {
   roomId: string;
@@ -113,6 +85,7 @@ export function Topbar({
           </button>
           <button type="button" className="file-action" disabled={busy || !roomId || !room} onClick={onDownload}>Save As…</button>
           <button type="button" className="file-action file-action-delete" disabled={busy || !roomId || !room} onClick={onDelete}>Delete document</button>
+          <a className="build-app-button more-demos-button" href="/">More demos</a>
         </div>
 
         <div className="file-title">
@@ -120,7 +93,7 @@ export function Topbar({
         </div>
 
         <button type="button" className="build-app-button" onClick={() => buildDialog.current?.showModal()}>
-          Build this app
+          Build this
         </button>
         <label className="mode-select">
           <span className="visually-hidden">Document mode</span>
