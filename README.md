@@ -81,8 +81,8 @@ prompt and development servers.
 To run a standalone quickstart check locally, first install the browser runner:
 
 ```bash
-npm install --prefix tests
-npm exec --prefix tests -- playwright install chromium
+pnpm --dir tests install --frozen-lockfile
+pnpm --dir tests exec playwright install chromium
 node scripts/verify-build-this.mjs --demo inline-revisions --run
 node scripts/verify-build-this.mjs --demo template-builder-api-v2 --run
 ```
