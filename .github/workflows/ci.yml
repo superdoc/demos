@@ -33,6 +33,9 @@ jobs:
       - name: Restore tested dependency update
         if: inputs.source_artifact != ''
         run: tar -xzf /tmp/superdoc-source/superdoc-source.tar.gz
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,8 +44,8 @@ jobs:
       - name: Install quickstart browser runner
         if: matrix.demo != 'agentic-collaboration'
         run: |
-          npm install --prefix tests
-          npm exec --prefix tests -- playwright install --with-deps chromium
+          pnpm --dir tests install --frozen-lockfile
+          pnpm --dir tests exec playwright install --with-deps chromium
       - name: Run the copied command against this checkout
         run: node scripts/verify-build-this.mjs --demo ${{ matrix.demo }} --run
 
