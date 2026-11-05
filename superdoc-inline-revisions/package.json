@@ -21,7 +21,7 @@
     "vite": "latest"
   },
   "devDependencies": {
-    "@playwright/test": "latest",
+    "@playwright/test": "1.63.0",
     "@types/react": "latest",
     "@types/react-dom": "latest"
   }
