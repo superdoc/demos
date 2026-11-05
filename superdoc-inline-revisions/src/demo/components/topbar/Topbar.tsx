@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { BlankDOCX } from 'superdoc';
 import { useSuperDocDocument, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import { Ribbon } from './Ribbon';
+import { BuildThis } from './BuildThis';
 
 type SaveFilePickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: Array<{ description: string; accept: Record<string, string[]> }> }) => Promise<{ createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> }>;
@@ -127,7 +128,8 @@ export function Topbar() {
           <option value="open">Open…</option>
           <option value="save-as">Save As…</option>
         </select>
-        <a className="more-demos-button" href="/">Demos</a>
+        <a className="more-demos-button" href="/">More demos</a>
+        <div className="build-this-slot"><BuildThis /></div>
         <label className="mode-select">
           <select
             aria-label="Document mode"

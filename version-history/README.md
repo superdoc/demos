@@ -58,7 +58,7 @@ pnpm test
 
 ## Gallery deployment
 
-The release bundle publishes this demo at **https://demos.superdoc.dev/version-history/** without adding a homepage card or changing `demos.json`. The production build uses `BASE_PATH=/version-history/`. API and collaboration URLs resolve relative to that application path, so requests stay on the gallery origin:
+The demo remains in `demos.json`, with `hidden: true` temporarily hiding its homepage card. Set `hidden` to `false` to show its screenshot and hover video again. The release bundle publishes it at **https://demos.superdoc.dev/version-history/**. The production build uses `BASE_PATH=/version-history/`. API and collaboration URLs resolve relative to that application path, so requests stay on the gallery origin:
 
 - `/version-history/api/*` forwards to the backend's `/api/*`.
 - `/version-history/collaboration` forwards WebSocket upgrades to `/collaboration`.
@@ -73,4 +73,4 @@ Before the first live release:
 
 The deployment workflow checks those settings before a live release, deploys the backend, verifies health, and then publishes the Pages bundle. It verifies the public frontend and API route after production deployment. Staging Pages releases use the same configured backend; use a different room query parameter to isolate documents. Dry runs can build with a reserved `.invalid` placeholder when the backend URL has not been configured; they do not deploy services or create storage.
 
-CI runs the backend and browser integration tests. The browser suite builds and serves the app under `/version-history/`, including two-editor collaboration and version saving, rather than only testing the root path. Release automation also tests proxy forwarding, WebSocket upgrade handling, and unlisted bundle assembly. Automated SuperDoc dependency updates include this demo's manifest and lockfile.
+CI runs the backend and browser integration tests. The browser suite builds and serves the app under `/version-history/`, including two-editor collaboration and version saving, rather than only testing the root path. Release automation also tests proxy forwarding, WebSocket upgrade handling, and gallery asset preservation. Automated SuperDoc dependency updates include this demo's manifest and lockfile.

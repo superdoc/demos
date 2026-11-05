@@ -36,8 +36,9 @@ h2, p { margin-top: 0; }
 .file-action-delete { color: #b91c1c; }
 .file-title { display: flex; flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center; }
 .file-name { max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
-.build-app-button { flex: 0 0 auto; margin-left: auto; min-height: 34px; padding: 6px 12px; background: #2563eb; font-size: 12px; white-space: nowrap; }
+.build-app-button { display: inline-flex; flex: 0 0 auto; align-items: center; margin-left: auto; min-height: 34px; padding: 6px 12px; border: 0; border-radius: 7px; color: #fff; background: #2563eb; font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .build-app-button:hover { background: #1d4ed8; }
+.more-demos-button { margin-left: 0; }
 .mode-select { display: flex; align-items: center; }
 .connected-users { display: inline-flex; align-items: center; gap: 6px; min-width: 132px; padding: 0 8px; color: #666; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .presence-dot { width: 7px; height: 7px; border-radius: 50%; background: #a1a1aa; }

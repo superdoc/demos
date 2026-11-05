@@ -62,6 +62,34 @@ bun run dev
 
 See each demo's directory for specific setup instructions.
 
+## Build this commands
+
+Inline Revisions, Template Builder, and Agentic Collaboration have **Build this**
+buttons in their cards and apps. Each `buildCommandSource` entry in `demos.json`
+points to a raw shell file imported by its `buildCommandConsumer` component.
+Both entry points share one command. Set `hidden: true` to hide a gallery card
+without removing its deployment route.
+
+The **Build this quickstart** CI matrix compares each gallery command with the
+app's command before running it in a fresh temporary clone of the tested source.
+The two standalone demos run `npm install` and `npm run dev`. Chromium verifies
+the document loads and that the app displays/copies the same command, then CI
+runs a production build. Collaboration installs locked dependencies and builds
+the API, client, and agent profile; `SUPERDOC_BUILD_ONLY=1` skips its API-key
+prompt and development servers.
+
+To run a standalone quickstart check locally, first install the browser runner:
+
+```bash
+npm install --prefix tests
+npm exec --prefix tests -- playwright install chromium
+node scripts/verify-build-this.mjs --demo inline-revisions --run
+node scripts/verify-build-this.mjs --demo template-builder-api-v2 --run
+```
+
+Omit `--run` to compare commands without installing/building, or omit `--demo`
+to check all three demos.
+
 ## Automatic SuperDoc updates
 
 The **SuperDoc npm release** workflow polls `https://registry.npmjs.org/superdoc/latest`

@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readBuildCommand, renderBuildDialog } from "./build-this.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -37,6 +38,9 @@ export async function renderGallery({ mode, output }) {
 
   const ids = manifest.map((demo) => demo.id);
   if (new Set(ids).size !== ids.length) throw new Error("Demo ids must be unique");
+  const visibleDemos = manifest.filter((demo) => !demo.hidden);
+  const buildCommands = new Map(await Promise.all(visibleDemos.filter((demo) => demo.buildCommandSource)
+    .map(async (demo) => [demo.id, await readBuildCommand(root, demo)])));
 
   const versionEntries = mode === "local"
     ? manifest.filter((demo) => demo.localSourceDirectory && demo.versioned !== false)
@@ -52,24 +56,27 @@ export async function renderGallery({ mode, output }) {
     throw new Error(`Demos resolved different SuperDoc versions: ${versions.join(", ")}`);
   }
 
-  const backgrounds = manifest.map((_, index) =>
+  const backgrounds = visibleDemos.map((_, index) =>
     `    <div class="background placeholder${index === 0 ? " active" : ""}"></div>`,
   ).join("\n");
-  const selectors = manifest.map((demo, index) =>
+  const selectors = visibleDemos.map((demo, index) =>
     `        <button class="demo-selector${index === 0 ? " active" : ""}" type="button" aria-label="Show ${escapeHtml(demo.title)}" aria-pressed="${index === 0}"></button>`,
   ).join("\n");
-  const cards = manifest.map((demo, index) => {
+  const cards = visibleDemos.map((demo, index) => {
     const liveUri = mode === "local" && demo.localLiveDemoUri
       ? demo.localLiveDemoUri
       : demo.liveDemoUri;
     const video = demo.video
       ? `<video class="card-video" muted loop playsinline preload="metadata"><source src="/${escapeHtml(demo.video)}" type="video/mp4"></video>`
       : "";
+    const buildButton = buildCommands.has(demo.id)
+      ? `<button class="build-app-button" type="button" data-build-dialog="build-${escapeHtml(demo.id)}">Build this</button>`
+      : "";
     return `      <article class="demo-slide${index === 0 ? " active" : ""}">
         <div class="demo-card">
           <a class="card-main-link" href="${escapeHtml(liveUri)}" aria-label="Open ${escapeHtml(demo.title)} demo"></a>
           <div class="card-media"><img class="card-poster" src="/${escapeHtml(demo.screenshot)}" alt="${escapeHtml(demo.title)} demo preview">${video}</div>
-          <div class="card-body"><h2>${escapeHtml(demo.title)}</h2><p>${escapeHtml(demo.description)}</p><div class="card-actions"><a href="${escapeHtml(liveUri)}">Live demo</a><button class="copy-link" type="button">Copy</button><span>|</span><a href="${escapeHtml(demo.sourceUri)}" target="_blank" rel="noopener noreferrer">Source</a><button class="copy-link" type="button">Copy</button></div></div>
+          <div class="card-body"><h2>${escapeHtml(demo.title)}</h2><p>${escapeHtml(demo.description)}</p><div class="card-actions"><a href="${escapeHtml(liveUri)}">Live demo</a><span>|</span><a href="${escapeHtml(demo.sourceUri)}" target="_blank" rel="noopener noreferrer">Source</a>${buildButton}</div></div>
         </div>
       </article>`;
   }).join("\n");
@@ -78,6 +85,8 @@ export async function renderGallery({ mode, output }) {
   html = replaceSection(html, "DEMO_BACKGROUNDS", backgrounds);
   html = replaceSection(html, "DEMO_SELECTORS", selectors);
   html = replaceSection(html, "DEMO_CARDS", cards);
+  html = replaceSection(html, "BUILD_DIALOGS", visibleDemos.filter((demo) => buildCommands.has(demo.id))
+    .map((demo) => renderBuildDialog(demo, buildCommands.get(demo.id))).join("\n"));
   html = html.replace(
     /SuperDoc v\d+\.\d+\.\d+(?:[-+][\w.-]+)?/,
     `SuperDoc v${versions[0]}`,
