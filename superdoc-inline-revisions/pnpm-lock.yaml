@@ -28,7 +28,7 @@ importers:
         version: 8.3.0(@types/node@26.6.6)
     devDependencies:
       '@playwright/test':
-        specifier: latest
+        specifier: 1.63.0
         version: 1.63.0
       '@types/react':
         specifier: latest
