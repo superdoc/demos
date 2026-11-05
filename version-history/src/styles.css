@@ -82,6 +82,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid #1558d6; outline
 .changes-message button { padding: 0; color: #1558d6; background: transparent; border: 0; text-decoration: underline; }
 .change-tooltip { position: fixed; z-index: 1000; display: flex; flex-direction: column; gap: 7px; width: max-content; max-width: 280px; padding: 12px 15px; pointer-events: none; color: #3c4043; background: #fff; border: 1px solid #dce1e8; border-radius: 9px; box-shadow: 0 4px 18px #20314924; font-size: 12px; overflow-wrap: anywhere; }
 .change-tooltip strong { font-size: 13px; }
+.change-highlights { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
+.change-highlight { position: absolute; background: #fbbc0430; outline: 1px solid #e3a40780; border-radius: 2px; }
+.change-highlight.active { background: #4285f43b; outline: 2px solid #4285f4; }
+.change-location-note { color: #777; font-size: 11px; }
 .empty-history { padding: 4px 18px 0 0; color: #5f6368; font-size: 13px; line-height: 1.6; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 850px) {

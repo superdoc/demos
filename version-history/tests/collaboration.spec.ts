@@ -1,72 +1,30 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { edit, insertedText, live, openRoom, openVersion, preview, save, versionButton } from './helpers';
 
-const live = (page: Page) => page.getByLabel('Editable document', { exact: true });
-const version = (page: Page, number: number) => page.getByRole('button', { name: new RegExp(`^Version ${number} ·`) });
-
-async function edit(page: Page, text: string) {
-  await live(page).locator('.superdoc-text-run').first().click();
-  await page.keyboard.press('ControlOrMeta+Home');
-  await page.keyboard.type(text);
-  await expect(live(page)).toContainText(text.trim());
-}
-
-test('two editors share live edits, poll saved versions, and retain both authors in immutable snapshots', async ({ browser, baseURL }) => {
-  const aliceContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 960 } });
-  const bobContext = await browser.newContext({ baseURL, viewport: { width: 1440, height: 960 } });
-  const alice = await aliceContext.newPage();
-  const bob = await bobContext.newPage();
-  const room = crypto.randomUUID();
+test('collaborators retain original edit authors and share immutable history through polling and reload', async ({ browser }) => {
+  const aliceContext = await browser.newContext(); const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage(); const bob = await bobContext.newPage();
   try {
-    await Promise.all([
-      alice.goto(`/?room=${room}&user=Alice`),
-      bob.goto(`/?room=${room}&user=Bob`),
-    ]);
-    for (const page of [alice, bob]) {
-      await expect(page.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled({ timeout: 45_000 });
-      await expect(page.getByText('Connected', { exact: true })).toBeVisible();
-    }
-    await edit(alice, 'Alice wrote this. ');
-    await expect(live(bob)).toContainText('Alice wrote this.');
-    await edit(bob, 'Bob replied here. ');
-    await expect(live(alice)).toContainText('Bob replied here.');
-    await alice.getByRole('button', { name: 'Save version', exact: true }).click();
-    await expect(version(alice, 1)).toBeVisible();
-    await expect(version(bob, 1)).toBeVisible({ timeout: 8000 });
-    await expect(version(bob, 1)).toContainText('Alice');
-    await version(bob, 1).click();
-    const historical = bob.getByLabel('Historical document', { exact: true });
-    await expect(historical).toHaveAttribute('aria-busy', 'false');
-    await expect(historical).toContainText('Alice wrote this.');
-    await expect(historical).toContainText('Bob replied here.');
-    const changes = bob.getByRole('region', { name: 'Version edits' });
-    await expect(changes.locator('.change-card').filter({ hasText: 'Alice' })).toContainText('Alice wrote this.');
-    await expect(changes.locator('.change-card').filter({ hasText: 'Bob' })).toContainText('Bob replied here.');
-
-    await edit(alice, 'A later shared edit. ');
-    await alice.getByRole('button', { name: 'Save version', exact: true }).click();
-    await expect(version(bob, 2)).toBeVisible({ timeout: 8000 });
-    await expect(historical).not.toContainText('A later shared edit.');
-    await expect(version(bob, 1)).toHaveAttribute('aria-current', 'true');
-    await bob.screenshot({ path: 'artifacts/collaborative-versions.png' });
-    await bob.getByRole('button', { name: 'Current version Live Continue editing Bob', exact: true }).click();
-    await expect(live(bob)).toContainText('A later shared edit.');
-    await bob.reload();
-    await expect(bob.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();
-    await expect(live(bob)).toContainText('A later shared edit.');
-    await expect(version(bob, 1)).toBeVisible();
-    await expect(version(bob, 2)).toBeVisible();
-    await edit(bob, 'Bob started the next checkpoint. ');
-    await bob.getByRole('button', { name: 'Save version', exact: true }).click();
-    await expect(bob.getByRole('button', { name: 'Save version', exact: true })).toBeEnabled();
-    await expect(bob.getByRole('alert')).toHaveCount(0);
-    await version(bob, 3).click();
-    await expect(changes.locator('.change-card')).toHaveCount(1);
-    await expect(changes.locator('.change-card')).toContainText('Bob started the next checkpoint.');
-    await expect(changes.locator('.change-card')).toContainText('Bob');
-    await expect(bob.getByLabel('Historical document', { exact: true })).toContainText('Alice wrote this.');
-    await expect(bob.getByLabel('Historical document', { exact: true })).toContainText('A later shared edit.');
-  } finally {
-    await aliceContext.close();
-    await bobContext.close();
-  }
+    const room = await openRoom(alice, 'Alice'); await openRoom(bob, 'Bob', room);
+    await edit(alice, 'Alice wrote this. '); await expect(live(bob)).toContainText('Alice wrote this.');
+    await edit(bob, 'Bob wrote this. '); await expect(live(alice)).toContainText('Bob wrote this.');
+    const saved = await save(alice);
+    expect(saved.records.map((record) => record.actor?.name).sort()).toEqual(['Alice', 'Bob']);
+    await expect(versionButton(bob, 1)).toBeVisible({ timeout: 8000 });
+    await openVersion(bob, 1);
+    const authors = bob.locator('.change-card-heading strong');
+    await expect(authors).toHaveText(['Bob', 'Alice']);
+    await bob.getByLabel('Sort edits').selectOption('author'); await expect(authors).toHaveText(['Alice', 'Bob']);
+    await bob.getByLabel('Sort edits').selectOption('oldest'); await expect(authors).toHaveText(['Alice', 'Bob']);
+    await edit(alice, 'Later shared edit. '); const next = await save(alice);
+    expect(insertedText(next.records)).toBe('Later shared edit. ');
+    await expect(versionButton(bob, 2)).toBeVisible({ timeout: 8000 });
+    await expect(preview(bob)).not.toContainText('Later shared edit.');
+    await bob.getByRole('button', { name: 'Back to current version', exact: true }).click();
+    await expect(live(bob)).toContainText('Later shared edit.');
+    await bob.reload(); await expect(versionButton(bob, 2)).toBeVisible();
+    await openVersion(bob, 1);
+    await expect(preview(bob)).toContainText('Alice wrote this.');
+    await expect(preview(bob)).toContainText('Bob wrote this.');
+  } finally { await aliceContext.close(); await bobContext.close(); }
 });

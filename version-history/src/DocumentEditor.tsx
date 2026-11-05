@@ -45,27 +45,23 @@ export function DocumentEditor({ document, readOnly = false, toolbarContainer, o
     setState('loading');
     const superdoc = new SuperDoc({
       selector: mount.current,
-      document: session && typeof document === 'string' ? {
-        url: document,
+      document: session ? {
+        ...(typeof document === 'string' ? { url: document } : { data: document }),
         collaboration: {
           providerType: 'hocuspocus', documentId: session.documentId,
-          serverUrl: collaborationUrl(), token: session.token,
+          serverUrl: collaborationUrl(session), token: session.token,
           roomMode: session.mode, syncTimeoutMs: 45_000,
         },
       } : document,
-      // The application calls this Editing; every native edit is still recorded.
-      documentMode: readOnly ? 'viewing' : 'suggesting',
-      viewing: { trackedChanges: 'markup' },
-      trackChanges: { enabled: readOnly },
-      interaction: { trackedChanges: { allowDecisions: false } },
-      // The editor role permits the post-save API acceptance; UI decisions stay disabled.
+      documentMode: readOnly ? 'viewing' : 'editing',
+      viewing: { trackedChanges: 'final' },
       role: readOnly ? 'viewer' : 'editor',
       allowSelectionInViewMode: true,
-      user: session?.user ?? { name: 'You', email: 'you@example.com' },
+      user: session?.user ?? { id: 'preview', name: 'You', email: 'you@example.com' },
       ui: {
         toolbar: {
           container: toolbarContainer,
-          excludeItems: ['document-mode', 'ruler', 'track-changes-accept-selection', 'track-changes-reject-selection'],
+          excludeItems: readOnly ? ['document-mode', 'ruler', 'track-changes-accept-selection', 'track-changes-reject-selection'] : ['ruler'],
           responsiveTo: 'container',
           overflow: 'menu',
         },

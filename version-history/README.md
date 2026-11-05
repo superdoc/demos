@@ -1,76 +1,128 @@
-# Version history
+# Version History
 
-A React demo with hidden tracked edits, Hocuspocus collaboration, and shared DOCX version history. Requires Node.js 22 and pnpm.
+A React + SuperDoc demo with normal editing, explicit saved versions, and an
+attributed changelog powered by the **Changes API**. Suggestions remain genuine
+Word tracked changes; they are not used as hidden history markers.
+
+The live document stays mounted when browsing history. Versions contain a DOCX,
+a Yjs checkpoint from `changes.snapshot()`, and their own change-record interval.
+Click an edit to navigate to its surviving range and hover a highlight to read
+its author. The list supports newest, oldest, and author sorting.
+
+## Run locally
+
+Requires Node 22.12+, pnpm, and a SuperDoc build containing
+[Orbit PR #5351](https://github.com/superdoc/orbit/pull/5351).
+The published 2.29.0 package checked during this migration does not expose that
+API yet. An older build shows a capability error and disables saving.
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-This starts Vite on port 5173 and the Node/Hocuspocus backend on port 4191. Open two tabs with the same room and different display names:
+Vite listens on port 5173 and proxies HTTP/WebSockets to the backend on 4191.
+`?room=contract&user=Alice` selects a shared room and display name; missing values
+become a UUID and an adjective–animal name. Open the same room in another browser
+to collaborate. Saved versions refresh every five seconds.
 
-- `http://localhost:5173/?room=contract&user=Alice`
-- `http://localhost:5173/?room=contract&user=Bob`
+### Verify against merged Orbit source
 
-Omitting or leaving `room` empty generates a new room UUID and inserts it into the URL. Omitting or leaving `user` empty generates an adjective–animal name, such as `Curious Otter`, and inserts it too. Existing values, other query parameters, and the URL fragment are retained. The URL is updated without reloading or adding a browser-history entry, so refreshes retain the generated room and name. Share the `room` value to collaborate; remove or change `user` for another editor. A per-tab session ID supplies the revision author identity. Query-string names are demo identity, not a login system.
-
-The backend reserves one room initializer. Other visitors wait until that editor's native collaboration-ready signal and server persistence complete, then join the same room. The live editor remains connected while viewing historical snapshots. Saved snapshots open locally without attaching to collaboration.
-
-The server keeps live Yjs state, immutable DOCX files, version metadata, and the room-ready marker under ignored `server/data/`. Closing all tabs or restarting the backend retains them. Reload clients after a backend restart to obtain fresh room session tokens. An interrupted first initialization is left unpublished rather than automatically overwriting a partial room.
-
-The live document is presented as **Editing**, with native `documentMode: 'suggesting'`, `role: 'editor'`, and `trackChanges: { enabled: false }`. This records supported edits as Word revisions without painting revision decorations or showing suggestion bubbles. The editor role permits automatic post-save acceptance through Document API; the mode selector and manual review decisions remain disabled. Adjacent edits may be grouped into one revision by SuperDoc.
-
-Choose **Save version** inside the Current version card to export a complete DOCX snapshot with `superdoc.export({ exportType: ['docx'], triggerDownload: false, policies: { trackedChanges: 'review-preserving' } })` and upload it to the server. Only after the server confirms storage does the app accept the captured tracked changes in the live document, through Document API. The immutable snapshot retains its original revisions and author metadata; the live acceptance syncs to collaborators. Following saves contain the revisions recorded since that reset, with earlier accepted text still present as ordinary document content. Typing, deletion, paste, undo, formatting, document loading, and navigation do not create versions. Concurrent saves receive unique, sequential version numbers, timestamps, and saving-user metadata from the backend.
-
-A failed export/upload never accepts live changes. Capture reads the document revision before export. Cleanup reads the complete revision catalog, then accepts its IDs in one `trackChanges.decide` call guarded by that captured revision. If another user changes the document during export/upload or cleanup, the app reports that the snapshot was saved and retains the live revisions rather than accepting unsaved edits. Those revisions can overlap the previous snapshot until the next successful reset. Other cleanup failures offer **Retry resetting edit history**, which retries the guarded acceptance without uploading another snapshot. Acceptance is a native undoable operation; undoing it can restore revisions from an earlier interval.
-
-The native SuperDoc toolbar supplies formatting, zoom, search, and undo/redo. Each editor mounts its own toolbar; switching versions shows only the selected editor’s controls.
-
-Select a timestamp on the right to mount that snapshot in the same `DocumentEditor` component with `documentMode: 'viewing'`, `role: 'viewer'`, and `viewing: { trackedChanges: 'markup' }`. This displays suggested insertions and deletions without allowing edits or review decisions. Select **Current version** to resume editing. The live editor stays mounted while hidden, preserving unsaved work, selection, and undo history. Unsaved edits remain in the live editor when browsing history. During an explicit save, editor input and version navigation stay disabled through export, upload, and acceptance; repeated clicks cannot create overlapping saves.
-
-The historical editor has its own `SuperDocUIProvider`. Its edit panel uses the browser Document API (`trackChanges.list({ in: 'all', limit, offset })`) to read every revision from the reopened snapshot. For sequential successful saves, this lists only the latest edit interval. It does not compute a text diff between snapshots. Sort by newest timestamp, oldest timestamp, or author; unknown timestamps sort last. Native revision author and timestamp metadata are displayed without inventing missing values.
-
-The custom UI track-changes observer supplies readiness and active state. Clicking an edit calls `ui.trackChanges.setActive()` and `scrollTo()` with its ID and story. Pointer movement resolves changes through `ui.trackChanges.getAt()` and renders a following author/date bubble. IDs are never reconstructed from DOM attributes. Switching versions unmounts the historical UI, cancels stale catalog requests, and removes its hover listeners.
-
-The client fetches the shared version list immediately and polls it every **5 seconds**, including while viewing a historical snapshot. A successful save appears immediately for the saving editor and on the next poll for other editors. Polling updates the list without replacing the live editor or selected snapshot. DOCX files download only when selected, with a per-tab cache. Failed refreshes report an error and retry on the next poll; an older polling response cannot replace a newer save response.
-
-The API uses a session bearer token scoped to one room:
-
-| Method | Route | Behavior |
-| --- | --- | --- |
-| POST | `/api/rooms/:room/session` | Reserve initialization or join a ready room; returns 202 while another editor initializes. |
-| POST | `/api/rooms/:room/ready` | Persist the initializer's Yjs room before admitting joiners. |
-| GET | `/api/rooms/:room/versions` | Return newest-first version metadata. |
-| POST | `/api/rooms/:room/versions` | Save DOCX bytes; `X-Version-Id` provides an idempotent UUID. |
-| GET | `/api/rooms/:room/versions/:id/file` | Download the immutable DOCX. |
-| GET | `/api/health` | Backend health check. |
-
-Hocuspocus WebSockets attach at `/collaboration`. Vite proxies both that path and `/api` to `http://127.0.0.1:4191`; `BACKEND_URL` overrides the development/preview proxy target. `PORT`, `HOST`, and `DATA_DIRECTORY` configure the backend. This is a single-server demo with file storage and anonymous room sessions; version restoration and comparison are not implemented.
+Use a clean Orbit checkout containing the API. Install its public and V2
+workspaces with their frozen lockfiles. Set these absolute paths:
 
 ```sh
-pnpm build
-pnpm start
+export SUPERDOC_LOCAL_SOURCE=/path/to/orbit/superdoc/public/packages/superdoc
+export SUPERDOC_LOCAL_ES=/tmp/superdoc-changes-api-build
+```
+
+From that SuperDoc package directory, build its browser and custom UI entries:
+
+```sh
+pnpm exec vp build --config /path/to/demos/version-history/scripts/local-superdoc.config.mjs
+```
+
+Then run this demo's normal commands with those variables still exported. The
+Vite config uses the local artifacts for `superdoc`, `superdoc/ui`,
+`superdoc/ui/react`, and styles. The build helper keeps its output outside this
+public repository and links its installed runtime dependencies. These source
+artifacts are private, local-only verification output; never commit or deploy
+them. Normal builds without the override use the installed npm package.
+
+## Save and read history
+
+Connected editors read `doc.changes.list({ includeUpdate: true })` and forward
+records to the backend. A save drains that stream, captures a checkpoint and
+DOCX at a stable revision, then uploads both. The backend selects records between
+successive Yjs state vectors. It never accepts/rejects tracked changes or clears
+the live history. Failed saves leave edits available for retry.
+
+Record authors come from the native API, not the person saving. A relayed
+transaction may list multiple contributors. A snapshot's creation time/saver
+are separate server metadata. The backend still owns all durable storage.
+
+The changelog groups a saved version's edits by paragraph and actor identity.
+Adjacent or overlapping ranges share one highlight; disjoint ranges remain
+separate. Each entry uses its latest edit timestamp for sorting. Raw API records
+remain unchanged in storage, and different authors retain separate entries.
+
+The API's record buffer is bounded. Missing records are surfaced as a gap;
+saving cannot silently claim a complete interval. This lightweight demo uses
+connected browsers as record collectors. An always-on production history needs
+a read-only SDK observer so browser closure cannot interrupt recording.
+
+Historical editors open isolated, server-enforced read-only checkpoint rooms.
+They keep the original document identity and native block IDs. Highlights use
+public custom UI viewport geometry, with paragraph context when a precise range
+no longer survives. Removed blocks and some structural changes have no remaining
+text location. Older DOCX-only versions are still readable but have no API log.
+
+## Reuse the versioning operations
+
+`src/versioning.tsx` exposes the versioning behavior separately from the app's
+HTTP storage, room polling and layout:
+
+| Export | Purpose |
+| --- | --- |
+| `captureSnapshot(editor, flush)` | Capture a stable DOCX and Yjs checkpoint after flushing records. |
+| `SnapshotView` | Render a saved document through the supplied editor component with read-only mode enforced. |
+| `Changelog` | Render grouped entries, sorting controls and selected-entry state. |
+| `ChangeHighlights` | Draw range overlays and pointer-following author bubbles using custom UI viewport geometry. |
+| `groupChanges(changes, textAt)` | Combine resolved edits by paragraph and author while preserving raw records. |
+
+`resolveSnapshotChanges(api, records)` resolves and validates native record
+locations in the saved document, then calls `groupChanges`. `HistoricalVersion`
+composes these operations inside its own `SuperDocUIProvider` and handles entry
+selection. Pass the existing `DocumentEditor` as `SnapshotView`'s `editor` prop;
+this keeps capture/grouping independent of browser session initialization.
+Keep the accompanying highlight/changelog styles from `src/styles.css`.
+
+## Verify
+
+```sh
 pnpm test:server
+pnpm build
+pnpm exec playwright install chromium
 pnpm test
 ```
 
-`pnpm start` serves the built frontend, API and WebSockets from one origin on port 4191. Browser tests run an isolated backend and frontend on ports 4193/4194 with generated rooms and data under ignored `artifacts/`.
+Browser integration tests require an API-capable build and exercise the
+`/version-history/` prefix. `VH_TEST_BACKEND_PORT` and `VH_TEST_FRONTEND_PORT`
+override the isolated test ports. Test output and live room state are ignored.
 
 ## Gallery deployment
 
-The demo remains in `demos.json`, with `hidden: true` temporarily hiding its homepage card. Set `hidden` to `false` to show its screenshot and hover video again. The release bundle publishes it at **https://demos.superdoc.dev/version-history/**. The production build uses `BASE_PATH=/version-history/`. API and collaboration URLs resolve relative to that application path, so requests stay on the gallery origin:
+The route remains **https://demos.superdoc.dev/version-history/**, with its card
+temporarily hidden through `demos.json`'s `hidden: true`. Frontend assets are on
+Cloudflare Pages; the existing proxy forwards API and WebSocket requests,
+including snapshot query parameters, to Railway.
 
-- `/version-history/api/*` forwards to the backend's `/api/*`.
-- `/version-history/collaboration` forwards WebSocket upgrades to `/collaboration`.
+Release builds use `BASE_PATH=/version-history/` and require
+`VERSION_HISTORY_BACKEND_URL`. The Railway service uses a persistent volume at
+`/data`; set `DATA_DIRECTORY` inside it. `VERSION_HISTORY_RAILWAY_SERVICE_ID` and
+the existing Railway token select the backend. API-capable published dependency
+versions are required before deploying this migration; local source artifacts
+are not a release substitute.
 
-`scripts/assemble-release.mjs` copies the frontend and emits a Cloudflare Pages `_worker.js` proxy plus `_routes.json`. Only the API and collaboration routes invoke the Worker; the homepage and frontend assets remain static. The backend origin is baked into the release bundle from `VERSION_HISTORY_BACKEND_URL`; it is public configuration, not a credential. The proxy forwards room tokens and DOCX bodies without enabling cross-origin browser access.
-
-Before the first live release:
-
-1. Create a dedicated Railway service in the project accessible to the existing GitHub `RAILWAY_TOKEN`. Deployments upload `version-history/` as the service root and use its `Dockerfile` and `railway.json`. Keep a single replica.
-2. Attach a persistent Railway volume at `/data`. The Docker image sets `DATA_DIRECTORY=/data` and listens on `0.0.0.0` using Railway's `PORT`. Startup refuses Railway deployments whose data directory is outside the attached volume. Give the service a public HTTPS domain and use `/api/health` for its health check.
-3. Set the GitHub repository **variable** `VERSION_HISTORY_BACKEND_URL` to that HTTPS origin, without a path or query. Set the repository **secret** `VERSION_HISTORY_RAILWAY_SERVICE_ID` to the new service ID. The existing `RAILWAY_TOKEN` must have access to this service.
-
-The deployment workflow checks those settings before a live release, deploys the backend, verifies health, and then publishes the Pages bundle. It verifies the public frontend and API route after production deployment. Staging Pages releases use the same configured backend; use a different room query parameter to isolate documents. Dry runs can build with a reserved `.invalid` placeholder when the backend URL has not been configured; they do not deploy services or create storage.
-
-CI runs the backend and browser integration tests. The browser suite builds and serves the app under `/version-history/`, including two-editor collaboration and version saving, rather than only testing the root path. Release automation also tests proxy forwarding, WebSocket upgrade handling, and gallery asset preservation. Automated SuperDoc dependency updates include this demo's manifest and lockfile.
+See [AGENTS.md](AGENTS.md) for component boundaries, record/checkpoint contracts,
+storage files, authentication assumptions, and integration details.
