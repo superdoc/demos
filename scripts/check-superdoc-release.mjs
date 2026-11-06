@@ -1,5 +1,6 @@
 import { appendFile, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import { assertExceptionVersion, readVersionPolicy } from "./demo-version-policy.mjs";
 
 export function stableVersion(version) {
   return typeof version === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version);
@@ -34,14 +35,18 @@ export async function checkRelease({ env = process.env, root = process.cwd(), fe
   const deployCurrent = env.DEPLOY_CURRENT === "true" && !simulation;
   const state = JSON.parse(await readFile(`${root}/.github/superdoc-release.json`, "utf8"));
   const deployed = env.SIMULATED_DEPLOYED || state.version;
-  const manifests = ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client", "version-history"];
-  const installed = await Promise.all(manifests.map(async (directory) => {
-    const manifest = JSON.parse(await readFile(`${root}/${directory}/package.json`, "utf8"));
-    return manifest.dependencies.superdoc;
+  const { demos, exceptions } = await readVersionPolicy(root);
+  const versions = await Promise.all(demos.map(async (demo) => {
+    const manifest = JSON.parse(await readFile(`${root}/${demo.packageDirectory}/package.json`, "utf8"));
+    const version = manifest.dependencies?.superdoc;
+    assertExceptionVersion(exceptions, demo.packageDirectory, version);
+    return { directory: demo.packageDirectory, version };
   }));
+  const installed = versions.filter(({ directory }) => !exceptions.has(directory)).map(({ version }) => version);
+  if (!installed.length) throw new Error("At least one demo must participate in the shared stable version check");
   if (deployCurrent) {
     if (installed.some((version) => !stableVersion(version)) || new Set(installed).size !== 1) {
-      throw new Error("Source deployment requires matching exact stable SuperDoc versions in every demo");
+      throw new Error("Source deployment requires matching exact stable SuperDoc versions in every non-exempt demo");
     }
     if (deployed !== null && !stableVersion(deployed)) throw new Error("Invalid deployed version");
     if (deployed !== null && compareVersions(installed[0], deployed) < 0) {
@@ -67,6 +72,9 @@ export async function checkRelease({ env = process.env, root = process.cwd(), fe
   }
   if (env.GITHUB_STEP_SUMMARY) {
     await appendFile(env.GITHUB_STEP_SUMMARY, `## SuperDoc release check\n\n${result.reason}.\n\n- ${deployCurrent ? "Source SuperDoc version" : "npm latest"}: ${stableVersion(latest) ? latest : "ignored (not stable)"}\n- Last successful automated deployment: ${deployed ?? "none"}\n- Dry run: ${dryRun}\n- Simulation: ${simulation}\n`);
+    if (exceptions.size) {
+      await appendFile(env.GITHUB_STEP_SUMMARY, `\nVersion exceptions (still built and tested):\n${[...exceptions.values()].map(({ id, version, reason }) => `- ${id}: ${version} — ${reason}`).join("\n")}\n`);
+    }
   }
   return result;
 }

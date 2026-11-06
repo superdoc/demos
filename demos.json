@@ -54,6 +54,10 @@
   },
   {
     "id": "version-history",
+    "superdocVersionException": {
+      "version": "2.30.0-next.4",
+      "reason": "Temporarily requires the Changes API before it is available in a stable release. Remove this exception when moving to stable."
+    },
     "screenshot": "version-history-poster.png",
     "video": "version-history-preview.mp4",
     "title": "Version History",

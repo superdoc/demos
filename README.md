@@ -92,6 +92,33 @@ to check all three demos.
 
 ## Automatic SuperDoc updates
 
+### Temporary version exceptions
+
+All demos normally share the same stable SuperDoc version. A demo that needs a
+prerelease can declare an explicit exception in its `demos.json` entry:
+
+```json
+"superdocVersionException": {
+  "version": "2.30.0-next.4",
+  "reason": "Temporarily needs the Changes API before its stable release."
+}
+```
+
+The exception excludes that demo from the shared-version comparison in gallery
+assembly and release validation. Automatic stable updates preserve its pin and
+install its frozen lockfile. Its declared and installed versions must still
+match the exception exactly; a missing reason or an unexpected version fails.
+Builds, browser/backend tests, quickstart checks, and deployment still run.
+The gallery badge and release marker continue to describe the shared stable
+version. `versioned: false` is an older gallery-badge setting and does not provide
+this release/update exception.
+
+Version History currently uses this temporary exception. When its required API
+is available in stable, update its dependency and lockfile to the common stable
+version and remove `superdocVersionException` to restore normal checks/updates.
+
+### Release workflow
+
 The **SuperDoc npm release** workflow polls `https://registry.npmjs.org/superdoc/latest`
 three times a day at 00:17, 08:17, and 16:17 UTC. A new stable version runs
 **Update SuperDoc**, then **Deploy Demos V2**

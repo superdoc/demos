@@ -1,5 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { assertExceptionVersion, dependencyUpdatePlan, readVersionPolicy } from "./demo-version-policy.mjs";
+
+const { exceptions } = await readVersionPolicy(process.cwd());
 
 const requested = process.argv[2] || "latest";
 const resolveVersion = (dependency, specifier) => {
@@ -44,14 +47,14 @@ const packages = [
 
 for (const entry of packages) {
   const manifest = JSON.parse(await readFile(entry.manifest, "utf8"));
-  for (const [name, version] of Object.entries(entry.dependencies)) manifest.dependencies[name] = version;
+  assertExceptionVersion(exceptions, entry.directory, manifest.dependencies?.superdoc);
+  const exception = exceptions.get(entry.directory);
+  if (exception) console.log(`Keeping ${exception.id} on ${exception.version}: ${exception.reason}`);
+  const plan = dependencyUpdatePlan(entry, exceptions);
+  for (const [name, version] of Object.entries(plan.dependencies)) manifest.dependencies[name] = version;
   await writeFile(entry.manifest, `${JSON.stringify(manifest, null, manifest.name === "@docrag/web" ? "\t" : 2)}\n`);
 
-  const dependencySpecs = Object.entries(entry.dependencies).map(([name, version]) => `${name}@${version}`);
-  const args = entry.manager === "npm"
-    ? ["install", ...dependencySpecs, "--save-exact"]
-    : ["update", ...dependencySpecs];
-  const result = spawnSync(entry.manager, args, { cwd: entry.directory, stdio: "inherit" });
+  const result = spawnSync(entry.manager, plan.args, { cwd: entry.directory, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 
 }
@@ -70,7 +73,12 @@ const resolveInstalledVersion = async (entry, dependency) => {
 };
 
 const coreEntries = packages.filter((entry) => "superdoc" in entry.dependencies);
-const resolvedVersions = await Promise.all(coreEntries.map((entry) => resolveInstalledVersion(entry, "superdoc")));
+const installed = await Promise.all(coreEntries.map(async (entry) => {
+  const version = await resolveInstalledVersion(entry, "superdoc");
+  assertExceptionVersion(exceptions, entry.directory, version);
+  return { entry, version };
+}));
+const resolvedVersions = installed.filter(({ entry }) => !exceptions.has(entry.directory)).map(({ version }) => version);
 
 if (new Set(resolvedVersions).size !== 1) {
   throw new Error(`Demos resolved different SuperDoc versions: ${resolvedVersions.join(", ")}`);

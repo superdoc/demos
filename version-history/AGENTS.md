@@ -144,6 +144,11 @@ a local Orbit build is optional when testing unpublished engine changes. The
 runtime capability check fails clearly on older packages rather than recreating
 hidden suggestions. Do not skip integration tests for an unsupported dependency.
 
+`demos.json` declares a temporary `superdocVersionException` for this exact
+prerelease. Shared-version checks and automatic stable updates honor it; the
+demo still builds, tests and deploys. Move the dependency/lockfile to the common
+stable version and remove the exception once the Changes API is stable.
+
 Run `pnpm test:server`, `pnpm build`, and `pnpm test` with an API-capable build.
 Tests cover real normal-mode typing, multi-author collaboration, immutable
 read-only previews, interval boundaries, failed storage, concurrent edits,
