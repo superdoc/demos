@@ -11,6 +11,11 @@ its author. The list supports newest, oldest, and author sorting.
 
 ## Run locally
 
+The **Build this** buttons in the app and gallery both read `src/build-app.sh`.
+That command clones the repository, uses pinned pnpm through `npx` to install
+the frozen lockfile, and starts both services together. No API keys or hosted
+services are required for local collaboration and saved versions.
+
 Requires Node 22.12+ and pnpm. The demo pins the published prerelease
 `superdoc@2.30.0-next.4`, which includes the Changes API. No local Orbit build
 is needed. An older build without the API shows a capability error and disables saving.
@@ -106,6 +111,11 @@ pnpm build
 pnpm exec playwright install chromium
 pnpm test
 ```
+
+From the repository root, `node scripts/verify-build-this.mjs --demo version-history --run`
+checks that both modals share the exact command, runs it in a clean clone of the
+tested checkout, verifies collaboration and saving/reopening a version, and builds
+the installed app. CI runs the same full-stack quickstart check.
 
 Browser integration tests require an API-capable build and exercise the
 `/version-history/` prefix. `VH_TEST_BACKEND_PORT` and `VH_TEST_FRONTEND_PORT`

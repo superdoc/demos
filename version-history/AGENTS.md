@@ -10,6 +10,7 @@ audit markers. Saving must not accept, reject, or otherwise mutate the document.
 | File | Responsibility |
 | --- | --- |
 | `src/App.tsx` | Compose live/history views, connection state, manual saving, and the shared version list. Keep the live editor mounted while showing history. |
+| `src/BuildThis.tsx` and `src/build-app.sh` | Display/copy the full-stack quickstart shared with the gallery; install from the frozen lockfile and start editor plus backend together. |
 | `src/DocumentEditor.tsx` | Own a SuperDoc instance, its native toolbar, document mode, collaboration readiness, and teardown. Reused for history. |
 | `src/session.ts` | URL identity, room session acquisition, authenticated HTTP paths, and live/preview WebSocket URLs. |
 | `src/change-records.ts` | Public Changes API structural contracts and a runtime capability check for older packages. No tracked-change fallback. |
@@ -133,7 +134,7 @@ identities and verify claims themselves.
 
 The existing Pages proxy forwards `/version-history/api/*` and
 `/version-history/collaboration`, including snapshot query parameters, to
-Railway. `demos.json` retains `hidden: true`; the route remains deployed.
+Railway. `demos.json` exposes the Version History card in the gallery.
 
 ## Dependency and verification
 
@@ -148,3 +149,8 @@ Tests cover real normal-mode typing, multi-author collaboration, immutable
 read-only previews, interval boundaries, failed storage, concurrent edits,
 range navigation/hover, cursor retries, retention gaps, and backend restart.
 Use ignored `artifacts/`, `test-results/`, or `server/data/` for runtime output.
+
+The quickstart CI matrix includes `version-history`. Its shared command is
+compared before execution, then tested from a clean checkout with two editors,
+a saved version, historical highlights, and a production build. Keep the modal
+command in `src/build-app.sh` as the single source for the app and gallery.

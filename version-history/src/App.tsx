@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { DocumentEditor } from './DocumentEditor';
+import { BuildThis } from './BuildThis';
 import { HistoricalVersion } from './HistoricalVersion';
 import { useVersionHistory, type Version, type OpenedVersion } from './useVersionHistory';
 import { useRoomSession, type RoomSession } from './session';
@@ -12,6 +13,8 @@ const saveLabels = {
   loading: 'Opening document…', ready: 'No version saved', pending: 'Unsaved changes',
   saving: 'Saving version…', saved: 'Version saved', error: 'Version not saved',
 };
+
+const galleryUrl = import.meta.env.DEV ? 'http://localhost:4173/' : '/';
 
 export default function App() {
   const { session, error, waiting, retry } = useRoomSession();
@@ -49,7 +52,9 @@ function Workspace({ session }: { session: RoomSession }) {
     <div className="document-column">
       <header className="topbar">
         <h1>{selected ? timestamp(selected.createdAt) : <>Current version <span className="room-name">· {session.roomId}</span></>}</h1>
+        <a className="primary-button more-demos-button" href={galleryUrl}>More demos</a>
         {selected && <button className="primary-button" disabled={saving} onClick={() => void selectVersion(null)}>Back to current version</button>}
+        <BuildThis />
         <span className="toolbar-status" role="status">{selected ? 'You’re viewing an earlier version' : saveLabels[history.status]}</span>
         <span className="connection-status" role="status">{connected ? 'Connected' : 'Reconnecting…'}</span>
         <span className={`mode-badge ${selected ? 'viewing' : ''}`}>{selected ? 'View only' : `Live · ${session.user.name}`}</span>

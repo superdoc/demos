@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        demo: [agentic-collaboration, inline-revisions, template-builder-api-v2]
+        demo: [agentic-collaboration, inline-revisions, template-builder-api-v2, version-history]
     steps:
       - uses: actions/checkout@v6
         with:
