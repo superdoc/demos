@@ -141,10 +141,14 @@ export function ChangeHighlights({ changes, active, stage }: HighlightProps) {
   // Recompute screen rectangles after scrolling, zooming or document layout changes.
   useEffect(() => {
     if (!ui) return;
+    const element = stage.current;
     let frame = 0;
+    let scrolling = false;
+    let scrollTimer: ReturnType<typeof setTimeout>;
 
     function paint() {
       frame = 0;
+      if (scrolling) return;
       const bounds = stage.current?.getBoundingClientRect();
       if (!bounds || !ui) return;
 
@@ -161,12 +165,30 @@ export function ChangeHighlights({ changes, active, stage }: HighlightProps) {
     }
 
     const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(paint);
+      if (!scrolling && !frame) frame = requestAnimationFrame(paint);
+    };
+    const onScroll = () => {
+      scrolling = true;
+      cancelAnimationFrame(frame);
+      frame = 0;
+      highlightsRef.current = [];
+      setHighlights([]);
+      setHover(null);
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        scrolling = false;
+        schedule();
+      }, 150);
     };
     const stop = ui.viewport.observe(schedule);
+    element?.addEventListener('scroll', onScroll, true);
+    window.addEventListener('scroll', onScroll);
     schedule();
     return () => {
       cancelAnimationFrame(frame);
+      clearTimeout(scrollTimer);
+      element?.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('scroll', onScroll);
       stop();
     };
   }, [ui, changes, stage]);

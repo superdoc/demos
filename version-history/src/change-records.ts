@@ -14,8 +14,8 @@ export type BlockChange =
   | { kind: 'table'; story: Story; tableId: string; detail: Record<string, unknown> }
   | { kind: 'sidecar'; affects: 'comment' | 'trackedChange' | 'bookmark'; ids: string[] };
 
-// Structural public Changes API contracts let the demo fail clearly on older
-// packages while the merged API is being released. No tracked-change fallback.
+// Public API contracts used by the recorder and stored version records.
+// Keep the runtime check so an older host build fails clearly.
 export type ChangeRecord = {
   id: string; seq: number; revision: string; origin: 'local' | 'remote';
   actor: Actor | null; contributors?: Actor[]; actorType: 'human' | 'code' | null;
@@ -39,7 +39,7 @@ export type SnapshotEditor = Pick<SuperDoc, 'getDocumentApi' | 'export'>;
 export function getChangesApi(source: SnapshotEditor): ChangesApi {
   const api = source.getDocumentApi() as (ReturnType<SuperDoc['getDocumentApi']> & { changes?: ChangesApi });
   if (!api?.changes?.list || !api.changes.snapshot) {
-    throw new Error('This SuperDoc build does not include the Changes API. Use a build containing Orbit PR #5351.');
+    throw new Error('This SuperDoc build does not include the Changes API. Use superdoc@2.30.0-next.4 or a compatible build.');
   }
   return api.changes;
 }

@@ -3,8 +3,8 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
 const backend = process.env.BACKEND_URL || 'http://127.0.0.1:4191';
-// Local verification of a merged, not-yet-published API. Build artifacts stay
-// outside this public repository; normal builds continue using the npm package.
+// Optional verification of local Orbit changes. Normal builds use the pinned
+// npm prerelease; local artifacts stay outside this public repository.
 const localBuild = process.env.SUPERDOC_LOCAL_ES;
 const localSource = process.env.SUPERDOC_LOCAL_SOURCE;
 if (!!localBuild !== !!localSource) throw new Error('Set both SUPERDOC_LOCAL_ES and SUPERDOC_LOCAL_SOURCE for a local SuperDoc build');
@@ -28,7 +28,12 @@ export default defineConfig({
       { find: 'vue', replacement: path.join(localSource, 'node_modules/vue/dist/vue.runtime.esm-bundler.js') },
     ] : [],
   },
-  optimizeDeps: { exclude: ['superdoc'] },
+  optimizeDeps: {
+    exclude: ['superdoc'],
+    // SuperDoc's React UI imports this CommonJS shim. Prebundle it even though
+    // the parent package is excluded, so browsers receive named ESM exports.
+    include: ['superdoc > use-sync-external-store/shim'],
+  },
   base: process.env.BASE_PATH || './',
   server: { proxy, ...(localBuild && localSource ? { fs: { allow: [process.cwd(), localBuild, publicRoot] } } : {}) },
   preview: { proxy },

@@ -11,10 +11,9 @@ its author. The list supports newest, oldest, and author sorting.
 
 ## Run locally
 
-Requires Node 22.12+, pnpm, and a SuperDoc build containing
-[Orbit PR #5351](https://github.com/superdoc/orbit/pull/5351).
-The published 2.29.0 package checked during this migration does not expose that
-API yet. An older build shows a capability error and disables saving.
+Requires Node 22.12+ and pnpm. The demo pins the published prerelease
+`superdoc@2.30.0-next.4`, which includes the Changes API. No local Orbit build
+is needed. An older build without the API shows a capability error and disables saving.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -26,9 +25,10 @@ Vite listens on port 5173 and proxies HTTP/WebSockets to the backend on 4191.
 become a UUID and an adjective–animal name. Open the same room in another browser
 to collaborate. Saved versions refresh every five seconds.
 
-### Verify against merged Orbit source
+### Optional: verify local Orbit changes
 
-Use a clean Orbit checkout containing the API. Install its public and V2
+Normal development and CI use the published prerelease. To test unpublished
+engine changes instead, use a clean Orbit checkout containing the API. Install its public and V2
 workspaces with their frozen lockfiles. Set these absolute paths:
 
 ```sh
@@ -101,6 +101,7 @@ Keep the accompanying highlight/changelog styles from `src/styles.css`.
 
 ```sh
 pnpm test:server
+pnpm test:dev # Same browser checks against the Vite development server
 pnpm build
 pnpm exec playwright install chromium
 pnpm test

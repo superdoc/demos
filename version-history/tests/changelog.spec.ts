@@ -42,3 +42,40 @@ test('character typing renders one paragraph entry and one continuous highlight'
   await expect(page.getByRole('tooltip')).toContainText('Alice');
   await page.screenshot({ path: 'artifacts/changes-api-paragraph.png' });
 });
+
+test('scrolling hides highlights and redraws them over the text after scrolling stops', async ({ page }) => {
+  await openRoom(page, 'Alice');
+  await edit(page, 'Scroll anchor text. ');
+  await save(page);
+  await openVersion(page, 1);
+  await page.locator('.change-card').click();
+  const highlight = page.locator('.change-highlight.active');
+  await expect(highlight).toHaveCount(1);
+  const before = await highlight.boundingBox();
+  if (!before) throw new Error('Missing initial highlight');
+
+  const stage = page.getByRole('main', { name: 'Version preview', exact: true });
+  const scrolled = await stage.evaluate((element) => {
+    const before = element.scrollTop;
+    element.scrollTop += 70;
+    return element.scrollTop - before;
+  });
+  expect(scrolled).toBeGreaterThan(0);
+  await expect(highlight).toHaveCount(0);
+  await expect(highlight).toHaveCount(1);
+  await expect.poll(async () => (await highlight.boundingBox())?.y).toBeCloseTo(before.y - scrolled, 0);
+
+  const text = page.getByLabel('Historical document', { exact: true })
+    .locator('.superdoc-text-run').filter({ hasText: 'Scroll anchor text.' }).first();
+  const textBounds = await text.boundingBox();
+  const after = await highlight.boundingBox();
+  if (!textBounds || !after) throw new Error('Missing text or highlight after scroll');
+  expect(Math.abs(after.y - textBounds.y)).toBeLessThan(3);
+  expect(Math.abs(after.x - textBounds.x)).toBeLessThan(3);
+
+  await stage.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(highlight).toHaveCount(0);
+  await stage.evaluate((element) => { element.scrollTop = 0; });
+  await expect(highlight).toHaveCount(1);
+  await page.screenshot({ path: 'artifacts/changes-api-scroll.png' });
+});

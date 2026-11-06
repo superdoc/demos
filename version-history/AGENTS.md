@@ -86,7 +86,8 @@ Each preview has its own `SuperDocUIProvider`. It uses public Document API node
 reads and custom UI `viewport.getRect`, `viewport.observe`, and
 `viewport.scrollIntoView`. No private editor state, guessed DOM offsets, or
 tracked-change IDs are used for navigation. Highlights and author hover bubbles
-are application overlays; genuine Word revisions remain separate.
+are application overlays; genuine Word revisions remain separate. Hide overlays
+and clear hover state during scrolling, then recalculate after scrolling stops.
 
 After resolving individual ranges, group entries by their original paragraph,
 story, actor ID and contributor set within that version. Never group by display
@@ -136,11 +137,11 @@ Railway. `demos.json` retains `hidden: true`; the route remains deployed.
 
 ## Dependency and verification
 
-The Changes API is merged in Orbit but absent from the installed npm 2.29.0
-build checked during this migration. Until an API-capable package is published,
-use the local build procedure in `README.md`. Structural API types allow a normal
-build; the runtime check fails clearly rather than recreating hidden suggestions.
-Do not skip the integration tests to disguise an unsupported dependency.
+The demo pins the published prerelease `superdoc@2.30.0-next.4`, which includes
+the Changes API. Normal development and CI must use the installed npm package;
+a local Orbit build is optional when testing unpublished engine changes. The
+runtime capability check fails clearly on older packages rather than recreating
+hidden suggestions. Do not skip integration tests for an unsupported dependency.
 
 Run `pnpm test:server`, `pnpm build`, and `pnpm test` with an API-capable build.
 Tests cover real normal-mode typing, multi-author collaboration, immutable
