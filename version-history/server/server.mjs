@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Hocuspocus } from '@hocuspocus/server';
 import { WebSocketServer } from 'ws';
 import { applyUpdate, encodeStateAsUpdate } from 'yjs';
+import { intervalRecords, validateCheckpoint, validateRecords } from './change-store.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const docxType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -38,6 +39,7 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
   const rooms = new Map();
   const sessions = new Map();
   const roomWrites = new Map();
+  const previews = new Map();
 
   function enqueue(id, task) {
     const next = (roomWrites.get(id) ?? Promise.resolve()).catch(() => {}).then(task);
@@ -52,8 +54,9 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
       await mkdir(directory, { recursive: true });
       const metadata = await readJson(path.join(directory, 'room.json'), { ready: false });
       const versions = await readJson(path.join(directory, 'versions.json'), []);
+      const records = await readJson(path.join(directory, 'changes.json'), []);
       return { id, directory, documentId: `version-history-${id}`, ready: metadata.ready,
-        initializer: null, versions };
+        initializer: null, versions, records };
     })());
     return rooms.get(id);
   }
@@ -98,7 +101,7 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
     try {
       const url = new URL(request.url, 'http://localhost');
       if (url.pathname === '/api/health') return json(200, { ok: true });
-      const route = /^\/api\/rooms\/([^/]+)\/(session|ready|versions)(?:\/([^/]+)\/file)?$/.exec(url.pathname);
+      const route = /^\/api\/rooms\/([^/]+)\/(session|ready|changes|versions)(?:\/([^/]+)\/(file|changes))?$/.exec(url.pathname);
       if (!route) {
         if (url.pathname.startsWith('/api/')) return json(404, { error: 'Not found' });
         const name = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '');
@@ -109,7 +112,7 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
         response.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream' });
         return response.end(content);
       }
-      const [, id, action, versionId] = route;
+      const [, id, action, versionId, resource] = route;
       const room = await roomFor(id);
       if (action === 'session' && request.method === 'POST') {
         let input;
@@ -149,12 +152,41 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
         }
         return json(200, { ready: true });
       }
+      if (action === 'changes' && request.method === 'POST') {
+        if (!room.ready) return json(409, { error: 'Wait for collaboration to connect before recording changes' });
+        const items = validateRecords(JSON.parse(await body(request, 16 * 1024 * 1024)));
+        await enqueue(id, async () => {
+          const known = new Map(room.records.map((record) => [record.id, record]));
+          for (const record of items) {
+            const existing = known.get(record.id);
+            if (existing && existing.update !== record.update) throw Object.assign(new Error('Change ID conflict'), { status: 409 });
+            // Prefer the writing client's attribution over a remote observation.
+            if (!existing || (record.provenance === 'authored' && existing.provenance !== 'authored')) known.set(record.id, record);
+          }
+          const records = [...known.values()];
+          await atomicWrite(path.join(room.directory, 'changes.json'), JSON.stringify(records));
+          room.records = records;
+        });
+        return json(200, { stored: items.length });
+      }
       if (action === 'versions' && !versionId && request.method === 'GET') return json(200, room.versions);
       if (action === 'versions' && !versionId && request.method === 'POST') {
         if (!room.ready) return json(409, { error: 'Wait for collaboration to connect before saving' });
         const idempotencyId = request.headers['x-version-id'];
         if (!uuid.test(idempotencyId ?? '')) return json(400, { error: 'A version ID is required' });
-        const bytes = await body(request, 20 * 1024 * 1024);
+        let bytes = await body(request, 64 * 1024 * 1024);
+        let checkpoint = null;
+        let state = null;
+        if (request.headers['content-type']?.startsWith('multipart/form-data')) {
+          const form = await new Request('http://localhost/version', {
+            method: 'POST', headers: { 'Content-Type': request.headers['content-type'] }, body: bytes,
+          }).formData();
+          const document = form.get('document');
+          if (!document || typeof document === 'string') return json(400, { error: 'Expected a DOCX document' });
+          checkpoint = JSON.parse(String(form.get('checkpoint')));
+          state = validateCheckpoint(checkpoint);
+          bytes = Buffer.from(await document.arrayBuffer());
+        }
         if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) return json(400, { error: 'Expected a DOCX file' });
         const version = await enqueue(id, async () => {
           const existing = room.versions.find((item) => item.id === idempotencyId);
@@ -162,10 +194,19 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
             if (existing.createdBy.id !== session.user.id) throw Object.assign(new Error('Version ID conflict'), { status: 409 });
             return existing;
           }
+          if (checkpoint && checkpoint.baseVersionId !== (room.versions[0]?.id ?? null)) {
+            throw Object.assign(new Error('Another user saved a version. Refresh the version list and save again.'), { status: 409 });
+          }
+          const records = checkpoint ? intervalRecords(room.records, checkpoint, room.versions[0]) : [];
           const entry = { id: idempotencyId, number: (room.versions[0]?.number ?? 0) + 1,
-            createdAt: new Date().toISOString(), createdBy: session.user, bytes: bytes.length };
+            createdAt: new Date().toISOString(), createdBy: session.user, bytes: bytes.length,
+            ...(checkpoint ? { revision: checkpoint.revision, cursor: checkpoint.cursor, stateVector: checkpoint.stateVector, changeCount: records.length } : {}) };
           const versions = [entry, ...room.versions];
           await atomicWrite(path.join(room.directory, `${entry.id}.docx`), bytes);
+          if (checkpoint) {
+            await atomicWrite(path.join(room.directory, `${entry.id}.yjs`), state);
+            await atomicWrite(path.join(room.directory, `${entry.id}.changes.json`), JSON.stringify(records));
+          }
           await atomicWrite(path.join(room.directory, 'versions.json'), JSON.stringify(versions));
           room.versions = versions;
           return entry;
@@ -174,21 +215,51 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
       }
       if (action === 'versions' && versionId && request.method === 'GET') {
         if (!room.versions.some((item) => item.id === versionId)) return json(404, { error: 'Version not found' });
+        if (resource === 'changes') {
+          return json(200, await readJson(path.join(room.directory, `${versionId}.changes.json`), []));
+        }
         const bytes = await readFile(path.join(room.directory, `${versionId}.docx`));
         response.writeHead(200, { 'Content-Type': docxType, 'Cache-Control': 'private, max-age=31536000, immutable' });
         return response.end(bytes);
       }
       return json(405, { error: 'Method not allowed' });
     } catch (error) {
-      if (!response.headersSent) json(error.status ?? (error.code === 'ENOENT' ? 404 : 500), {
-        error: error.status ? error.message : 'Request could not be completed',
+      if (!response.headersSent) json(error.status ?? (error instanceof SyntaxError || error instanceof RangeError ? 400 : error.code === 'ENOENT' ? 404 : 500), {
+        error: error.status ? error.message : error instanceof SyntaxError || error instanceof RangeError ? 'Invalid request data' : 'Request could not be completed',
       });
     }
   });
+  function previewServer(roomId, versionId) {
+    // Native shard IDs include the document identity. Keep that identity while
+    // isolating each immutable checkpoint in its own read-only server instance.
+    const key = `${roomId}:${versionId}`;
+    if (!previews.has(key)) previews.set(key, new Hocuspocus({
+      quiet: true,
+      async onAuthenticate({ token, documentName, connection }) {
+        const session = sessions.get(token);
+        const room = await roomFor(roomId);
+        if (!session || session.roomId !== roomId || roomIdFromDocument(documentName) !== roomId
+          || !room.versions.some((version) => version.id === versionId && version.stateVector)) throw new Error('Access denied');
+        connection.readOnly = true;
+        return { userId: session.user.id };
+      },
+      async onLoadDocument({ document }) {
+        const room = await roomFor(roomId);
+        applyUpdate(document, await readFile(path.join(room.directory, `${versionId}.yjs`)));
+        return document;
+      },
+    }));
+    return previews.get(key);
+  }
   const websocket = new WebSocketServer({ noServer: true, maxPayload: 32 * 1024 * 1024 });
   server.on('upgrade', (request, socket, head) => {
     if (!request.url?.startsWith('/collaboration')) return socket.destroy();
-    websocket.handleUpgrade(request, socket, head, (connection) => collaboration.handleConnection(connection, request));
+    const url = new URL(request.url, 'http://localhost');
+    const snapshot = url.searchParams.get('snapshot');
+    const room = url.searchParams.get('room');
+    if (snapshot && (!uuid.test(snapshot) || !validId.test(room ?? ''))) return socket.destroy();
+    const provider = snapshot ? previewServer(room, snapshot) : collaboration;
+    websocket.handleUpgrade(request, socket, head, (connection) => provider.handleConnection(connection, request));
   });
 
   return {
@@ -196,6 +267,7 @@ export function createBackend({ dataDirectory = path.join(root, 'server/data') }
     collaboration,
     async close() {
       await collaboration.destroy();
+      await Promise.all([...previews.values()].map((preview) => preview.destroy()));
       await Promise.allSettled(roomWrites.values());
       websocket.close();
       await new Promise((resolve) => server.close(resolve));

@@ -37,7 +37,7 @@
     .site-subheading { margin: 2px 0 0; color: #5a5a61; font-size: 14px; font-weight: 400; line-height: 1.55; }
     .site-version { margin: 0; color: #71717a; font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 500; letter-spacing: .02em; white-space: nowrap; }
     .demo-stage { position: relative; display: flex; flex-wrap: wrap; justify-content: center; width: min(1120px, calc(100vw - 64px)); gap: 24px; }
-    .demo-slide { display: flex; flex: 0 0 calc((100% - 24px) / 2); min-width: 0; }
+    .demo-slide { display: flex; flex: 0 0 calc((100% - 48px) / 3); min-width: 0; }
     .demo-slide.active { animation: reveal .42s ease both; }
     @keyframes reveal { from { opacity: 0; transform: translateY(10px) scale(.985); } }
     .demo-card { position: relative; display: flex; flex-direction: column; width: 100%; overflow: hidden; border: 1px solid #ececee; border-radius: 18px; background: #fff; box-shadow: 0 2px 8px rgba(0, 0, 0, .04), 0 20px 44px rgba(0, 0, 0, .07); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
@@ -51,7 +51,7 @@
     .card-body { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 164px; padding: 20px; color: #212121; background: #fff; text-align: left; }
     .card-body h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; }
     .card-body p { margin: 0; color: #5a5a61; font-size: 14px; line-height: 1.55; }
-    .card-actions { position: relative; z-index: 3; display: flex; align-self: flex-end; align-items: center; gap: 8px; margin-top: auto; padding-top: 18px; color: #71717a; font-size: 13px; font-weight: 600; }
+    .card-actions { position: relative; z-index: 3; display: flex; flex-wrap: wrap; justify-content: flex-end; align-self: flex-end; align-items: center; gap: 8px; margin-top: auto; padding-top: 18px; color: #71717a; font-size: 13px; font-weight: 600; }
     .card-actions a { color: #1355ff; text-decoration: none; }
     .card-actions a:hover { text-decoration: underline; }
     .build-app-button, .build-command-copy { border: 0; border-radius: 6px; padding: 8px 12px; color: #fff; background: #1355ff; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }

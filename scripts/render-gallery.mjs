@@ -2,8 +2,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readBuildCommand, renderBuildDialog } from "./build-this.mjs";
+import { assertExceptionVersion, versionExceptions } from "./demo-version-policy.mjs";
 
-const root = path.resolve(import.meta.dirname, "..");
+const defaultRoot = path.resolve(import.meta.dirname, "..");
 
 const escapeHtml = (value) => String(value)
   .replaceAll("&", "&amp;")
@@ -16,7 +17,7 @@ const replaceSection = (html, name, content) => html.replace(
   `$1\n${content}\n      $2`,
 );
 
-export async function renderGallery({ mode, output }) {
+export async function renderGallery({ mode, output, root = defaultRoot }) {
   const manifest = JSON.parse(await readFile(path.join(root, "demos.json"), "utf8"));
   if (!Array.isArray(manifest) || manifest.length === 0) {
     throw new Error("demos.json must contain a non-empty array");
@@ -39,19 +40,23 @@ export async function renderGallery({ mode, output }) {
   const ids = manifest.map((demo) => demo.id);
   if (new Set(ids).size !== ids.length) throw new Error("Demo ids must be unique");
   const visibleDemos = manifest.filter((demo) => !demo.hidden);
+  const exceptions = versionExceptions(manifest);
   const buildCommands = new Map(await Promise.all(visibleDemos.filter((demo) => demo.buildCommandSource)
     .map(async (demo) => [demo.id, await readBuildCommand(root, demo)])));
 
   const versionEntries = mode === "local"
     ? manifest.filter((demo) => demo.localSourceDirectory && demo.versioned !== false)
     : manifest.filter((demo) => demo.versioned !== false);
-  const versions = await Promise.all(versionEntries.map(async (demo) => {
+  const installed = await Promise.all(versionEntries.map(async (demo) => {
     const packageJson = await readFile(
       path.join(root, demo.packageDirectory, "node_modules", "superdoc", "package.json"),
       "utf8",
     );
-    return JSON.parse(packageJson).version;
+    const version = JSON.parse(packageJson).version;
+    assertExceptionVersion(exceptions, demo.packageDirectory, version);
+    return { demo, version };
   }));
+  const versions = installed.filter(({ demo }) => !exceptions.has(demo.packageDirectory)).map(({ version }) => version);
   if (new Set(versions).size !== 1) {
     throw new Error(`Demos resolved different SuperDoc versions: ${versions.join(", ")}`);
   }

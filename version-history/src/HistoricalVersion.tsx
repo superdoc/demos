@@ -1,71 +1,58 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { SuperDoc } from 'superdoc';
-import { SuperDocUIProvider, useSetSuperDoc, useSuperDocUI } from 'superdoc/ui/react';
-import { ChangesPanel } from './ChangesPanel';
+import { SuperDocUIProvider, useSetSuperDoc, useSuperDocDocumentApi, useSuperDocUI } from 'superdoc/ui/react';
+import { SnapshotView, Changelog, ChangeHighlights, resolveSnapshotChanges } from './versioning';
 import { DocumentEditor } from './DocumentEditor';
-import { changeAuthor, changeDate, changeLabel, type Change } from './changes';
+import type { Change } from './versioning';
+import type { OpenedVersion } from './useVersionHistory';
+import type { RoomSession } from './session';
 
-type Props = { file: File; panel: HTMLElement | null; stage: RefObject<HTMLElement | null> };
+type Props = { version: OpenedVersion; session: RoomSession; panel: HTMLElement | null; stage: RefObject<HTMLElement | null> };
 
 export function HistoricalVersion(props: Props) {
-  // Each historical editor and its custom UI share one controller. The live
-  // editor stays mounted independently and cannot overwrite this binding.
   return <SuperDocUIProvider><Preview {...props} /></SuperDocUIProvider>;
 }
 
-function Preview({ file, panel, stage }: Props) {
+function Preview({ version, session, panel, stage }: Props) {
   const setSuperDoc = useSetSuperDoc();
+  const api = useSuperDocDocumentApi();
+  const ui = useSuperDocUI();
+  const [changes, setChanges] = useState<Change[]>([]);
+  const [ready, setReady] = useState(false);
+  const [active, setActive] = useState<string | null>(null);
+  const snapshotSession = useMemo(() => version.stateVector ? {
+    ...session, snapshotId: version.id, mode: 'join' as const,
+  } : undefined, [session, version.id, version.stateVector]);
   const onReady = useCallback((superdoc: SuperDoc) => {
     setSuperDoc(superdoc);
     stage.current?.scrollTo(0, 0);
   }, [setSuperDoc, stage]);
 
-  return <>
-    <DocumentEditor document={file} readOnly toolbarContainer="#version-document-toolbar" onReady={onReady} />
-    {panel && createPortal(<ChangesPanel />, panel)}
-    <ChangeHover stage={stage} />
-  </>;
-}
-
-function ChangeHover({ stage }: { stage: RefObject<HTMLElement | null> }) {
-  const ui = useSuperDocUI();
-  const [hover, setHover] = useState<{ change: Change; x: number; y: number } | null>(null);
-  const frame = useRef<number | undefined>(undefined);
-
   useEffect(() => {
-    const element = stage.current;
-    if (!element || !ui) return;
-    const clear = () => { cancelAnimationFrame(frame.current ?? 0); setHover(null); };
-    const move = (event: PointerEvent) => {
-      cancelAnimationFrame(frame.current ?? 0);
-      const { clientX: x, clientY: y } = event;
-      frame.current = requestAnimationFrame(() => {
-        // Resolve through SuperDoc, including the change's story. No DOM ID parsing.
-        const hit = ui.trackChanges.getAt({ x, y });
-        setHover(hit ? { change: hit.item, x, y } : null);
-      });
-    };
-    element.addEventListener('pointermove', move);
-    element.addEventListener('pointerleave', clear);
-    element.addEventListener('scroll', clear, true);
-    window.addEventListener('blur', clear);
-    return () => {
-      cancelAnimationFrame(frame.current ?? 0);
-      element.removeEventListener('pointermove', move);
-      element.removeEventListener('pointerleave', clear);
-      element.removeEventListener('scroll', clear, true);
-      window.removeEventListener('blur', clear);
-    };
-  }, [ui, stage]);
+    if (!api) return;
+    let alive = true;
+    setReady(false);
+    void (async () => {
+      const grouped = await resolveSnapshotChanges(api, version.records);
+      if (alive) { setChanges(grouped); setReady(true); }
+    })();
+    return () => { alive = false; };
+  }, [api, version.records]);
 
-  if (!hover) return null;
-  return createPortal(<div className="change-tooltip" role="tooltip" style={{
-    left: Math.max(8, Math.min(hover.x + 16, window.innerWidth - 288)),
-    top: Math.max(8, Math.min(hover.y + 18, window.innerHeight - 142)),
-  }}>
-    <strong>{changeAuthor(hover.change)}</strong>
-    {hover.change.authorEmail && <span>{hover.change.authorEmail}</span>}
-    <span>{changeLabel(hover.change)} · {changeDate(hover.change)}</span>
-  </div>, document.body);
+  const select = async (change: Change) => {
+    if (!ui || !change.targets[0]) throw new Error('Location unavailable');
+    const result = await ui.viewport.scrollIntoView({ target: change.targets[0], block: 'center', behavior: 'instant' });
+    if (!result.success) throw new Error('Location unavailable');
+    setActive(change.id);
+  };
+
+  return <>
+    <SnapshotView editor={DocumentEditor} document={version.file} session={snapshotSession} toolbarContainer="#version-document-toolbar" onReady={onReady} />
+    {panel && createPortal(<>
+      {!version.stateVector && <p className="changes-message">This older DOCX version has no Changes API checkpoint.</p>}
+      <Changelog changes={changes} ready={ready} active={active} onSelect={select} />
+    </>, panel)}
+    <ChangeHighlights changes={changes} active={active} stage={stage} />
+  </>;
 }

@@ -1,325 +1,161 @@
 # Version history demo: integration guide
 
-This directory is a standalone React + SuperDoc application with a small Node
-backend. Copy it independently of the surrounding demos gallery. The working
-implementation is the reference; [README.md](README.md) covers local setup and
-the public HTTP routes.
+This standalone React application records edits through the public Document API
+`doc.changes` surface introduced in Orbit PR #5351. The live editor starts in
+ordinary **editing** mode. Tracked changes are genuine suggestions, never hidden
+audit markers. Saving must not accept, reject, or otherwise mutate the document.
 
-The main idea is to record native Word tracked changes while presenting an
-ordinary editing experience. A user explicitly saves a DOCX version. Opening
-that immutable file exposes its revisions as a changelog, with native highlights
-and application-owned review UI. After successful storage, the application
-accepts the captured live revisions to start a fresh edit interval.
-
-## Ownership and component boundaries
+## Ownership
 
 | File | Responsibility |
 | --- | --- |
-| [src/main.tsx](src/main.tsx) | Mount the React application and import SuperDoc/application styles. |
-| [src/App.tsx](src/App.tsx) | Compose the workspace, show connection/save state, select versions, and keep the live editor mounted while previewing history. |
-| [src/DocumentEditor.tsx](src/DocumentEditor.tsx) | Own one SuperDoc instance, its native toolbar, document mode, collaboration configuration, readiness, and destruction. Reused for live and historical documents. |
-| [src/session.ts](src/session.ts) | Resolve URL identity, acquire a room session, and provide HTTP paths, bearer headers, response checking, and the WebSocket URL. |
-| [src/useVersionHistory.ts](src/useVersionHistory.ts) | Own HTTP version-list polling, manual export/upload, download caching, save state, and stale-response protection. |
-| [src/snapshot.ts](src/snapshot.ts) | Capture the live document revision and revision-preserving DOCX; accept its changes after storage using an atomic guarded Document API decision. |
-| [src/HistoricalVersion.tsx](src/HistoricalVersion.tsx) | Bind the historical editor to its own SuperDoc custom UI provider, portal the changelog into the sidebar, and implement author hover bubbles. |
-| [src/ChangesPanel.tsx](src/ChangesPanel.tsx) | Read the selected snapshot's revisions through Document API; use custom UI readiness, active state, and navigation. |
-| [src/changes.ts](src/changes.ts) | Format revision text, authors, dates, occurrence keys, and sorting. Contains no storage or editor lifecycle logic. |
-| [server/server.mjs](server/server.mjs) | Serve HTTP API/static assets, attach Hocuspocus WebSockets, coordinate room initialization, and persist room state and immutable versions. |
-| [vite.config.ts](vite.config.ts) | Proxy `/api` and `/collaboration` during development and preview. |
-| [../scripts/assemble-release.mjs](../scripts/assemble-release.mjs) | Copy the frontend into the gallery's `/version-history/` route using its `demos.json` entry. |
-| [../scripts/version-history-release.mjs](../scripts/version-history-release.mjs) | Generate the Pages API and WebSocket proxy artifacts. |
-| [../scripts/version-history-proxy.mjs](../scripts/version-history-proxy.mjs) | Forward the published route's API and WebSocket requests to the configured Railway backend. |
-| [Dockerfile](Dockerfile), [railway.json](railway.json) | Package and health-check the single-replica backend; live room/version data requires an attached persistent volume. |
+| `src/App.tsx` | Compose live/history views, connection state, manual saving, and the shared version list. Keep the live editor mounted while showing history. |
+| `src/BuildThis.tsx` and `src/build-app.sh` | Display/copy the full-stack quickstart shared with the gallery; install from the frozen lockfile and start editor plus backend together. |
+| `src/DocumentEditor.tsx` | Own a SuperDoc instance, its native toolbar, document mode, collaboration readiness, and teardown. Reused for history. |
+| `src/session.ts` | URL identity, room session acquisition, authenticated HTTP paths, and live/preview WebSocket URLs. |
+| `src/change-records.ts` | Public Changes API structural contracts and a runtime capability check for older packages. No tracked-change fallback. |
+| `src/change-recorder.ts` | Read paginated native records, persist them, and advance the session cursor only after successful storage. |
+| `src/versioning.tsx` | Reusable versioning operations: capture a stable snapshot, render a read-only snapshot and changelog, resolve/highlight ranges with author bubbles, and group paragraph edits. |
+| `src/useVersionHistory.ts` | Bind the recorder, coordinate saving and downloads, cache immutable previews, and poll shared metadata every five seconds. |
+| `src/changes.ts` | Low-level record interpretation, text range mapping through subsequent edits/splits, and attribution formatting/sorting. |
+| `src/HistoricalVersion.tsx` | Compose versioning operations inside an isolated custom UI provider and wire selected-entry navigation to the host layout. |
+| `server/server.mjs` | Authenticated HTTP API, live Hocuspocus service, isolated read-only snapshot providers, and serialized filesystem writes. |
+| `server/change-store.mjs` | Validate records/checkpoints and select a version's interval by Yjs transaction clocks. |
+| `scripts/local-superdoc.config.mjs` | Build local-only browser/UI artifacts from an API-capable Orbit source checkout. Never publish these artifacts. |
 
-The HTTP API and WebSocket service are logically separate but currently live in
-the same backend file and listen on the same HTTP server. There is no separate
-backend changelog processor: revision extraction happens in the browser after
-opening a saved DOCX.
+## Record edits without changing editing semantics
 
-Production uses static Cloudflare Pages assets at `/version-history/` and a
-Pages Worker proxy for `/version-history/api/*` and
-`/version-history/collaboration`. It strips the application prefix before
-forwarding requests to Railway. Keep frontend URLs relative to the application
-base; hardcoded `/api` or `/collaboration` paths bypass that proxy when deployed.
-The release workflow requires `VERSION_HISTORY_BACKEND_URL` (repository
-variable), `VERSION_HISTORY_RAILWAY_SERVICE_ID` (repository secret), and access
-through the existing `RAILWAY_TOKEN`. Attach a volume at `/data` before the first
-backend deployment. The `demos.json` entry supplies the homepage card, screenshot,
-and hover video; `hidden: true` currently hides the card without disabling deployment.
-See [README deployment setup](README.md#gallery-deployment).
+The constructor uses `documentMode: 'editing'`, `role: 'editor'`, and
+`user: session.user`, including its stable `id`. The native mode selector stays
+available. Switching to suggesting creates real Word revisions. Export uses the
+`review-preserving` policy to preserve those genuine suggestions.
 
-```text
-Live SuperDoc <---- WebSocket /collaboration ----> Hocuspocus <--> room.yjs
-      |
-      | explicit Save version: export DOCX
-      v
-useVersionHistory ---- POST versions -----------> DOCX file + versions.json
-      |
-      +--------------- GET versions every 5s ----> shared version metadata
-      |
-      +--------------- GET selected file --------> immutable DOCX
-                              |
-                              v
-                   Historical DocumentEditor
-                              |
-                    Document API revision list
-                              |
-                  custom UI changelog + navigation + hover
-```
+The collector calls `changes.list({ after, limit: 200, includeUpdate: true,
+waitMs: 0 })` and posts the results to our backend. Short browser polls avoid
+leaving an API execution scope open across human input. Calls are serialized;
+empty polls wait 500 ms. Never replace native author metadata with the user who
+saves a version. Relayed records can contain multiple contributors.
 
-## Hidden tracked changes are the changelog source
+The buffer is session-local and bounded. A `truncated` result marks a history gap
+and prevents a save from claiming a complete interval. An absent actor identity
+also fails explicitly. HTTP failures retain the cursor so retrying resends the
+same deterministic record IDs. Stop polling and abort uploads on unmount.
 
-The application labels the live experience **Editing**, but the underlying
-SuperDoc configuration in `DocumentEditor` is:
+This lightweight demo forwards records from connected editors. It is not an
+always-on audit service: closing every editor before a pending record upload
+finishes can lose that record, even if the room's Yjs state survives. Production
+history that requires continuous coverage needs a read-only SDK observer session
+that persists the Changes API stream independently of browser lifetimes.
 
-```ts
-documentMode: 'suggesting',
-role: 'editor',
-trackChanges: { enabled: false },
-interaction: { trackedChanges: { allowDecisions: false } },
-```
+## Capture a stable version
 
-`trackChanges.enabled: false` disables revision decorations; it does **not**
-disable recording in suggesting mode. Supported edits still become revisions
-with their native author, date, and change type. Do not change the underlying
-mode to `editing`: that would make new edits direct and remove them from this
-revision-based changelog. Keep the live role as `editor`: the `suggester` role
-denies the programmatic acceptance required to close an edit interval.
+1. Flush native change records to the backend.
+2. Call `changes.snapshot({ includeState: true })` for revision, cursor, full
+   Yjs state, and state vector; export a review-preserving DOCX.
+3. Flush again and read another checkpoint. Retry capture up to three times if
+   either revision or state vector changed. Remote peers can edit while the
+   local UI is locked; never assume a global lock.
+4. Upload the DOCX and checkpoint together as multipart form data with a UUID
+   `X-Version-Id` and the expected previous version ID.
+5. The backend verifies the state's vector, checks the previous version ID
+   within its room write queue, and stores immutable DOCX, Yjs, and record files.
 
-The native toolbar excludes `document-mode`, `track-changes-accept-selection`,
-and `track-changes-reject-selection`. Built-in comments and the context menu
-are disabled. Keep review decisions disabled so a user cannot erase changelog
-entries by accepting/rejecting them through this demo's UI.
+Version records are those whose transaction clocks are contained by the saved
+state vector and were not already contained by the preceding version's vector.
+Do not use timestamps or session-local `seq` values to decide membership.
+Incremental Yjs updates often start above clock zero; inspect their inserted
+struct clock ranges, not `encodeStateVectorFromUpdate`, when checking coverage.
 
-This implementation does not observe raw keypresses, use extension mutation
-events as an audit stream, or attach custom metadata to every typed character.
-SuperDoc owns recording and range identity. Adjacent typing can merge into one
-revision, and undo can remove a revision. The changelog is the set of pending
-revisions contained in a snapshot, not a permanent per-keystroke audit log or a
-computed diff. Successful saves accept the captured live revisions, so following
-versions list changes from the next interval. Native acceptance is undoable;
-undoing it can restore revisions from an earlier interval.
+Concurrent saves from a stale version return 409 and refresh the list. A failed
+upload leaves the document and recorded edits untouched. Saving never adds an
+Undo entry. A successful save must not be reported as a failed upload merely
+because a subsequent status read fails.
 
-The browser session's `user` config supplies edit author identity. A version's
-server-stamped `createdBy` identifies the person saving the snapshot; that file
-can contain revisions from several authors. Never attribute every edit in a
-snapshot to its saver.
+## Open history without changing the live room
 
-## Explicit saving and shared version metadata
+Historical DOCX exports remain downloadable. New previews open the saved Yjs
+checkpoint so native block IDs remain the same as the persisted change records.
 
-`useVersionHistory.save()` performs a revision-preserving export:
+A preview uses the **original document ID** and a WebSocket URL with
+`?room=<room>&snapshot=<version>`. The server routes it to an independent
+Hocuspocus instance loaded only from that checkpoint and enforces read-only
+connections. Native shard identity includes the document ID; adding a version
+suffix to that ID breaks package-part lookup. Never join a preview to the live
+provider, persist preview writes, or replace the live room with historical data.
 
-```ts
-await superdoc.export({
-  exportType: ['docx'],
-  triggerDownload: false,
-  policies: { trackedChanges: 'review-preserving' },
-});
-```
+Each preview has its own `SuperDocUIProvider`. It uses public Document API node
+reads and custom UI `viewport.getRect`, `viewport.observe`, and
+`viewport.scrollIntoView`. No private editor state, guessed DOM offsets, or
+tracked-change IDs are used for navigation. Highlights and author hover bubbles
+are application overlays; genuine Word revisions remain separate. Hide overlays
+and clear hover state during scrolling, then recalculate after scrolling stops.
 
-It uploads the bytes with `POST /api/rooms/:room/versions`. The backend assigns
-the version number, creation timestamp, and saving user. `X-Version-Id` is a
-caller-generated UUID; repeating the same ID for the same user returns the
-existing version instead of overwriting its file. A new explicit save uses a
-new ID. Do not export with `final` or `original` policies: those resolve pending
-revisions and remove the information needed by the changelog.
+After resolving individual ranges, group entries by their original paragraph,
+story, actor ID and contributor set within that version. Never group by display
+name or combine different authors. Merge adjacent/overlapping target ranges,
+keeping disjoint spans separate. Use snapshot text for grouped excerpts and the
+latest member timestamp for sorting. Preserve native records unchanged; grouping
+is presentation only. Entries without a paragraph (such as sidecars) stay separate.
 
-Only after the upload succeeds and the immutable file is cached/listed does
-`finishCheckpoint` accept changes in the live editor. `captureSnapshot` reads
-`api.info({}).revision` before export. `acceptSnapshotChanges` paginates
-`trackChanges.list({ in: 'all', limit: 200, offset })`, checks each page's
-`evaluatedRevision`, and accepts the collected IDs in one atomic
-`trackChanges.decide({ decision: 'accept', target: { kind: 'ids', ids } },
-{ expectedRevision })`. Explicit IDs surface permission errors instead of
-silently skipping changes during a bulk decision. A successful no-op receipt
-with nonempty IDs is not considered a completed reset.
+Text/format ranges are positions after their recorded transaction, not durable
+character anchors. Carry them through later interval records. Splits can produce
+multiple ranges; merges or overlapping edits may leave only paragraph context.
+Validate ranges against the checkpoint's text and label broad fallbacks as
+**Affected paragraph**. Fully removed content can have no remaining range.
+Never highlight unrelated text while claiming an exact location. Structural or
+sidecar changes without a supported text location remain readable list entries.
 
-Export/upload failures leave live changes untouched. If the revision changes
-during the save, leave all live revisions pending and report that the snapshot
-was saved but the reset was skipped. Never retry against a newer revision:
-doing so could accept another user's edits without snapshotting them. Until
-the next successful reset, adjacent snapshots may contain overlapping edits.
-For other cleanup failures, retain the saved version and offer a guarded
-cleanup retry without another export/upload. Report this separately from a
-failed snapshot save. Successful live acceptance propagates through the native
-collaboration connection and does not modify any historical file.
+Older DOCX-only versions have no API records or Yjs checkpoint. Display that
+limitation; do not infer authors from a snapshot diff or from its saver.
 
-Saving is manual, including the first version. Typing, mounting, and browsing
-history must not create snapshots. The app disables local editor input and
-version navigation during export/upload/acceptance and coalesces in-flight save calls.
-This only locks this browser's UI; it is not a distributed lock on other editors.
-A snapshot contains the state available to the exporting editor, rather than
-an atomic global checkpoint of every client's outstanding work.
+## Backend contracts
 
-Version metadata is fetched immediately and every 5 seconds, with overlapping
-polls suppressed. A response-generation counter prevents an older request from
-replacing a newer result. After a successful upload the saving browser inserts
-the returned version immediately and refreshes the list. Other browsers receive
-it through polling. Poll failures retain the previous list and retry later.
+All application routes are under `/api/rooms/:room` and require a room bearer
+token after session acquisition:
 
-Files download on selection and are cached by immutable version ID. Polling
-must never replace the live editor, remount a selected historical file, reset
-its scroll position, or discard unsaved live edits.
+| Method/path | Purpose |
+| --- | --- |
+| `POST /session` | Acquire identity/token; reserve one creator, or wait with 202. |
+| `POST /ready` | Publish the initialized live room after native collaboration readiness. |
+| `POST /changes` | Durably deduplicate native records, including their transaction updates. |
+| `GET /versions` | List immutable metadata, newest first. |
+| `POST /versions` | Save multipart `document` and JSON `checkpoint` fields. Legacy raw-DOCX uploads remain readable. |
+| `GET /versions/:id/file` | Download the immutable DOCX. |
+| `GET /versions/:id/changes` | Read that version's immutable change interval. |
 
-## Reading revisions and rendering historical UI
+Stored room files are `room.json`, `room.yjs`, `changes.json`, `versions.json`,
+and each version's `<uuid>.docx`, `<uuid>.yjs`, `<uuid>.changes.json`. The version
+index is written last. This is a single-process JSON/filesystem demo, not a
+multi-process transactional database. Keep a persistent volume for deployment.
 
-A saved file opens through the same `DocumentEditor` with:
+Names in URL parameters are demo identities, not authentication. Native actor
+claims are not verified here. Production applications must issue trusted
+identities and verify claims themselves.
 
-```ts
-documentMode: 'viewing',
-role: 'viewer',
-trackChanges: { enabled: true },
-viewing: { trackedChanges: 'markup' },
-```
+The existing Pages proxy forwards `/version-history/api/*` and
+`/version-history/collaboration`, including snapshot query parameters, to
+Railway. `demos.json` exposes the Version History card in the gallery.
 
-Do not pass a collaboration session to a historical editor. It must open the
-saved file locally, without joining or replacing the current shared room.
-`viewing.trackedChanges: 'markup'` matters: the default original projection can
-hide inserted text even though its revision was preserved in the DOCX.
+## Dependency and verification
 
-`HistoricalVersion` wraps each historical editor and its UI in a dedicated
-`SuperDocUIProvider`. Bind the ready instance with `useSetSuperDoc`. The live
-editor remains mounted independently; it must not overwrite the preview's
-controller binding. The changelog is portaled into the sidebar so it shares
-this provider with the document even though it renders elsewhere in the DOM.
+The demo pins the published prerelease `superdoc@2.30.0-next.4`, which includes
+the Changes API. Normal development and CI must use the installed npm package;
+a local Orbit build is optional when testing unpublished engine changes. The
+runtime capability check fails clearly on older packages rather than recreating
+hidden suggestions. Do not skip integration tests for an unsupported dependency.
 
-`ChangesPanel` uses `useSuperDocDocumentApi()` to call:
+`demos.json` declares a temporary `superdocVersionException` for this exact
+prerelease. Shared-version checks and automatic stable updates honor it; the
+demo still builds, tests and deploys. Move the dependency/lockfile to the common
+stable version and remove the exception once the Changes API is stable.
 
-```ts
-await api.trackChanges.list({ in: 'all', limit: 200, offset });
-```
+Run `pnpm test:server`, `pnpm build`, and `pnpm test` with an API-capable build.
+Tests cover real normal-mode typing, multi-author collaboration, immutable
+read-only previews, interval boundaries, failed storage, concurrent edits,
+range navigation/hover, cursor retries, retention gaps, and backend restart.
+Use ignored `artifacts/`, `test-results/`, or `server/data/` for runtime output.
 
-Read every page until `total` is covered. `in: 'all'` includes revision-capable
-stories beyond the main body. Read from the reopened historical document, not
-the live editor's changing catalog. Await browser Document API calls and ignore
-results after the owning preview unmounts.
-
-The custom UI library handles the connection between list and document:
-
-- `useSuperDocTrackChanges()` observes readiness and active-change state. Gate
-  navigation on `listStatus === 'ready'`.
-- `useSuperDocUI().trackChanges.setActive({ id, story })` focuses a list entry.
-- `ui.trackChanges.scrollTo({ id, story })` navigates to its native range,
-  including content outside the currently painted page window.
-- `ui.trackChanges.getAt({ x, y })` resolves the revision beneath the pointer.
-  `ChangeHover` displays its author/date in a fixed bubble, updates through
-  `requestAnimationFrame`, and clears on scroll, pointer leave, and teardown.
-
-Keep IDs and stories from the public API. Do not reconstruct revision targets
-from DOM attributes, character positions guessed from rendered text, or CSS
-selectors. Use ID plus story for row identity. Historical highlights are
-SuperDoc's native revision markup; this app does not paint a separate diff.
-
-Sorting is application-owned: newest first, oldest first, or author A–Z.
-Unknown timestamps sort last. Display native revision metadata and explicit
-unknown values rather than inventing dates or authors.
-
-## HTTP, WebSocket, and storage contracts
-
-The application HTTP API lives under `/api/rooms/:room`:
-
-| Method | Path suffix | Purpose |
-| --- | --- | --- |
-| POST | `/session` | Accept client ID/display name; return token, user, document ID, and create/join mode. Return 202 while another editor initializes. |
-| POST | `/ready` | Publish an initialized room after persisting its Yjs state. |
-| GET | `/versions` | Return version metadata, newest first. |
-| POST | `/versions` | Append an immutable DOCX version from request-body bytes. |
-| GET | `/versions/:id/file` | Download a saved DOCX. |
-
-Subsequent API requests carry the room session's bearer token. Hocuspocus
-receives that same token through `document.collaboration.token`, rather than
-through the HTTP API helper. Its WebSocket endpoint is `/collaboration`.
-
-SuperDoc owns its browser Y.Doc/provider. Configure collaboration on the
-document source, with `providerType: 'hocuspocus'`, session `documentId`, token,
-server URL, and `roomMode`. Do not introduce v1 `modules.collaboration` or pass
-an independently created Y.Doc into the browser editor.
-
-The server currently maps the logical room to `version-history-${roomId}` and
-recognizes native Hocuspocus names shaped as `sd2/v.../version-history-${roomId}`.
-If changing naming or upgrading protocol behavior, update both sides together.
-
-Exactly one client ID reserves initialization. Other clients wait. The creator
-waits for both editor readiness and native collaboration readiness before
-calling `/ready`; the server persists Yjs state and the ready marker before
-publishing the room. Never make all visitors attempt `create`, treat a failed
-join as permission to overwrite a room, or silently recover a partially seeded
-room by importing an older DOCX. Startup deliberately leaves an interrupted
-first initialization unpublished.
-
-Default storage is ignored `server/data/<room>/`:
-
-```text
-room.json       room publication marker
-room.yjs        live collaborative state, loaded/stored by Hocuspocus hooks
-versions.json   immutable-version metadata and server-assigned ordering
-<uuid>.docx     exported historical snapshots
-```
-
-Per-room write queues and temporary-file renames serialize writes in this
-single server process. This is not a multi-process database or a transaction
-spanning the room and all version files. DOCX history and live Yjs state serve
-different purposes; restoring a DOCX is not equivalent to restoring a live
-collaboration room.
-
-Session tokens and initializer reservations are in memory. Room state and
-versions persist to disk. After a backend restart, reload clients to obtain
-fresh tokens. Names in URL parameters are demo identities, not authentication;
-replace session issuance with your application's trusted identity before using
-this as an authenticated product.
-
-## Copying this into another application
-
-1. Start with this package's source, sample `public/document.docx`, package
-   manifest/lockfile, and SuperDoc stylesheet import. The gallery, other demos,
-   and repository deployment scripts are not required.
-2. Keep the SuperDoc/browser/provider/server versions compatible. Check this
-   package's actual pins before using examples from another SuperDoc release.
-3. Reuse `DocumentEditor` and the historical custom UI components. Replace
-   `App.tsx` and `styles.css` with your application's shell as needed.
-4. Adapt `session.ts` for your room routing and identity. Missing `room` and
-   `user` parameters currently become a UUID and adjective–animal display name,
-   written into the URL with `replaceState`. Preserve room identity on reload.
-5. Adapt `useVersionHistory` to your version endpoints. Preserve immutable IDs,
-   complete DOCX bytes, manual saves, pagination, five-second polling, and
-   stale-response protection.
-6. Keep or replace the backend HTTP/storage functions separately from the
-   Hocuspocus transport. An existing collaboration service can replace the
-   WebSocket layer without moving snapshot extraction into the server.
-7. When splitting origins, adapt HTTP URLs, WebSocket URLs, authentication, and
-   origin handling together. The demo assumes one browser origin; Vite proxies
-   both API and WebSocket traffic to the backend.
-
-## Run and verify
-
-From this directory:
-
-```sh
-pnpm install --frozen-lockfile
-pnpm dev          # Vite :5173 plus backend :4191
-pnpm build       # TypeScript + production frontend
-pnpm start       # Built frontend, API, and WebSockets on :4191
-pnpm test:server # Backend API, concurrency, and persistence checks
-pnpm test        # Browser integration checks
-```
-
-Backend environment variables: `PORT`, `HOST`, `DATA_DIRECTORY`.
-Vite proxy override: `BACKEND_URL`. See `playwright.config.ts` for the isolated
-test ports and storage paths. `BASE_PATH=/version-history/` builds the frontend
-for the gallery route; browser tests exercise that prefix. The Docker image is
-backend-only; the release workflow publishes frontend assets through Pages.
-
-For behavior changes, run the relevant tests. Backend coverage lives in
-`server/server.test.mjs`; browser coverage in `tests/` exercises manual saving,
-read-only previews, hidden revisions, sorting, pointer navigation/hover,
-pagination past 200 changes, and two-editor collaboration with polled history.
-Check that source edits remain attributed to their original authors and that
-viewing an old snapshot never modifies or replaces the current room.
-`snapshot-boundaries.spec.ts` checks noncumulative snapshots, retained revisions
-on upload failure, and concurrent edits during a delayed upload.
-`snapshot-api.spec.ts` checks pagination, guarded acceptance, capture policies,
-cleanup retries, and detection of a no-op acceptance.
-
-Keep generated documents, live room state, screenshots, and test output in the
-ignored `server/data/`, `artifacts/`, or test-output directories. Commit the
-sample fixture and test source, not runtime room data or credentials.
+The quickstart CI matrix includes `version-history`. Its shared command is
+compared before execution, then tested from a clean checkout with two editors,
+a saved version, historical highlights, and a production build. Keep the modal
+command in `src/build-app.sh` as the single source for the app and gallery.

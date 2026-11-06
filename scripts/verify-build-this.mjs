@@ -80,9 +80,12 @@ exec "$SUPERDOC_TEST_GIT" "$@"
     const env = { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, SUPERDOC_TEST_GIT: realGit, SUPERDOC_TEST_REPOSITORY: repository, SUPERDOC_BUILD_ONLY: '1' };
     // Prevent a local/deployment environment from changing the copied profile.
     for (const key of Object.keys(env)) if (/^(VITE_|COLLABORATION_)/.test(key)) delete env[key];
+    if (demoId === 'version-history') {
+      for (const key of ['PORT', 'HOST', 'BACKEND_URL', 'DATA_DIRECTORY', 'BASE_PATH', 'SUPERDOC_LOCAL_ES', 'SUPERDOC_LOCAL_SOURCE']) delete env[key];
+    }
     if (demo.buildCommandCheck === 'dev') {
-      await checkDevCommand(command, { cwd: work, env, sourceRoot });
-      // Also typecheck and bundle the freshly npm-installed app.
+      await checkDevCommand(command, { cwd: work, env, sourceRoot, demoId });
+      // Also typecheck and bundle the freshly installed app.
       run('npm', ['run', 'build'], { cwd: path.join(work, 'demos', demo.packageDirectory), env });
     } else {
       run('bash', [], { cwd: work, env, input: command, stdio: ['pipe', 'inherit', 'inherit'], timeout: 15 * 60_000 });
@@ -100,7 +103,7 @@ exec "$SUPERDOC_TEST_GIT" "$@"
   }
 }
 
-async function checkDevCommand(command, { cwd, env, sourceRoot }) {
+async function checkDevCommand(command, { cwd, env, sourceRoot, demoId }) {
   const { chromium } = createRequire(path.join(sourceRoot, 'tests/package.json'))('@playwright/test');
   const child = spawn('bash', [], { cwd, env: { ...env, NO_COLOR: '1' }, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   const exited = new Promise((resolve) => child.once('exit', resolve));
@@ -124,7 +127,7 @@ async function checkDevCommand(command, { cwd, env, sourceRoot }) {
     });
     clearTimeout(timer);
     browser = await chromium.launch();
-    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await browser.newContext({ permissions: ['clipboard-read', 'clipboard-write'], viewport: { width: 1440, height: 960 } });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -138,6 +141,7 @@ async function checkDevCommand(command, { cwd, env, sourceRoot }) {
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), command, 'Running app must copy the same command');
     await page.keyboard.press('Escape');
     assert.equal(await dialog.isVisible(), false);
+    if (demoId === 'version-history') await checkVersionHistoryStack(context, page, errors);
     assert.deepEqual(errors, [], 'Quickstart must not have browser errors');
   } finally {
     clearTimeout(timer);
@@ -146,6 +150,64 @@ async function checkDevCommand(command, { cwd, env, sourceRoot }) {
     try { process.kill(-child.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
     await exited;
   }
+}
+
+async function checkVersionHistoryStack(context, page, errors) {
+  await waitForVersionEditor(page);
+  const live = page.getByLabel('Editable document', { exact: true });
+
+  // Separate contexts represent independent users in the same room.
+  const peerContext = await context.browser().newContext({ viewport: { width: 1440, height: 960 } });
+  try {
+    const peer = await peerContext.newPage();
+    peer.on('pageerror', (error) => errors.push(error.message));
+    const peerUrl = new URL(page.url());
+    peerUrl.searchParams.set('user', 'Quickstart Peer');
+    await peer.goto(peerUrl.href);
+    await waitForVersionEditor(peer);
+    const peerDocument = peer.getByLabel('Editable document', { exact: true });
+
+    await live.locator('.superdoc-text-run').first().click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.insertText('Quickstart saved edit. ');
+    await peerDocument.filter({ hasText: 'Quickstart saved edit.' }).waitFor({ timeout: 30_000 });
+
+    await peerDocument.locator('.superdoc-text-run').first().click();
+    await peer.keyboard.press('ControlOrMeta+Home');
+    await peer.keyboard.insertText('Peer contribution. ');
+    await live.filter({ hasText: 'Peer contribution.' }).waitFor({ timeout: 30_000 });
+    console.log('Quickstart: two editors exchanged changes through the collaboration backend.');
+
+    const upload = page.waitForResponse((response) => response.request().method() === 'POST' && response.url().endsWith('/versions'));
+    await page.getByRole('button', { name: 'Save version', exact: true }).click();
+    const response = await upload;
+    assert.equal(response.ok(), true, await response.text());
+    await peer.getByRole('button', { name: /^Version 1 ·/ }).waitFor({ timeout: 10_000 });
+    await waitForVersionEditor(page);
+
+    await live.locator('.superdoc-text-run').first().click();
+    await page.keyboard.press('ControlOrMeta+Home');
+    await page.keyboard.insertText('Unsaved after snapshot. ');
+    await live.filter({ hasText: 'Unsaved after snapshot.' }).waitFor();
+
+    // Saved history must open independently of the current shared document.
+    await page.getByRole('button', { name: /^Version 1 ·/ }).click();
+    const snapshot = page.getByLabel('Historical document', { exact: true });
+    await snapshot.filter({ hasText: 'Quickstart saved edit.' }).waitFor({ timeout: 90_000 });
+    assert.equal((await snapshot.innerText()).includes('Unsaved after snapshot.'), false);
+    await page.locator('.change-card').filter({ hasText: 'Quickstart saved edit.' }).click();
+    await page.locator('.change-highlight.active').first().waitFor();
+    console.log('Quickstart: saved history reopened with its changelog and highlights.');
+  } finally {
+    await peerContext.close();
+  }
+}
+
+async function waitForVersionEditor(page) {
+  await page.waitForFunction(() => {
+    const button = document.querySelector('.save-version-button');
+    return button && !button.disabled;
+  }, undefined, { timeout: 90_000 });
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

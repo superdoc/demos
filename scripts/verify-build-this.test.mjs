@@ -31,3 +31,11 @@ for (const demoId of ['inline-revisions', 'template-builder-api-v2']) {
     assert.doesNotMatch(command, /OPENAI_API_KEY|make build/);
   });
 }
+
+test('version history shares a locked full-stack quickstart between the app and gallery', async () => {
+  const command = await verifyBuildCommands(undefined, 'version-history');
+  assert.match(command, /cd demos\/version-history/);
+  assert.match(command, /pnpm@10\.25\.0 install --frozen-lockfile/);
+  assert.match(command, /pnpm@10\.25\.0 dev/);
+  assert.doesNotMatch(command, /OPENAI_API_KEY/);
+});

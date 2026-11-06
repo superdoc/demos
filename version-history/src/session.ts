@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 export type User = { id: string; name: string; email: string };
-export type RoomSession = { roomId: string; documentId: string; token: string; user: User; mode: 'create' | 'join' };
+export type RoomSession = { roomId: string; documentId: string; token: string; user: User; mode: 'create' | 'join'; snapshotId?: string };
 
 const adjectives = ['Bright', 'Calm', 'Clever', 'Curious', 'Daring', 'Gentle', 'Happy', 'Jolly', 'Kind', 'Lucky', 'Merry', 'Nimble', 'Quiet', 'Sunny', 'Swift', 'Witty'];
 const animals = ['Badger', 'Bear', 'Beaver', 'Dolphin', 'Eagle', 'Falcon', 'Fox', 'Gecko', 'Heron', 'Koala', 'Lemur', 'Lynx', 'Otter', 'Owl', 'Panda', 'Penguin', 'Puffin', 'Rabbit', 'Raven', 'Robin', 'Seal', 'Sparrow', 'Tiger', 'Toucan', 'Turtle', 'Whale', 'Wolf', 'Wombat', 'Yak', 'Zebra', 'Finch', 'Lark'];
@@ -24,9 +24,10 @@ const applicationUrl = new URL(import.meta.env.BASE_URL, window.location.href);
 const roomApiPath = (room: string, suffix: string) => new URL(`api/rooms/${encodeURIComponent(room)}/${suffix}`, applicationUrl).pathname;
 export const apiPath = (session: RoomSession, suffix: string) => roomApiPath(session.roomId, suffix);
 export const authHeaders = (session: RoomSession) => ({ Authorization: `Bearer ${session.token}` });
-export const collaborationUrl = () => {
+export const collaborationUrl = (session?: RoomSession) => {
   const target = new URL('collaboration', applicationUrl);
   target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
+  if (session?.snapshotId) { target.searchParams.set('snapshot', session.snapshotId); target.searchParams.set('room', session.roomId); }
   return target.href;
 };
 

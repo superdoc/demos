@@ -13,7 +13,8 @@
     "dev:client": "vite",
     "dev:server": "node --watch server/server.mjs",
     "start": "node server/server.mjs",
-    "test:server": "node --test server/*.test.mjs"
+    "test:server": "node --test server/*.test.mjs",
+    "test:dev": "VH_TEST_DEV=1 playwright test"
   },
   "dependencies": {
     "@hocuspocus/provider": "2.15.3",
@@ -21,7 +22,7 @@
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "superdoc": "2.29.0",
+    "superdoc": "2.30.0-next.4",
     "typescript": "latest",
     "vite": "latest",
     "ws": "8.18.3",

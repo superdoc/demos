@@ -18,12 +18,13 @@ button:focus-visible, select:focus-visible { outline: 2px solid #1558d6; outline
 .room-name { color: #5f6368; font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
 .primary-button { padding: 12px 22px; color: #fff; background: #1558d6; border: 0; border-radius: 24px; font-size: 14px; font-weight: 600; }
 .primary-button:hover { background: #104bbd; }
+.more-demos-button { display: inline-flex; align-items: center; flex-shrink: 0; text-decoration: none; white-space: nowrap; }
 .mode-badge { font-size: 13px; color: #444746; }
 .mode-badge.viewing { color: #5f6368; }
 .native-toolbar-shell { min-width: 0; min-height: 40px; margin: 0 16px 0 8px; padding: 4px 8px; border-radius: 12px; background: #f0f4f9; }
 .native-toolbar-shell [hidden] { display: none; }
 .native-toolbar-shell .superdoc-toolbar { background: transparent; }
-.toolbar-status { margin-left: auto; color: #5f6368; font-size: 12px; }
+.toolbar-status { color: #5f6368; font-size: 12px; }
 .connection-status { color: #137c70; font-size: 12px; white-space: nowrap; }
 .session-state { max-width: 640px; margin: 15vh auto; padding: 24px; color: #444746; }
 .session-state h1 { font-size: 22px; }
@@ -82,6 +83,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid #1558d6; outline
 .changes-message button { padding: 0; color: #1558d6; background: transparent; border: 0; text-decoration: underline; }
 .change-tooltip { position: fixed; z-index: 1000; display: flex; flex-direction: column; gap: 7px; width: max-content; max-width: 280px; padding: 12px 15px; pointer-events: none; color: #3c4043; background: #fff; border: 1px solid #dce1e8; border-radius: 9px; box-shadow: 0 4px 18px #20314924; font-size: 12px; overflow-wrap: anywhere; }
 .change-tooltip strong { font-size: 13px; }
+.change-highlights { position: fixed; inset: 0; z-index: 20; pointer-events: none; overflow: hidden; }
+.change-highlight { position: absolute; background: #fbbc0430; outline: 1px solid #e3a40780; border-radius: 2px; }
+.change-highlight.active { background: #4285f43b; outline: 2px solid #4285f4; }
+.change-location-note { color: #777; font-size: 11px; }
 .empty-history { padding: 4px 18px 0 0; color: #5f6368; font-size: 13px; line-height: 1.6; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 850px) {
@@ -92,3 +97,17 @@ button:focus-visible, select:focus-visible { outline: 2px solid #1558d6; outline
   .document-stage { padding-right: 16px; padding-left: 16px; }
   .version-card { padding-left: 20px; }
 }
+
+.build-this-button { margin-left: auto; flex-shrink: 0; white-space: nowrap; }
+.build-dialog { width: min(720px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); padding: 0; overflow: auto; color: #1f2937; background: #fff; border: 1px solid #d1d5db; border-radius: 14px; box-shadow: 0 24px 80px #0f172a40; }
+.build-dialog::backdrop { background: #0f172a66; }
+.build-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid #e5e7eb; }
+.build-dialog-header h2 { margin: 0 0 6px; font-size: 20px; }
+.build-dialog-header p { margin: 0; color: #64748b; font-size: 13px; line-height: 1.5; }
+.build-dialog-close { padding: 0 6px; border: 0; color: #64748b; background: transparent; font-size: 25px; cursor: pointer; }
+.build-dialog-body { padding: 20px 24px 24px; }
+.build-dialog-body pre { margin: 0 0 14px; padding: 16px; overflow-x: auto; color: #e2e8f0; background: #0f172a; border-radius: 8px; font-size: 13px; line-height: 1.6; }
+.build-dialog-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.build-command-copy { padding: 8px 12px; color: #fff; background: #1558d6; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.build-dialog-actions a { color: #1558d6; font-size: 12px; font-weight: 600; }
+.build-dialog-note { margin: 16px 0 0; color: #64748b; font-size: 12px; line-height: 1.5; }

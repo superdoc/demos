@@ -54,14 +54,21 @@
   },
   {
     "id": "version-history",
-    "hidden": true,
+    "superdocVersionException": {
+      "version": "2.30.0-next.4",
+      "reason": "Temporarily requires the Changes API before it is available in a stable release. Remove this exception when moving to stable."
+    },
     "screenshot": "version-history-poster.png",
     "video": "version-history-preview.mp4",
     "title": "Version History",
     "description": "Collaborative editing with saved versions and an attributed changelog.",
     "liveDemoUri": "/version-history/",
-    "localLiveDemoUri": "https://demos.superdoc.dev/version-history/",
+    "localLiveDemoUri": "http://localhost:4214/",
     "sourceUri": "https://github.com/superdoc/demos/tree/main/version-history",
-    "packageDirectory": "version-history"
+    "packageDirectory": "version-history",
+    "buildCommandSource": "version-history/src/build-app.sh",
+    "buildCommandConsumer": "version-history/src/BuildThis.tsx",
+    "buildCommandCheck": "dev",
+    "buildCommandNote": "Requires Node.js 22.12+ and Git. Starts the editor on :5173 and the collaboration/version backend on :4191. No API keys needed."
   }
 ]
