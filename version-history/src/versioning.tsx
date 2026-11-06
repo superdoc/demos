@@ -435,4 +435,3 @@ function findHoveredChange(highlights: Highlight[], x: number, y: number): Chang
   }
   return closest?.change ?? null;
 }
-
