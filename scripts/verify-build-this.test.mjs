@@ -23,7 +23,7 @@ test('the actual gallery and collaboration dialog display and copy the same comm
   assert.match(command, /make dev/);
 });
 
-for (const demoId of ['inline-revisions', 'template-builder-api-v2']) {
+for (const demoId of ['inline-revisions', 'template-builder-api-v2', 'document-outline']) {
   test(`${demoId} uses the same simple clone/install/dev command in the app and gallery`, async () => {
     const command = await verifyBuildCommands(undefined, demoId);
     assert.match(command, /git clone https:\/\/github.com\/superdoc\/demos\.git/);

@@ -6,6 +6,12 @@ Live at [demos.superdoc.dev](https://demos.superdoc.dev)
 
 ## Demos
 
+### [`document-outline/`](./document-outline) — Document Outline
+
+Navigate native Word headings in an expandable sidebar, edit a heading and watch it update, or opt into detected section titles. Built with public SuperDoc APIs, with no backend or API keys. [Build guide](./document-outline/public/guide.md).
+
+**Stack**: React, SuperDoc
+
 ### [`version-history/`](./version-history) — Version History
 
 Edit a document, save DOCX versions, browse their tracked-edit changelogs in a read-only preview, and return to the current editor.

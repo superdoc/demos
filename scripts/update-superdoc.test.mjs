@@ -32,6 +32,7 @@ test('the stable updater preserves an exception pin/lockfile and resumes updatin
   const root = await mkdtemp(path.join(tmpdir(), 'superdoc-update-policy-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const directories = [
+    'document-outline',
     'rag/apps/web', 'superdoc-inline-revisions', 'template-builder-document-api-v2-demo',
     'version-history', 'canonical-collaboration-demo/client',
   ];

@@ -27,6 +27,7 @@ const versions = {
   "@superdoc/sdk": resolveVersion("@superdoc/sdk", "latest"),
 };
 const packages = [
+  { directory: "document-outline", manifest: "document-outline/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
   { directory: "rag/apps/web", manifest: "rag/apps/web/package.json", manager: "bun", dependencies: { superdoc: versions.superdoc } },
   { directory: "superdoc-inline-revisions", manifest: "superdoc-inline-revisions/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
   { directory: "template-builder-document-api-v2-demo", manifest: "template-builder-document-api-v2-demo/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
