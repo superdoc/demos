@@ -1,5 +1,5 @@
 "use client";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 function ChevronRight({
   size,
   className,
@@ -40,6 +40,22 @@ export default function OutlineNavigation({
 }) {
   const prefix = useId();
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const index = items.findIndex((item) => item.id === activeId);
+    if (index < 0) return;
+    let level = items[index].level;
+    const ancestors: string[] = [];
+    for (let i = index - 1; i >= 0; i--) {
+      if (items[i].level < level) {
+        ancestors.push(items[i].id);
+        level = items[i].level;
+      }
+    }
+    setExpanded((current) => {
+      if (ancestors.every((id) => current.has(id))) return current;
+      return new Set([...current, ...ancestors]);
+    });
+  }, [activeId, items]);
   const nodes = outlineTree(items);
   const parents = new Set(
     items
@@ -79,11 +95,7 @@ export default function OutlineNavigation({
               className={`outline-item-label ${activeId === item.id ? "selected" : ""}`}
               disabled={disabled}
               aria-current={activeId === item.id ? "location" : undefined}
-              title={
-                item.source === "detected"
-                  ? `${item.text} (detected section title)`
-                  : item.text
-              }
+              title={item.text}
               onClick={() => onNavigate(item.id)}
             >
               {item.text}

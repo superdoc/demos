@@ -37,7 +37,7 @@ Render `headings` in document order. Nest an item beneath the preceding lower-le
 
 The copyable implementation is split into:
 
-- `src/read-outline.ts`: public API reads and optional title detection.
+- `src/read-outline.ts`: native heading reads through the public Document API.
 - `src/use-outline.ts`: debounced changes, disposal and stale-read protection.
 - `src/outline-tree.ts`: hierarchy construction.
 - `src/OutlineNavigation.tsx`: accessible expansion controls and the active entry.
@@ -81,19 +81,13 @@ See `src/navigate-outline.ts` for the typed implementation and cancellation when
 
 Preserve a story locator when provided. Do not construct or inspect private engine positions. See the [public navigation guide](https://docs.superdoc.dev/editor/migrate-from-v1/overview/) for the supported paragraph navigation boundary.
 
-## Optional detected section titles
-
-The default mode shows **native Word headings only**. “Detect section titles” adds an explicit application policy for visually structured documents that lack heading styles. It reads SuperDoc's canonical, read-only HTML projection and its public block map. The Word document remains native; it is not rebuilt from HTML.
-
-The example recognizes short emphasized titles and useful uppercase grouping labels, while excluding repeated badges, metrics and ordinary prose. Labels are navigation hints, not Word headings or AI-generated facts. This heuristic can need adjustment for a customer's document templates. Prefer proper Word heading styles when authoring documents.
-
-This mode never inserts headings, changes styles, edits the document, or overrides a genuine heading with a guess. Turn it off to return to the native outline.
-
 ## Try the samples
 
-**Structured brief** contains native Heading 1, Heading 2 and Heading 3 styles, two “Notes” headings with distinct IDs, and a longer section. Expand “Delivery plan,” navigate between the two “Notes” entries, and rename “Delivery plan” after choosing **Start editing**.
+Use **Add heading 1** or **Add heading 2** beside the sample buttons to insert a native heading immediately after the paragraph containing the cursor. The demo reads `doc.selection.current()`, resolves the block through `doc.getNodeById()`, and calls `doc.create.heading({ level, text, at: { kind: "after", target } })`. The new heading is revealed in the outline and its text is selected so you can immediately type a name.
 
-**Unstyled brief** intentionally has no Word headings. Enable detected section titles and expand “Meridian planning notes.” Repeated “AI PREPARES” badges stay out of the outline.
+**Structured brief** contains native Heading 1, Heading 2 and Heading 3 styles, two “Notes” headings with distinct IDs, and a longer section. Expand “Delivery plan,” navigate between the two “Notes” entries, and rename “Delivery plan” directly in the editable document.
+
+**Unstyled brief** intentionally has no Word headings and shows the empty-outline state. Bold text alone does not create an outline entry.
 
 Both files are synthetic and generated with `docx` 9.7.1 by `scripts/create-fixtures.ts`. The mixed paragraph, heading and table fixture uses a deterministic generator so contributors can reproduce it with `npm run fixtures`. It is not labeled Word-authored. Native rendering and browser behavior are tested; a separate Microsoft Word round trip is not claimed.
 
@@ -103,6 +97,6 @@ Files selected in this demo are processed in the browser. There is no document u
 
 ## Verification
 
-`npm run test:browser` builds production assets and exercises native headings, expandable children, live rename updates, repeated-title navigation, optional inference, document replacement, mobile layout, Word export, and the build dialog. The server HTML and this Markdown guide describe the same APIs and link to the same source.
+`npm run test:browser` builds production assets and exercises native headings, expandable children, live rename updates, repeated-title navigation, empty outlines, document replacement, mobile layout, Word export, and the build dialog. The server HTML and this Markdown guide describe the same APIs and link to the same source.
 
 [Document API info reference](https://docs.superdoc.dev/document-api/reference/info/) · [Custom UI guide](https://docs.superdoc.dev/editor/custom-ui/overview/) · [Source](https://github.com/superdoc/demos/tree/main/document-outline)

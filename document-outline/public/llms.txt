@@ -2,6 +2,6 @@
 
 A runnable React example using public SuperDoc APIs for native heading discovery, live updates, and expandable navigation.
 
-- [Build guide](./guide.md): APIs, source files, installation, optional inference, privacy and verification.
+- [Build guide](./guide.md): APIs, source files, installation, privacy and verification.
 - [Source](https://github.com/superdoc/demos/tree/main/document-outline)
 - [Document API info](https://docs.superdoc.dev/document-api/reference/info/)

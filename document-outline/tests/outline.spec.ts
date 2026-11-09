@@ -30,10 +30,6 @@ test("native outline supports expandable hierarchy and live heading edits", asyn
   await page
     .getByRole("button", { name: "Delivery plan", exact: true })
     .click();
-  await page.getByRole("switch", { name: "Edit document" }).click();
-  await expect(
-    page.getByRole("switch", { name: "Edit document" }),
-  ).toBeChecked();
   await page
     .locator(".superdoc-line")
     .filter({ hasText: /^Delivery plan$/ })
@@ -75,36 +71,36 @@ test("repeated headings navigate by native identity", async ({ page }) => {
   await expect(page.locator('[aria-current="location"]')).toHaveCount(1);
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
 });
-test("detected titles are opt in and do not include repeated badges", async ({
-  page,
-}) => {
+test("unstyled documents show an empty outline and replacement restores headings", async ({ page }) => {
   await ready(page);
-  await page
-    .getByRole("button", { name: "Unstyled brief", exact: true })
-    .click();
-  await expect(page.getByText("No headings yet.", { exact: true })).toBeVisible(
-    { timeout: 60000 },
-  );
-  await page.getByRole("checkbox", { name: /Detect section titles/ }).check();
-  await expect(
-    page.getByRole("button", { name: "Meridian planning notes", exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", {
-      name: "Expand Meridian planning notes",
-      exact: true,
-    })
-    .click();
-  await expect(
-    page.getByRole("button", { name: "Keep the original intent", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "AI PREPARES", exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("checkbox", { name: /Detect section titles/ }).uncheck();
-  await expect(
-    page.getByText("No headings yet.", { exact: true }),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Unstyled brief", exact: true }).click();
+  await expect(page.getByText("No headings yet.", { exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole("navigation", { name: "Document sections" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Structured brief", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Expand Overview", exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText("No headings yet.", { exact: true })).toHaveCount(0);
+});
+test("heading buttons insert below the cursor and keep the correct hierarchy", async ({ page }) => {
+  await ready(page);
+  await page.locator(".superdoc-line").filter({ hasText: /^Overview$/ }).last().click();
+  await page.getByRole("button", { name: "Add heading 1", exact: true }).click();
+  const first = page.getByRole("button", { name: "New heading 1", exact: true });
+  await expect(first).toHaveAttribute("aria-current", "location");
+  await expect(page.locator(".outline-tree > li > .outline-row > .outline-item-label")).toHaveText([
+    "Overview", "New heading 1", "Delivery plan", "Decisions",
+  ]);
+  await page.getByRole("button", { name: "Add heading 2", exact: true }).click();
+  const second = page.getByRole("button", { name: "New heading 2", exact: true });
+  await expect(second).toBeVisible();
+  await expect(second).toHaveAttribute("aria-current", "location");
+  const newSection = page.locator(".outline-tree > li").filter({ has: first });
+  await expect(newSection.locator(":scope > ul > li > .outline-row > .outline-item-label")).toHaveText([
+    "New heading 2", "Goals and outcomes", "Scope",
+  ]);
+  await page.keyboard.type("Renamed section");
+  await expect(page.getByRole("button", { name: "Renamed section", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New heading 2", exact: true })).toHaveCount(0);
+  await expect(page.locator('[role="alert"]')).toHaveCount(0);
 });
 for (const width of [390, 1280])
   test(`responsive outline at ${width}px`, async ({ browser }) => {
@@ -121,9 +117,22 @@ for (const width of [390, 1280])
         () => document.documentElement.scrollWidth - innerWidth,
       ),
     ).toBeLessThanOrEqual(1);
-    await page
-      .locator(".studio")
-      .screenshot({ path: `test-results/outline-${width}.png` });
+    if (width >= 850) {
+      const handle = page.getByRole("separator", { name: "Resize document outline" });
+      const sidebar = page.getByRole("complementary", { name: "Document outline" });
+      const initial = (await sidebar.boundingBox())!.width;
+      const grip = (await handle.boundingBox())!;
+      await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + grip.width / 2 - 100, grip.y + grip.height / 2, { steps: 5 });
+      await page.mouse.up();
+      await expect(handle).toHaveAttribute("aria-valuenow", String(initial + 100));
+      expect((await sidebar.boundingBox())!.width).toBe(initial + 100);
+      await handle.press("ArrowLeft");
+      await expect(handle).toHaveAttribute("aria-valuenow", String(initial + 124));
+      expect((await sidebar.boundingBox())!.width).toBe(initial + 124);
+    }
+    await page.screenshot({ path: `test-results/outline-${width}.png` });
     await page
       .getByRole("button", { name: "Close document outline", exact: true })
       .click();
@@ -165,9 +174,7 @@ test("Word export and build guide work without backend services", async ({
 }) => {
   await ready(page);
   const download = page.waitForEvent("download");
-  await page
-    .getByRole("button", { name: "Export Word ↗", exact: true })
-    .click();
+  await page.getByRole("combobox", { name: "File", exact: true }).selectOption("save-as");
   expect((await download).suggestedFilename()).toBe("meridian-brief.docx");
   await page.getByRole("button", { name: "Build this", exact: true }).click();
   await expect(

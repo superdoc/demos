@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { SuperDoc } from "superdoc";
 import "superdoc/style.css";
 import OutlineNavigation from "./OutlineNavigation";
@@ -10,6 +10,12 @@ import "./style.css";
 const base = import.meta.env.BASE_URL;
 export default function App() {
   const dialog = useRef<HTMLDialogElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const workspace = useRef<HTMLDivElement>(null);
+  const resizeStart = useRef<{ x: number; width: number } | null>(null);
+  const [panelWidth, setPanelWidth] = useState(360);
+  const [panelMaxWidth, setPanelMaxWidth] = useState(720);
+  const [resizing, setResizing] = useState(false);
   const mount = useRef<HTMLDivElement>(null),
     instance = useRef<SuperDoc | null>(null),
     request = useRef(0);
@@ -18,13 +24,26 @@ export default function App() {
   const [name, setName] = useState("Meridian project brief"),
     [error, setError] = useState(""),
     [active, setActive] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false),
-    [detect, setDetect] = useState(false),
-    [panel, setPanel] = useState(true),
+  const [panel, setPanel] = useState(true),
     [build, setBuild] = useState(false),
     [copied, setCopied] = useState(false),
-    [exporting, setExporting] = useState(false);
-  const outline = useOutline(editor, detect);
+    [exporting, setExporting] = useState(false),
+    [addingHeading, setAddingHeading] = useState(false);
+  const outline = useOutline(editor);
+  useEffect(() => {
+    const element = workspace.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      const maximum = Math.max(300, Math.min(720, element.clientWidth - 320));
+      setPanelMaxWidth(maximum);
+      setPanelWidth((width) => Math.min(width, maximum));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  function resizePanel(width: number) {
+    setPanelWidth(Math.max(300, Math.min(panelMaxWidth, width)));
+  }
   useEffect(() => {
     if (build) dialog.current?.showModal();
     else dialog.current?.close();
@@ -33,7 +52,6 @@ export default function App() {
     if (!mount.current) return;
     let disposed = false;
     setEditor(null);
-    setEditing(false);
     setActive(null);
     setError("");
     const current = new SuperDoc({
@@ -43,10 +61,21 @@ export default function App() {
       documentMode: "editing",
       zoom: { mode: "fit-width", fitWidth: { min: 20, max: 100, padding: 20 } },
       user: { name: "Demo reviewer", email: "reviewer@example.invalid" },
-      ui: { toolbar: false, comments: false },
+      ui: {
+        toolbar: {
+          container: "#superdoc-toolbar",
+          groups: {
+            center: [
+              "fontFamily", "fontSize", "list", "numberedlist",
+              "indentleft", "indentright", "lineHeight", "clearFormatting",
+            ],
+          },
+          hideButtons: false,
+        },
+        comments: false,
+      },
       onReady: ({ superdoc }) => {
         if (!disposed) {
-          superdoc.setDocumentMode("viewing");
           superdoc.ui.zoom.setMode("fit-width");
           setEditor(superdoc);
         }
@@ -66,12 +95,6 @@ export default function App() {
       instance.current = null;
     };
   }, [file]);
-  useEffect(() => {
-    if (!editor) return;
-    return editor.ui.document.observe((state) =>
-      setEditing(state.mode === "editing"),
-    );
-  }, [editor]);
   async function navigate(item: Entry) {
     if (!editor || !item.within) return;
     const generation = ++request.current;
@@ -91,6 +114,60 @@ export default function App() {
         setError(
           "This section could not be reached. Refresh the document and try again.",
         );
+    }
+  }
+  async function addHeading(level: 1 | 2) {
+    const current = editor;
+    const doc = current?.activeEditor?.doc;
+    if (!current || !doc || addingHeading) return;
+    const generation = ++request.current;
+    setAddingHeading(true);
+    setError("");
+    try {
+      const selection = await doc.selection.current();
+      if (instance.current !== current || generation !== request.current) return;
+      const end = selection.selectionTarget?.end;
+      if (!end) {
+        setError("Place the cursor in the document before adding a heading.");
+        return;
+      }
+      const story = selection.selectionTarget?.story ??
+        (end.kind === "text" ? end.story : end.node.story);
+      const target = end.kind === "nodeEdge"
+        ? end.node
+        : (await doc.getNodeById({ nodeId: end.blockId, ...(story ? { story } : {}) })).address;
+      if (instance.current !== current || generation !== request.current) return;
+      if (target.kind !== "block") throw new Error("No insertion block");
+      const text = `New heading ${level}`;
+      const result = await doc.create.heading({
+        level,
+        text,
+        at: { kind: "after", target },
+        ...(story ? { in: story } : {}),
+      });
+      if (instance.current !== current || generation !== request.current) return;
+      if (!result.success) throw new Error("Heading insertion failed");
+      await navigate({
+        id: `${JSON.stringify(story?.storyType === "body" ? null : story ?? null)}:${result.heading.nodeId}`,
+        text,
+        quote: text,
+        level,
+        story,
+        within: { kind: "block", nodeType: "heading", nodeId: result.heading.nodeId },
+      });
+      if (instance.current !== current || request.current !== generation + 1) return;
+      const applied = current.ui.selection.apply({
+        kind: "selection",
+        start: { kind: "text", blockId: result.heading.nodeId, offset: 0 },
+        end: { kind: "text", blockId: result.heading.nodeId, offset: text.length },
+        ...(story ? { story } : {}),
+      });
+      if (applied.ok) current.focus();
+    } catch {
+      if (instance.current === current && generation === request.current)
+        setError("The heading could not be added. Please try again.");
+    } finally {
+      setAddingHeading(false);
     }
   }
   function sample(unstyled: boolean) {
@@ -122,111 +199,85 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <a className="brand" href="https://superdoc.dev">
-          <img src={`${base}superdoc-logo.png`} alt="SuperDoc" />
-        </a>
-        <span className="demo-tag">DOCUMENT OUTLINE</span>
-        <nav>
-          <a href={`${base}guide.md`}>Build guide</a>
-          <a href="https://github.com/superdoc/demos/tree/main/document-outline">
-            Source ↗
-          </a>
-          <button
-            className="primary"
-            onClick={() => {
-              setBuild(true);
-              setCopied(false);
-            }}
-          >
-            Build this
-          </button>
-        </nav>
-      </header>
-      <section className="intro">
-        <span className="eyebrow">A LITTLE STRUCTURE. A LOT MORE CLARITY.</span>
-        <h1>
-          Find your place.
-          <br />
-          <span>Keep your flow.</span>
-        </h1>
-        <p>
-          A live outline, powered by your Word document. Jump to a section, edit
-          a heading, and watch navigation follow along.
-        </p>
-        <div className="intro-notes">
-          <span>Native DOCX headings</span>
-          <span>Live updates</span>
-          <span>Expandable sections</span>
-        </div>
-      </section>
-      <main className="studio">
-        <div className="studio-toolbar">
-          <div>
-            <strong>{name}</strong>
-            <span className="status" role="status">
-              {editor
-                ? "Ready · changes stay in this tab"
-                : "Opening document…"}
+        <div className="ribbon-tabs-row">
+          <div className="file-title">
+            <h1 className="file-name">{name}</h1>
+            <span className="status visually-hidden" role="status">
+              {editor ? "Ready · changes stay in this tab" : "Opening document…"}
             </span>
           </div>
-          <div className="tools">
-            <button
-              aria-label="Toggle document outline"
-              aria-expanded={panel}
-              onClick={() => setPanel(!panel)}
-            >
-              ☷ Outline
-            </button>
-            <label className="upload">
-              Open DOCX
-              <input
-                aria-label="Open DOCX"
-                type="file"
-                accept=".docx"
-                onChange={(e) => {
-                  const selected = e.target.files?.[0];
-                  if (!selected) return;
-                  if (
-                    !selected.name.toLowerCase().endsWith(".docx") ||
-                    selected.size > 25 * 1024 * 1024
-                  ) {
-                    setError("Choose a DOCX smaller than 25 MB.");
-                    return;
-                  }
-                  setName(selected.name);
-                  setFile(selected);
-                }}
-              />
-            </label>
-            <button
-              disabled={!editor}
-              onClick={() => editor?.ui.zoom.setMode("fit-width")}
-            >
-              Fit width
-            </button>
-            <button
-              role="switch"
-              aria-label="Edit document"
-              aria-checked={editing}
-              disabled={!editor}
-              onClick={() =>
-                editor?.setDocumentMode(editing ? "viewing" : "editing")
+          <input
+            ref={fileInput}
+            className="visually-hidden"
+            aria-label="Open DOCX"
+            type="file"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(e) => {
+              const selected = e.target.files?.[0];
+              if (!selected) return;
+              if (
+                !selected.name.toLowerCase().endsWith(".docx") ||
+                selected.size > 25 * 1024 * 1024
+              ) {
+                setError("Choose a DOCX smaller than 25 MB.");
+                return;
               }
-            >
-              {editing ? "Done editing" : "Start editing"}
-            </button>
+              setName(selected.name);
+              setFile(selected);
+              e.target.value = "";
+            }}
+          />
+          <select
+            className="file-menu"
+            aria-label="File"
+            defaultValue=""
+            disabled={!editor || exporting}
+            onChange={(e) => {
+              if (e.target.value === "upload") fileInput.current?.click();
+              if (e.target.value === "save-as") void download();
+              e.target.value = "";
+            }}
+          >
+            <option value="" disabled>{exporting ? "Preparing…" : "File"}</option>
+            <option value="upload">Upload…</option>
+            <option value="save-as">Save As…</option>
+          </select>
+          <a className="more-demos-button" href="/">More demos</a>
+          <div className="build-this-slot">
             <button
-              disabled={!editor || exporting}
-              onClick={() => void download()}
+              className="build-this-button"
+              onClick={() => {
+                setBuild(true);
+                setCopied(false);
+              }}
             >
-              {exporting ? "Preparing…" : "Export Word ↗"}
+              Build this
             </button>
           </div>
+          <button
+            className={`outline-panel-toggle ${panel ? "active" : ""}`}
+            aria-label="Toggle document outline"
+            aria-expanded={panel}
+            onClick={() => setPanel(!panel)}
+          >
+            {panel ? "Hide outline" : "Show outline"}
+          </button>
         </div>
+        <div className="ribbon-controls-row">
+          <div id="superdoc-toolbar" className="default-toolbar" aria-label="Document toolbar" />
+        </div>
+      </header>
+      <main className="studio">
         <div className="sample-bar">
           <span>TRY IT</span>
           <button onClick={() => sample(false)}>Structured brief</button>
           <button onClick={() => sample(true)}>Unstyled brief</button>
+          <button disabled={!editor || addingHeading} onPointerDown={(event) => event.preventDefault()} onClick={() => void addHeading(1)}>
+            Add heading 1
+          </button>
+          <button disabled={!editor || addingHeading} onPointerDown={(event) => event.preventDefault()} onClick={() => void addHeading(2)}>
+            Add heading 2
+          </button>
           <span className="local-note">
             Files you open are processed in this browser.
           </span>
@@ -236,7 +287,11 @@ export default function App() {
             {error}
           </p>
         )}
-        <div className={`workspace ${panel ? "with-outline" : ""}`}>
+        <div
+          ref={workspace}
+          className={`workspace ${panel ? "with-outline" : ""} ${resizing ? "resizing" : ""}`}
+          style={{ "--outline-width": `${panelWidth}px` } as CSSProperties}
+        >
           <section className="canvas" aria-label="Word document">
             <div
               ref={mount}
@@ -245,10 +300,54 @@ export default function App() {
             />
           </section>
           {panel && (
-            <aside className="sidebar">
+            <>
+            <div
+              className="outline-resize-handle"
+              role="separator"
+              tabIndex={0}
+              aria-label="Resize document outline"
+              aria-orientation="vertical"
+              aria-controls="document-outline-panel"
+              aria-valuemin={300}
+              aria-valuemax={panelMaxWidth}
+              aria-valuenow={panelWidth}
+              aria-valuetext={`${panelWidth} pixels wide`}
+              title="Drag to resize the outline, or use the arrow keys"
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                event.preventDefault();
+                event.currentTarget.focus();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                resizeStart.current = { x: event.clientX, width: panelWidth };
+                setResizing(true);
+              }}
+              onPointerMove={(event) => {
+                if (!resizeStart.current) return;
+                resizePanel(resizeStart.current.width + resizeStart.current.x - event.clientX);
+              }}
+              onPointerUp={(event) => {
+                resizeStart.current = null;
+                setResizing(false);
+                if (event.currentTarget.hasPointerCapture(event.pointerId))
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+              }}
+              onLostPointerCapture={() => {
+                resizeStart.current = null;
+                setResizing(false);
+              }}
+              onKeyDown={(event) => {
+                const step = event.shiftKey ? 48 : 24;
+                if (event.key === "ArrowLeft") resizePanel(panelWidth + step);
+                else if (event.key === "ArrowRight") resizePanel(panelWidth - step);
+                else if (event.key === "Home") resizePanel(300);
+                else if (event.key === "End") resizePanel(panelMaxWidth);
+                else return;
+                event.preventDefault();
+              }}
+            />
+            <aside className="sidebar" id="document-outline-panel" aria-label="Document outline">
               <div className="sidebar-heading">
                 <div>
-                  <span className="eyebrow">YOUR DOCUMENT, MAPPED</span>
                   <h2>Document outline</h2>
                 </div>
                 <button
@@ -258,17 +357,6 @@ export default function App() {
                   ×
                 </button>
               </div>
-              <label className="detect">
-                <input
-                  type="checkbox"
-                  checked={detect}
-                  onChange={(e) => setDetect(e.target.checked)}
-                />
-                <span>
-                  Detect section titles
-                  <small>Include title-like text without heading styles.</small>
-                </span>
-              </label>
               {outline.loading ? (
                 <p role="status">Reading headings…</p>
               ) : outline.error ? (
@@ -277,8 +365,7 @@ export default function App() {
                 <div className="empty">
                   <strong>No headings yet.</strong>
                   <p>
-                    Try the structured brief, add a Word heading, or enable
-                    detected section titles.
+                    Try the structured brief or add a Word heading.
                   </p>
                 </div>
               ) : (
@@ -296,11 +383,10 @@ export default function App() {
                 />
               )}
               <p className="sidebar-foot">
-                {detect
-                  ? "Detected titles are navigation hints. They do not change Word heading styles."
-                  : "Real headings, in document order. Expand a section to see its subheadings."}
+                Real headings, in document order. Expand a section to see its subheadings.
               </p>
             </aside>
+            </>
           )}
         </div>
       </main>
@@ -321,7 +407,7 @@ export default function App() {
             viewport API takes readers to the selected heading.
           </p>
           <p>
-            Try <strong>Start editing</strong> and rename “Delivery plan.” The
+            Try renaming “Delivery plan” directly in the document. The
             outline updates without saving or reloading. Opening the outline
             changes no document content.
           </p>

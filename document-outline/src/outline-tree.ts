@@ -2,7 +2,6 @@ export type OutlineLabel = {
   id: string;
   text: string;
   level: number;
-  source?: "heading" | "detected";
 };
 export type OutlineNode<T extends OutlineLabel> = {
   item: T;

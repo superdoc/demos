@@ -8,7 +8,7 @@ Live at [demos.superdoc.dev](https://demos.superdoc.dev)
 
 ### [`document-outline/`](./document-outline) — Document Outline
 
-Navigate native Word headings in an expandable sidebar, edit a heading and watch it update, or opt into detected section titles. Built with public SuperDoc APIs, with no backend or API keys. [Build guide](./document-outline/public/guide.md).
+Navigate native Word headings in an expandable sidebar, and edit a heading to watch it update. Built with public SuperDoc APIs, with no backend or API keys. [Build guide](./document-outline/public/guide.md).
 
 **Stack**: React, SuperDoc
 

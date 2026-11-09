@@ -1,5 +1,6 @@
 :root {
   font-family: Arial, Helvetica, sans-serif;
+  font-size: 18px;
   color: #23334c;
   background: #f7f9fd;
   font-synthesis: none;
@@ -49,134 +50,132 @@ input:focus-visible {
   border-color: var(--blue);
 }
 .topbar {
-  height: 78px;
-  padding: 0 5vw;
-  background: #fff;
-  border-bottom: 1px solid #e3e9f2;
+  position: relative;
+  z-index: 12;
+  display: grid;
+  grid-template-rows: 50px 72px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #cfd5dd;
+  box-shadow: 0 1px 5px #11182712;
+}
+.ribbon-tabs-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 22px;
+  padding: 0 10px;
+  border-bottom: 1px solid #e1e5ea;
+  gap: 8px;
 }
-.brand img {
-  width: 152px;
-  max-height: 38px;
-  object-fit: contain;
+.file-title {
+  position: absolute;
+  left: 50%;
+  max-width: calc(100% - 620px);
+  transform: translateX(-50%);
+  text-align: center;
 }
-.demo-tag,
+.file-name {
+  margin: 0;
+  padding: 4px 9px;
+  overflow: hidden;
+  color: #20242c;
+  font-size: 18px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.file-menu,
+.more-demos-button,
+.build-this-button,
+.outline-panel-toggle {
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.file-menu {
+  min-width: 112px;
+  padding: 5px 28px 5px 10px;
+  color: #303640;
+  background: white;
+  border: 1px solid #cfd4db;
+}
+.more-demos-button {
+  display: inline-flex;
+  align-items: center;
+}
+.more-demos-button,
+.build-this-button,
+.outline-panel-toggle.active {
+  color: white;
+  background: #2563eb;
+  border: 1px solid #2563eb;
+}
+.build-this-slot {
+  display: flex;
+  margin-left: auto;
+}
+.outline-panel-toggle {
+  color: #245fae;
+  background: white;
+  border: 1px solid #b9c9df;
+}
+.ribbon-controls-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.default-toolbar {
+  --sd-ui-font-size-300: 15px;
+  --sd-ui-font-size-400: 16px;
+  --sd-ui-font-size-500: 17px;
+  width: auto;
+  background: #f8f8f8;
+}
+.default-toolbar .superdoc-toolbar,
+.default-toolbar .toolbar {
+  width: 100%;
+  background: #f8f8f8 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(100%);
+  white-space: nowrap;
+  border: 0;
+}
 .eyebrow {
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 1.7px;
   font-weight: 700;
   color: #7b8ba5;
 }
-.topbar nav {
-  margin-left: auto;
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  font-size: 12px;
-}
-.intro {
-  max-width: 1280px;
-  margin: 60px auto 36px;
-  padding: 0 32px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  column-gap: 60px;
-}
-.intro > .eyebrow {
-  grid-column: 1/-1;
-  color: #5278cb;
-}
-.intro h1 {
-  font-size: clamp(36px, 4vw, 54px);
-  line-height: 1.1;
-  letter-spacing: -2px;
-  margin: 20px 0;
-}
-.intro h1 span {
-  color: var(--blue);
-}
-.intro p {
-  line-height: 1.8;
-  color: #71819a;
-  font-size: 16px;
-  max-width: 480px;
-  align-self: center;
-}
-.intro-notes {
-  grid-column: 1/-1;
-  display: flex;
-  gap: 24px;
-  font-size: 11px;
-  color: #73829a;
-}
-.intro-notes span:before {
-  content: "✓";
-  color: #24a18b;
-  margin-right: 8px;
-}
 .studio {
-  margin: 0 auto;
-  border: 1px solid #dfe6f2;
-  border-radius: 16px;
   background: white;
-  max-width: calc(100% - 64px);
   overflow: hidden;
-  box-shadow: 0 12px 50px #253c6510;
-}
-.studio-toolbar {
-  padding: 18px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 18px;
-  border-bottom: 1px solid #e6ebf4;
-}
-.studio-toolbar strong {
-  font-size: 14px;
-}
-.status {
-  display: block;
-  color: #8190a7;
-  font-size: 10px;
-  margin-top: 6px;
-}
-.tools {
-  display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-  font-size: 11px;
-}
-.tools button,
-.upload {
-  padding: 9px 12px;
-}
-.upload {
-  border: 1px solid #dce3ef;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.upload input {
-  position: absolute;
-  clip-path: inset(100%);
-  width: 1px;
-  height: 1px;
-}
-.upload:focus-within {
-  outline: 3px solid #82a8ff;
 }
 .sample-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 12px 24px;
   border-bottom: 1px solid #e7edf5;
-  font-size: 10px;
+  font-size: 12px;
   color: #91a0b6;
 }
 .sample-bar button {
-  font-size: 11px;
+  font-size: 13px;
   padding: 7px 10px;
   border: 0;
   background: #eff4ff;
@@ -189,11 +188,11 @@ input:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   position: relative;
-  height: 780px;
-  max-height: 85dvh;
+  height: calc(100dvh - 173px);
+  min-height: 350px;
 }
 .workspace.with-outline {
-  grid-template-columns: minmax(0, 1fr) 310px;
+  grid-template-columns: minmax(0, 1fr) var(--outline-width, 360px);
 }
 .canvas {
   overflow: auto;
@@ -206,10 +205,34 @@ input:focus-visible {
   min-width: 0;
 }
 .sidebar {
+  font-size: 20px;
+  min-width: 0;
   border-left: 1px solid #e0e7f3;
   padding: 24px 18px;
   overflow: auto;
   background: white;
+}
+.outline-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--outline-width, 360px) - 6px);
+  width: 12px;
+  z-index: 3;
+  cursor: col-resize;
+  touch-action: none;
+}
+.outline-resize-handle:focus,
+.outline-resize-handle:focus-visible,
+.outline-resize-handle:active {
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+.workspace.resizing,
+.workspace.resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 .sidebar-heading {
   display: flex;
@@ -218,41 +241,18 @@ input:focus-visible {
   gap: 10px;
 }
 .sidebar-heading h2 {
-  font-size: 18px;
+  font-size: 22px;
   letter-spacing: -0.4px;
   margin: 8px 0 22px;
 }
 .sidebar-heading button {
   border: 0;
   background: transparent;
-  font-size: 24px;
+  font-size: 28px;
   padding: 5px;
 }
-.sidebar-heading .eyebrow {
-  font-size: 8px;
-}
-.detect {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 12px 0 16px;
-  border-bottom: 1px solid #edf0f5;
-  margin-bottom: 12px;
-  color: #516784;
-  font-size: 11px;
-  line-height: 1.6;
-}
-.detect input {
-  accent-color: var(--blue);
-}
-.detect small {
-  display: block;
-  font-size: 10px;
-  color: #8996a8;
-  margin-top: 3px;
-}
 .sidebar-foot {
-  font-size: 10px;
+  font-size: 14px;
   line-height: 1.8;
   color: #95a2b6;
   border-top: 1px solid #e9edf5;
@@ -260,7 +260,7 @@ input:focus-visible {
   margin-top: 24px;
 }
 .empty {
-  font-size: 13px;
+  font-size: 17px;
   padding: 24px 8px;
   line-height: 1.8;
   color: #8595aa;
@@ -277,32 +277,32 @@ input:focus-visible {
   gap: 60px;
 }
 .explanation h2 {
-  font-size: 29px;
+  font-size: 31px;
   line-height: 1.3;
   letter-spacing: -1px;
 }
 .explanation p {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.9;
   color: #75849c;
 }
 .explanation code {
-  font-size: 12px;
+  font-size: 14px;
   color: #1953b9;
   background: #eaf0ff;
   padding: 3px 6px;
   border-radius: 4px;
 }
 .explanation a {
-  font-size: 12px;
+  font-size: 14px;
 }
 .explanation .fine {
-  font-size: 10px;
+  font-size: 12px;
 }
 footer {
   border-top: 1px solid #e0e7f2;
   padding: 24px 5vw;
-  font-size: 11px;
+  font-size: 13px;
   color: #8b9ab1;
   display: flex;
   justify-content: space-between;
@@ -311,7 +311,7 @@ footer {
   background: #fff1ef;
   color: #ae3c3c;
   padding: 12px 24px;
-  font-size: 12px;
+  font-size: 14px;
   margin: 0;
 }
 dialog[open] {
@@ -328,7 +328,7 @@ dialog[open] {
   overflow: auto;
 }
 dialog p {
-  font-size: 13px;
+  font-size: 15px;
   color: #71819a;
   line-height: 1.8;
 }
@@ -339,23 +339,23 @@ dialog p {
 }
 .dialog-top h2 {
   margin: 0;
-  font-size: 23px;
+  font-size: 25px;
 }
 .dialog-top button {
   border: 0;
-  font-size: 24px;
+  font-size: 26px;
 }
 dialog pre {
   padding: 18px;
   border-radius: 8px;
   background: #f0f4fb;
   overflow: auto;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.7;
 }
 dialog > a {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
   margin-top: 18px;
 }
 .static-guide {
@@ -363,11 +363,11 @@ dialog > a {
   padding: 20px 32px 44px;
   margin: auto;
   color: #75849c;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.8;
 }
 .static-guide h2 {
-  font-size: 18px;
+  font-size: 20px;
   color: #334965;
 }
 .outline-tree,
@@ -395,7 +395,7 @@ dialog > a {
   border: 0;
   background: transparent;
   padding: 10px 6px;
-  font-size: 12px;
+  font-size: 16px;
   line-height: 1.6;
   border-radius: 6px;
   overflow-wrap: anywhere;
@@ -432,52 +432,34 @@ dialog > a {
   border: 0;
   background: transparent;
   color: var(--blue);
-  font-size: 10px;
+  font-size: 14px;
   padding: 8px 6px;
   margin-bottom: 7px;
 }
 @media (max-width: 850px) {
   .topbar {
-    padding: 0 20px;
-    gap: 10px;
+    grid-template-rows: auto 72px;
   }
-  .topbar nav {
-    gap: 12px;
-  }
-  .topbar nav > a:first-child,
-  .demo-tag {
-    display: none;
-  }
-  .intro {
-    margin: 36px auto 26px;
-    grid-template-columns: 1fr;
-    gap: 0;
-    padding: 0 24px;
-  }
-  .intro h1 {
-    font-size: 42px;
-    margin-bottom: 8px;
-  }
-  .intro p {
-    font-size: 14px;
-    margin-bottom: 24px;
-  }
-  .intro-notes {
-    gap: 16px;
-    font-size: 9px;
+  .ribbon-tabs-row {
     flex-wrap: wrap;
+    padding: 8px 10px;
   }
-  .studio {
-    max-width: calc(100% - 24px);
+  .file-title {
+    position: static;
+    flex: 0 0 100%;
+    max-width: 100%;
+    transform: none;
+    text-align: left;
   }
-  .studio-toolbar {
-    padding: 16px;
-    align-items: flex-start;
-    flex-direction: column;
+  .file-name {
+    padding: 2px 0 6px;
+    font-size: 16px;
   }
-  .tools {
-    font-size: 10px;
-    gap: 6px;
+  .file-menu {
+    min-width: 72px;
+  }
+  .ribbon-controls-row {
+    justify-content: flex-start;
   }
   .sample-bar {
     padding: 10px 16px;
@@ -491,8 +473,11 @@ dialog > a {
   .workspace,
   .workspace.with-outline {
     grid-template-columns: minmax(0, 1fr);
-    height: 700px;
-    max-height: 85dvh;
+    height: calc(100dvh - 234px);
+    min-height: 350px;
+  }
+  .outline-resize-handle {
+    display: none;
   }
   .canvas {
     padding: 12px;
@@ -519,18 +504,11 @@ dialog > a {
     padding: 0 24px;
   }
   .explanation h2 {
-    font-size: 27px;
+    font-size: 29px;
   }
   footer {
     gap: 14px;
     flex-wrap: wrap;
-  }
-  .brand img {
-    width: 126px;
-  }
-  .tools button,
-  .upload {
-    padding: 9px 10px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

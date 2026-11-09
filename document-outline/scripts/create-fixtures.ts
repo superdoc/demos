@@ -51,7 +51,7 @@ const content = [
   ),
   heading("Next steps", HeadingLevel.HEADING_2),
   body(
-    "Try renaming a heading with Start editing. The outline updates without a save or reload. Export Word to keep your changes.",
+    "Try renaming a heading directly in the document. The outline updates without a save or reload. Use File > Save As to keep your changes.",
   ),
 ];
 const bold = (text: string) =>
@@ -62,7 +62,7 @@ const bold = (text: string) =>
 const unstyled = [
   bold("Meridian planning notes"),
   body(
-    "This file intentionally has no Word heading styles. Turn on Detect section titles to see an optional application policy, distinct from native Word headings.",
+    "This file intentionally has no Word heading styles. Bold text alone does not create outline entries. Apply a Word heading style to add a section to the outline.",
   ),
   new Table({
     rows: [
@@ -90,7 +90,7 @@ const unstyled = [
   }),
   bold("A complete emphasized sentence is still body copy."),
   body(
-    "No AI service is used. This optional inference is local example code, and it does not rewrite Word styles.",
+    "The outline reads native Word headings through the Document API. It does not infer headings from bold text.",
   ),
 ];
 for (const [name, children] of [

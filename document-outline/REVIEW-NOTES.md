@@ -1,6 +1,6 @@
 # Document outline verification
 
-The example uses SuperDoc 2.29.0 public APIs. Native Word heading discovery is the default. Optional detected section titles are application policy. No core library changes or unreleased outline controller are required.
+The example uses SuperDoc 2.29.0 public APIs. The outline uses native Word headings exclusively. No core library changes or unreleased outline controller are required.
 
 Local verification:
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { SuperDoc } from "superdoc";
 import { readOutline, type Entry } from "./read-outline";
-export function useOutline(editor: SuperDoc | null, detect: boolean) {
+export function useOutline(editor: SuperDoc | null) {
   const [entries, setEntries] = useState<Entry[]>([]),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
@@ -16,7 +16,7 @@ export function useOutline(editor: SuperDoc | null, detect: boolean) {
     const refresh = async () => {
       const request = ++generation;
       try {
-        const next = await readOutline(editor, detect);
+        const next = await readOutline(editor);
         if (!disposed && request === generation) {
           setEntries(next);
           setLoading(false);
@@ -44,6 +44,6 @@ export function useOutline(editor: SuperDoc | null, detect: boolean) {
       clearTimeout(timer);
       stop();
     };
-  }, [editor, detect]);
+  }, [editor]);
   return { entries, error, loading };
 }
