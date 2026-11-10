@@ -72,14 +72,14 @@ export class ReferenceDocument {
     this.#logEvent('document-service', 'document.replaced', { documentId: this.id, generation: this.generation });
   }
 
-  dispatch(tool, args) {
+  dispatch(tool, args, options) {
     this.#requireOpen();
     if (tool === footnoteTool.function.name) return this.insertFootnote(footnoteInput(args));
     if (tool === citationTool.function.name) return this.insertCitation(citationInput(args));
     if (tool === referenceTool.function.name) return this.manageReferences(referenceInput(args));
     if (tool === bibliographyTool.function.name) return this.manageBibliographies(bibliographyInput(args));
     if (tool === streamTextTool.function.name) return this.#streamText(args);
-    return this.#toolkit.dispatch(this.#handle, tool, args);
+    return this.#toolkit.dispatch(this.#handle, tool, args, options);
   }
 
   createTextStream(options) {

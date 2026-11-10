@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createDocumentAgent } from './agent.js';
 import { citationTool, citationInput } from './reference-integration/tools/citation-tool.js';
 import { footnoteTool } from './reference-integration/tools/footnote-tool.js';
-import { createRunProgress } from './reference-integration/agent/agent-run-progress.js';
+import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
 
 function harness(responses) {
   const requests = [];
@@ -172,4 +172,11 @@ test('equivalent structured validation failures match despite property and issue
     result: { ok: false, code: 'INVALID_INPUT', error: 'extra; offset', issues } }).repeatedFailure, false);
   assert.equal(p.record({ tool: 'insert', args: { anchor: { extra: true, offset: 1 }, sourceId: 'first' },
     result: { ok: false, code: 'INVALID_INPUT', error: 'offset; extra', issues: issues.toReversed() } }).repeatedFailure, true);
+});
+
+
+test('Full API receipts report incomplete and nested failed batches', () => {
+  assert.equal(toolFailed({ completed: 1, total: 2, receipts: [{ ok: true }] }), true);
+  assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: false } }] }), true);
+  assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: true } }] }), false);
 });

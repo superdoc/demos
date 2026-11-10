@@ -33,7 +33,7 @@ adapters are examples; its room server, chat, routes, and model runner are not r
 
 ## Minimal server adapter
 
-The target app supplies its existing SDK client/core toolkit, one live document,
+The target app supplies its existing SDK client and Full toolkit, one live document,
 current prompt, and trusted tracked/direct mode. The SDK document must participate
 in the same collaboration session as the app's editor.
 
@@ -44,19 +44,23 @@ the existing SDK client. This runs the known import repairs before opening the n
 handle, then returns the reference-aware document wrapper:
 
 ```js
+import { createAgentToolkit } from '@superdoc/sdk';
 import { openReferenceDocument, createReferenceToolkit, createReferenceAgentAdapter }
   from './reference-integration/index.js';
+
+// Requires @superdoc/sdk 2.26.0 or later. Preserve the app's provider.
+const agentToolkit = await createAgentToolkit({ provider: 'openai', preset: 'full' });
 
 // These values come from the target app's existing document lifecycle.
 const document = await openReferenceDocument({
   client: sdkClient,
-  toolkit: coreToolkit,
+  toolkit: agentToolkit,
   id: documentId,
   filename,
   path: workingPath,
   collaboration,
 });
-const referenceToolkit = createReferenceToolkit(coreToolkit);
+const referenceToolkit = createReferenceToolkit(agentToolkit);
 ```
 
 The import path above assumes the server source directory was brought into the app
@@ -92,7 +96,7 @@ agent framework:
 
 | Adapter output | Host wiring |
 | --- | --- |
-| `tools` | Register alongside the app's other tools. Includes native core tools and the four custom tools. Map provider envelopes if needed; preserve schemas and validation. |
+| `tools` | Register alongside the app's other tools. Includes the four Full preset tools and the custom reference and streaming tools. Map provider envelopes if needed; preserve schemas and validation. |
 | `systemPrompt` | Append to the existing system instructions. Includes native toolkit guidance, reference instructions, and the request's mode policy. |
 | `contextMessage` | Add to this request before the user's prompt. Contains the fresh source library, stable IDs, bibliography style, and revision. Treat metadata as data. |
 | `initialToolChoice` | Optional provider-specific first-turn selection for an explicit bibliography-creation request. Translate its function name into the framework's selection mechanism. |
@@ -117,7 +121,7 @@ not be retried as though it failed. Reject cancelled runs in the host before dis
 Create a new adapter for every prompt so source context and receipt/retry state are
 fresh. Enforce per-document job exclusivity through the app's existing coordination.
 Mode enforcement happens inside `execute`, overriding model-supplied modes for native
-text mutations and citation/footnote insertion. Source metadata CRUD is direct.
+text mutations and citation/footnote insertion. Source metadata CRUD is direct. Full API calls in Reviewing mode carry the SDK's tracked-mode enforcement through dispatch, including batches. Prose insertion and replacement still use the streaming tool; direct API calls cannot bypass that policy. If supplying a custom dispatch callback to execute, forward its third options argument to document.dispatch(tool, args, options). Incomplete API batches are failures, even when earlier entries succeeded.
 Bibliography mutation currently requires direct mode and fails with
 `BIBLIOGRAPHY_REQUIRES_DIRECT` in Reviewing mode. The optional `editingModeHint` adapts
 that error's UI guidance to the target application; never silently switch user mode.

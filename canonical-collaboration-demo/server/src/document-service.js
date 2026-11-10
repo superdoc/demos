@@ -18,7 +18,7 @@ export class DocumentService {
       user: { name: 'Document service', email: 'document-service@demo.local' },
     });
     await this.#client.connect();
-    this.#toolkit = await createAgentToolkit({ provider: 'openai', preset: 'core' });
+    this.#toolkit = await createAgentToolkit({ provider: 'openai', preset: 'full' });
     logEvent('document-service', 'service.ready');
   }
 
