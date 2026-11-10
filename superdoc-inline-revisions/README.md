@@ -41,6 +41,8 @@ for coverage, fixtures, screenshots, and traces.
 - Standard right-click options plus wrapping selected text in a content control
 - Lock/unlock actions on the clicked content control
 - Toolbar formatting on locked controls with atomic unlock/format/relock
+- Ruler and Outline checkboxes immediately before the style gallery
+- An expandable, resizable native-heading outline with live edits and precise section navigation
 - DOCX export from the browser
 
 Select text and right-click **Wrap in content control**. Right-click the control
@@ -66,3 +68,22 @@ and icons included:
 
 See the [integration guide](./src/components/DocumentToolbar/README.md) for both the
 standalone editor-instance and shared-provider setups, plus a complete example.
+
+## Document outline
+
+Enable **Outline** beside the styles gallery to open the navigation panel. It reads
+native Word headings through `doc.info().outline`, refreshes after document edits
+and file replacement, and uses the public viewport API to reveal headings by their
+block identity. Apply a Heading style in the gallery to add a paragraph to the
+outline. Expand sections individually or with Expand all; drag the panel edge to
+resize it. The panel shares the outline demo's tree, typography, and selection
+styles, while leaving the comment rail available on the right.
+
+**Ruler** toggles the editor's public ruler command independently of the outline.
+These controls change the view without editing the document.
+
+The reusable, framework-independent helpers are in `src/superdoc/outline.ts`:
+`readOutline(doc)` lists entries, `outlineTree(entries)` builds the hierarchy,
+and `revealOutlineEntry(doc, ui, entry, current)` navigates to an exact heading.
+The React hook in `src/components/DocumentOutline/use-outline.ts` handles live
+subscriptions and component state.

@@ -8,7 +8,7 @@ Local verification:
 - Six native browser workflows passed in Chromium and six in WebKit, including duplicate heading destination visibility, local heading edits, mobile navigation and Word download preparation.
 - The gallery smoke test passed without console errors.
 - All 60 release automation tests passed.
-- The copyable clone, npm install and npm run dev sequence passed in an isolated source checkout, including native rendering, copying the command and a production build.
+- The copyable clone/install/dev sequence passed in a clean clone of the tested checkout using `npx --yes pnpm@10.25.0 install --frozen-lockfile` and `npx --yes pnpm@10.25.0 dev` on Node.js 24.4.1. Verification included native document rendering, the displayed and copied setup command, and a production build. The test redirects the clone to the current checkout rather than published main.
 - The rendered gallery contains the new card and usable route. Server HTML, public guide.md and llms.txt describe the public APIs without needing JavaScript.
 
 The tests use synthetic DOCX fixtures generated with docx 9.7.1. Microsoft Word round trips and physical iPhone testing are not claimed. Files opened in the demo stay in browser memory. Only explicit export prepares a download.

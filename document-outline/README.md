@@ -4,14 +4,16 @@ This standalone React example uses **SuperDoc 2.29.0** and public APIs. It needs
 
 ## Run it
 
+Requires Node.js 22.12 or newer and pnpm.
+
 ```sh
 git clone https://github.com/superdoc/demos.git
 cd demos/document-outline
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-The same command is available in the gallery and the app's **Build this** dialog. `npm run build` typechecks and creates a static `dist/` directory. `npm run preview` serves that build locally.
+The same command is available in the gallery and the app's **Build this** dialog. `pnpm build` typechecks and creates a static `dist/` directory. `pnpm preview` serves that build locally.
 
 ## What SuperDoc supplies
 
@@ -81,15 +83,15 @@ See `src/navigate-outline.ts` for the typed implementation and cancellation when
 
 Preserve a story locator when provided. Do not construct or inspect private engine positions. See the [public navigation guide](https://docs.superdoc.dev/editor/migrate-from-v1/overview/) for the supported paragraph navigation boundary.
 
-## Try the samples
+## Try the document
 
-Use **Add heading 1** or **Add heading 2** beside the sample buttons to insert a native heading immediately after the paragraph containing the cursor. The demo reads `doc.selection.current()`, resolves the block through `doc.getNodeById()`, and calls `doc.create.heading({ level, text, at: { kind: "after", target } })`. The new heading is revealed in the outline and its text is selected so you can immediately type a name.
+Use **Add heading 1** or **Add heading 2** above the document to insert a native heading immediately after the paragraph containing the cursor. The demo reads `doc.selection.current()`, resolves the block through `doc.getNodeById()`, and calls `doc.create.heading({ level, text, at: { kind: "after", target } })`. The new heading is revealed in the outline and its text is selected so you can immediately type a name.
 
-**Structured brief** contains native Heading 1, Heading 2 and Heading 3 styles, two “Notes” headings with distinct IDs, and a longer section. Expand “Delivery plan,” navigate between the two “Notes” entries, and rename “Delivery plan” directly in the editable document.
+The default **Meridian project brief** contains native Heading 1, Heading 2 and Heading 3 styles, two “Notes” headings with distinct IDs, and a longer section. Expand “Delivery plan,” navigate between the two “Notes” entries, and rename “Delivery plan” directly in the editable document.
 
-**Unstyled brief** intentionally has no Word headings and shows the empty-outline state. Bold text alone does not create an outline entry.
+The unstyled test fixture has no Word headings and verifies the empty-outline state when opened through File → Upload. Bold text alone does not create an outline entry.
 
-Both files are synthetic and generated with `docx` 9.7.1 by `scripts/create-fixtures.ts`. The mixed paragraph, heading and table fixture uses a deterministic generator so contributors can reproduce it with `npm run fixtures`. It is not labeled Word-authored. Native rendering and browser behavior are tested; a separate Microsoft Word round trip is not claimed.
+Both files are synthetic and generated with `docx` 9.7.1 by `scripts/create-fixtures.ts`. The mixed paragraph, heading and table fixture uses a deterministic generator so contributors can reproduce it with `pnpm fixtures`. It is not labeled Word-authored. Native rendering and browser behavior are tested; a separate Microsoft Word round trip is not claimed.
 
 ## Files and saving
 
@@ -97,6 +99,6 @@ Files selected in this demo are processed in the browser. There is no document u
 
 ## Verification
 
-`npm run test:browser` builds production assets and exercises native headings, expandable children, live rename updates, repeated-title navigation, empty outlines, document replacement, mobile layout, Word export, and the build dialog. The server HTML and this Markdown guide describe the same APIs and link to the same source.
+`pnpm test:browser` builds production assets and exercises native headings, expandable children, live rename updates, repeated-title navigation, empty outlines, document replacement, mobile layout, Word export, and the build dialog. The server HTML and this Markdown guide describe the same APIs and link to the same source.
 
 [Document API info reference](https://docs.superdoc.dev/document-api/reference/info/) · [Custom UI guide](https://docs.superdoc.dev/editor/custom-ui/overview/) · [Source](https://github.com/superdoc/demos/tree/main/document-outline)

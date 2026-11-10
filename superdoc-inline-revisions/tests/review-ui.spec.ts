@@ -9,7 +9,7 @@ test('loads floating comments and leaves tracked changes inline', async ({ page 
   await expect(page.getByLabel('Document mode')).toHaveValue('suggesting');
   const toolbar = page.getByRole('toolbar', { name: 'Document toolbar' });
   await expect(toolbar).toBeVisible();
-  await expect(toolbar.locator(':scope > [role="group"]')).toHaveCount(3);
+  await expect(toolbar.locator(':scope > [role="group"]')).toHaveCount(4);
   await expect(toolbar.getByRole('group', { name: 'Text options and formatting' })).toBeVisible();
   await expect(toolbar.getByRole('group', { name: 'Format styles' })).toBeVisible();
   await expect(toolbar.getByRole('group', { name: 'Tracked changes', exact: true })).toBeVisible();

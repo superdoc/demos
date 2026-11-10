@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
 async function ready(page: import("@playwright/test").Page) {
   await page.goto("/");
@@ -73,10 +74,10 @@ test("repeated headings navigate by native identity", async ({ page }) => {
 });
 test("unstyled documents show an empty outline and replacement restores headings", async ({ page }) => {
   await ready(page);
-  await page.getByRole("button", { name: "Unstyled brief", exact: true }).click();
+  await page.getByLabel("Open DOCX", { exact: true }).setInputFiles(fileURLToPath(new URL("../public/unstyled-brief.docx", import.meta.url)));
   await expect(page.getByText("No headings yet.", { exact: true })).toBeVisible({ timeout: 60000 });
   await expect(page.getByRole("navigation", { name: "Document sections" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Structured brief", exact: true }).click();
+  await page.getByLabel("Open DOCX", { exact: true }).setInputFiles(fileURLToPath(new URL("../public/project-brief.docx", import.meta.url)));
   await expect(page.getByRole("button", { name: "Expand Overview", exact: true })).toBeVisible({ timeout: 60000 });
   await expect(page.getByText("No headings yet.", { exact: true })).toHaveCount(0);
 });

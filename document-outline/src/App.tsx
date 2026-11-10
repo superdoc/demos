@@ -170,10 +170,6 @@ export default function App() {
       setAddingHeading(false);
     }
   }
-  function sample(unstyled: boolean) {
-    setName(unstyled ? "Unstyled project brief" : "Meridian project brief");
-    setFile(`${base}${unstyled ? "unstyled-brief" : "project-brief"}.docx`);
-  }
   async function download() {
     if (!editor) return;
     setExporting(true);
@@ -269,9 +265,6 @@ export default function App() {
       </header>
       <main className="studio">
         <div className="sample-bar">
-          <span>TRY IT</span>
-          <button onClick={() => sample(false)}>Structured brief</button>
-          <button onClick={() => sample(true)}>Unstyled brief</button>
           <button disabled={!editor || addingHeading} onPointerDown={(event) => event.preventDefault()} onClick={() => void addHeading(1)}>
             Add heading 1
           </button>
@@ -365,7 +358,7 @@ export default function App() {
                 <div className="empty">
                   <strong>No headings yet.</strong>
                   <p>
-                    Try the structured brief or add a Word heading.
+                    Open a document with Word headings or add a heading.
                   </p>
                 </div>
               ) : (

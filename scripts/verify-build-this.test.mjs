@@ -27,15 +27,17 @@ for (const demoId of ['inline-revisions', 'template-builder-api-v2', 'document-o
   test(`${demoId} uses the same simple clone/install/dev command in the app and gallery`, async () => {
     const command = await verifyBuildCommands(undefined, demoId);
     assert.match(command, /git clone https:\/\/github.com\/superdoc\/demos\.git/);
-    assert.match(command, /npm install\nnpm run dev/);
+    assert.match(command, demoId === 'document-outline' ? /pnpm install\npnpm dev/ : /npm install\nnpm run dev/);
     assert.doesNotMatch(command, /OPENAI_API_KEY|make build/);
   });
 }
 
-test('version history shares a locked full-stack quickstart between the app and gallery', async () => {
-  const command = await verifyBuildCommands(undefined, 'version-history');
-  assert.match(command, /cd demos\/version-history/);
-  assert.match(command, /pnpm@10\.25\.0 install --frozen-lockfile/);
-  assert.match(command, /pnpm@10\.25\.0 dev/);
-  assert.doesNotMatch(command, /OPENAI_API_KEY/);
-});
+for (const demoId of ['version-history']) {
+  test(`${demoId} shares a pinned pnpm quickstart between the app and gallery`, async () => {
+    const command = await verifyBuildCommands(undefined, demoId);
+    assert.ok(command.includes(`cd demos/${demoId}`));
+    assert.match(command, /npx --yes pnpm@10\.25\.0 install --frozen-lockfile/);
+    assert.match(command, /npx --yes pnpm@10\.25\.0 dev/);
+    assert.doesNotMatch(command, /OPENAI_API_KEY/);
+  });
+}

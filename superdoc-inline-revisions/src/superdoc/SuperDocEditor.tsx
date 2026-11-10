@@ -44,6 +44,7 @@ export function SuperDocEditor({
       selector: mountRef.current,
       document: `${import.meta.env.BASE_URL}review-sample.docx`,
       documentMode: 'suggesting',
+      zoom: { mode: 'fit-width', fitWidth: { min: 20, max: 100, padding: 24 } },
       rulers: true,
       rulerContainer: rulerRef.current ?? undefined,
       ui: {

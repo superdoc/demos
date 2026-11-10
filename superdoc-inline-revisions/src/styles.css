@@ -208,3 +208,18 @@ button { cursor: pointer; }
 .build-command-copy { padding: 8px 12px; color: #fff; background: #2563eb; border: 0; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
 .build-dialog-actions a { color: #2563eb; font-size: 12px; font-weight: 600; }
 .build-dialog-note { margin: 16px 0 0; color: #64748b; font-size: 12px; line-height: 1.5; }
+
+/* View controls stay immediately before the style gallery. */
+.document-view-controls { position: relative; display: flex; flex: 0 0 auto; height: 58px; flex-direction: column; justify-content: center; gap: 5px; padding: 0 10px; font: 14px Calibri, Arial, sans-serif; }
+.document-view-controls label { display: flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; }
+.document-view-controls input { width: 16px; height: 16px; margin: 0; accent-color: #2563eb; cursor: pointer; }
+.document-view-controls input:focus-visible { outline: 2px solid #82a8ff; outline-offset: 2px; }
+.document-view-controls label:has(input:disabled) { opacity: .45; cursor: default; }
+.document-view-error { position: absolute; top: 100%; left: 0; width: 240px; padding: 8px; color: #9d2727; background: white; border: 1px solid #f4b7b7; }
+.workspace.ruler-hidden::before, .workspace.ruler-hidden::after { display: none; }
+.workspace.ruler-hidden .fixed-ruler { display: none; }
+.workspace.ruler-hidden .floating-comments-rail { padding-top: 0; }
+.workspace.with-outline { grid-template-columns: var(--outline-width, 360px) minmax(0, 900px) 350px; justify-content: center; }
+.workspace.with-outline .document-stage { grid-column: 2; grid-row: 1; }
+.workspace.with-outline .floating-comments-rail { grid-column: 3; grid-row: 1; }
+@media (max-width: 1250px) { .workspace.with-outline { grid-template-columns: var(--outline-width, 360px) minmax(0, 1fr) 320px; } }

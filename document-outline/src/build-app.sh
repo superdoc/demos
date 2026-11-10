@@ -3,6 +3,6 @@ set -euo pipefail
 
 git clone https://github.com/superdoc/demos.git
 cd demos/document-outline
-npm install
-npm run dev
+pnpm install
+pnpm dev
 SUPERDOC_QUICKSTART
