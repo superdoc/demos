@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useSuperDocDocumentApi, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import OutlineNavigation from './OutlineNavigation';
 import { useOutline } from './use-outline';
-import { revealOutlineEntry, type OutlineEntry } from '../../superdoc/outline';
+import { revealOutlineEntry, type OutlineEntry, type OutlineMode } from '../../superdoc/outline';
 import './DocumentOutlinePanel.css';
 
-export function DocumentOutlinePanel({ documentVersion, width, onResize, onResizing, onClose }: {
+export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, width, onResize, onResizing, onClose }: {
   documentVersion: number;
+  mode: OutlineMode;
+  onModeChange: (mode: OutlineMode) => void;
   width: number;
   onResize: (width: number) => void;
   onResizing: (resizing: boolean) => void;
@@ -15,7 +17,7 @@ export function DocumentOutlinePanel({ documentVersion, width, onResize, onResiz
   const doc = useSuperDocDocumentApi();
   const ui = useSuperDocUI();
   const host = useSuperDocHost();
-  const outline = useOutline(doc, ui, host, documentVersion);
+  const outline = useOutline(doc, ui, host, documentVersion, mode);
   const [active, setActive] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [maximum, setMaximum] = useState(640);
@@ -27,7 +29,7 @@ export function DocumentOutlinePanel({ documentVersion, width, onResize, onResiz
     setActive(null);
     setError('');
     return () => { request.current++; };
-  }, [doc, outline.documentVersion, documentVersion]);
+  }, [doc, outline.documentVersion, documentVersion, mode]);
 
   useEffect(() => {
     const workspace = panel.current?.parentElement;
@@ -71,11 +73,17 @@ export function DocumentOutlinePanel({ documentVersion, width, onResize, onResiz
         <h2>Document outline</h2>
         <button type="button" aria-label="Close document outline" onClick={onClose}>×</button>
       </div>
+      <div className="document-outline-mode" role="radiogroup" aria-label="Outline source">
+        {(['headings', 'custom'] as const).map((value) => <label key={value}>
+          <input type="radio" name="outline-source" value={value} checked={mode === value} onChange={() => onModeChange(value)} />
+          <span>{value === 'headings' ? 'Headings' : 'Custom'}</span>
+        </label>)}
+      </div>
       {error && <p className="document-outline-error" role="alert">{error}</p>}
       {outline.loading ? <p role="status">Reading headings…</p>
         : outline.error ? <p role="alert">{outline.error}</p>
-        : !outline.entries.length ? <div className="document-outline-empty"><strong>No headings found.</strong><p>Inserting a heading to see it here</p></div>
-        : <OutlineNavigation items={outline.entries} activeId={active} disabled={!doc || !ui} onNavigate={(id) => {
+        : !outline.entries.length ? <div className="document-outline-empty"><strong>{mode === 'headings' ? 'No headings found.' : 'No section titles found.'}</strong><p>{mode === 'headings' ? 'Inserting a heading to see it here' : 'Add a short bold title to see it here.'}</p></div>
+        : <OutlineNavigation key={`${documentVersion}:${outline.documentVersion}:${mode}`} items={outline.entries} activeId={active} disabled={!doc || !ui} onNavigate={(id) => {
           const item = outline.entries.find((entry) => entry.id === id);
           if (item) void navigate(item);
         }} />}

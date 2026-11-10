@@ -71,10 +71,12 @@ standalone editor-instance and shared-provider setups, plus a complete example.
 
 ## Document outline
 
-Enable **Outline** beside the styles gallery to open the navigation panel. It reads
-native Word headings through `doc.info().outline`, refreshes after document edits
-and file replacement, and uses the public viewport API to reveal headings by their
-block identity. Apply a Heading style in the gallery to add a paragraph to the
+Enable **Outline** beside the styles gallery to open the navigation panel. Choose **Headings** to read native Word headings through `doc.info().outline`, or
+**Custom** to combine those headings with title-like text detected from
+`doc.projectHtml({ reviewMode: "final" })`, using the original outline demo rules.
+Both modes refresh after document edits and file replacement, and use the public
+viewport API to reveal entries by their block identity. Custom detection runs
+locally and does not change document text or Word heading styles. Apply a Heading style in the gallery to add a paragraph to the
 outline. Expand sections individually or with Expand all; drag the panel edge to
 resize it. The panel shares the outline demo's tree, typography, and selection
 styles, while leaving the comment rail available on the right.
@@ -83,7 +85,12 @@ styles, while leaving the comment rail available on the right.
 These controls change the view without editing the document.
 
 The reusable, framework-independent helpers are in `src/superdoc/outline.ts`:
-`readOutline(doc)` lists entries, `outlineTree(entries)` builds the hierarchy,
+`readOutline(doc)` lists native headings, `readCustomOutline(doc)` reads the HTML-based custom outline, and `outlineTree(entries)` builds the hierarchy,
 and `revealOutlineEntry(doc, ui, entry, current)` navigates to an exact heading.
 The React hook in `src/components/DocumentOutline/use-outline.ts` handles live
 subscriptions and component state.
+
+The original custom-title rules live in `src/superdoc/custom-outline.ts`. They
+recognize short bold titles and uppercase group labels, excluding repeated labels,
+list items, URLs and sentence-like text. Native headings retain their levels and
+identities. Custom entries retain the projection's public block IDs for navigation.

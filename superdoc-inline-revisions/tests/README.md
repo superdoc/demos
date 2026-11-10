@@ -83,3 +83,9 @@ pnpm exec playwright show-trace test-results/<test-name>/trace.zip
 native heading hierarchy, duplicate-title navigation, live style/heading edits,
 invisible edge resizing, and refreshing the outline after document replacement.
 The outline DOCX fixtures are synthetic copies of the outline demo's test samples.
+
+The outline checks also cover the Headings/Custom selector, HTML-based title
+detection, repeated-label exclusions, navigation to detected titles, live title
+edits, mode persistence when reopening the panel, switching modes during reads,
+and document replacement in Custom mode. Returning to Headings verifies that
+custom detection did not create Word headings.

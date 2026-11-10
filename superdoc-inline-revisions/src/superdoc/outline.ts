@@ -5,6 +5,9 @@ import type {
   DocumentStoryLocator as StoryLocator,
   TextTarget,
 } from 'superdoc/ui';
+import { outlineFromHtml } from './custom-outline';
+
+export type OutlineMode = 'headings' | 'custom';
 
 export type OutlineEntry = {
   id: string;
@@ -12,7 +15,8 @@ export type OutlineEntry = {
   quote: string;
   level: number;
   story?: StoryLocator;
-  within: { kind: "block"; nodeType: "heading"; nodeId: string };
+  source?: "heading" | "detected";
+  within: { kind: "block"; nodeType: "heading" | "paragraph" | "listItem"; nodeId: string };
 };
 
 /** List native Word headings in document order through the public Document API. */
@@ -31,6 +35,32 @@ export async function readOutline(doc: BrowserDocumentApi): Promise<OutlineEntry
     story: item.story,
     within: { kind: "block", nodeType: "heading", nodeId: item.nodeId },
   }));
+}
+
+/** Read native headings and title-like text using SuperDoc's public HTML projection. */
+export async function readCustomOutline(doc: BrowserDocumentApi): Promise<OutlineEntry[]> {
+  const native = await readOutline(doc);
+  const projection = await doc.projectHtml({ reviewMode: 'final' });
+  if (projection.status === 'failed') throw new Error('Section titles could not be read.');
+  const nativeById = new Map(native
+    .filter((item) => !item.story || item.story.storyType === 'body')
+    .map((item) => [item.within.nodeId, item]));
+  const entries = outlineFromHtml(projection.content, projection.blocks).flatMap((item): OutlineEntry[] => {
+    const heading = item.source === 'heading' && item.within ? nativeById.get(item.within.nodeId) : undefined;
+    if (heading) return [heading];
+    // Only expose entries that can be addressed through the public navigation API.
+    if (!item.within) return [];
+    return [{
+      id: `null:${item.within.nodeId}`,
+      text: item.text,
+      quote: item.quote,
+      level: item.level,
+      source: item.source,
+      within: item.within,
+    }];
+  });
+  const included = new Set(entries.map((item) => item.id));
+  return [...entries, ...native.filter((item) => !included.has(item.id))];
 }
 
 export type OutlineLabel = {
@@ -60,7 +90,7 @@ export function outlineTree<T extends OutlineLabel>(
   return roots;
 }
 
-/** Resolve inside the native heading, so duplicate labels cannot pick another section. */
+/** Resolve inside the entry’s native block, so duplicate labels cannot pick another section. */
 export async function revealOutlineEntry(
   doc: BrowserDocumentApi,
   ui: BorrowedSuperDocUI,

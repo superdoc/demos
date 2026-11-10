@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { BorrowedSuperDocUI, BrowserDocumentApi } from "superdoc/ui";
 import type { SuperDocHost } from "superdoc/ui/react";
-import { readOutline, type OutlineEntry } from "../../superdoc/outline";
-export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocUI | null, host: SuperDocHost | null, replacementVersion: number) {
+import { readOutline, readCustomOutline, type OutlineEntry, type OutlineMode } from "../../superdoc/outline";
+export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocUI | null, host: SuperDocHost | null, replacementVersion: number, mode: OutlineMode) {
   const [entries, setEntries] = useState<OutlineEntry[]>([]),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
@@ -18,7 +18,8 @@ export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocU
     const refresh = async () => {
       const request = ++generation;
       try {
-        const next = await readOutline(host?.getDocumentApi?.() ?? doc);
+        const current = host?.getDocumentApi?.() ?? doc;
+        const next = await (mode === 'custom' ? readCustomOutline(current) : readOutline(current));
         if (!disposed && request === generation) {
           setEntries(next);
           setLoading(false);
@@ -57,6 +58,6 @@ export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocU
       clearTimeout(timer);
       stop();
     };
-  }, [doc, ui, host, replacementVersion]);
+  }, [doc, ui, host, replacementVersion, mode]);
   return { entries, error, loading, documentVersion };
 }
