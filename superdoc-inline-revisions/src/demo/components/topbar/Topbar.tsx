@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { BlankDOCX } from 'superdoc';
 import { useSuperDocDocument, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import { Ribbon } from './Ribbon';
@@ -8,7 +8,7 @@ type SaveFilePickerWindow = Window & {
   showSaveFilePicker?: (options: { suggestedName: string; types: Array<{ description: string; accept: Record<string, string[]> }> }) => Promise<{ createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> }>;
 };
 
-export function Topbar() {
+export function Topbar({ viewControls, onDocumentReplaced }: { viewControls?: ReactNode; onDocumentReplaced?: () => void }) {
   const host = useSuperDocHost();
   const ui = useSuperDocUI();
   const document = useSuperDocDocument();
@@ -38,6 +38,7 @@ export function Topbar() {
     setImportError('');
     try {
       await ui.document.replaceFile(file);
+      onDocumentReplaced?.();
     } catch (error) {
       console.error(error);
       setImportError('The document could not be imported.');
@@ -55,6 +56,7 @@ export function Topbar() {
       const response = await fetch(BlankDOCX);
       if (!response.ok) throw new Error('Blank document template could not be loaded.');
       await ui.document.replaceFile(await response.blob());
+      onDocumentReplaced?.();
     } catch (error) {
       console.error(error);
       setImportError('A new document could not be created.');
@@ -142,7 +144,7 @@ export function Topbar() {
           </select>
         </label>
       </div>
-      <Ribbon />
+      <Ribbon viewControls={viewControls} />
     </header>
   );
 }

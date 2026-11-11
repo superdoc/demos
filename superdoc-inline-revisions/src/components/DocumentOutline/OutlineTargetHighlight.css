@@ -1,0 +1,2 @@
+.outline-target-highlights { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+.outline-target-highlight { position: absolute; pointer-events: none; background: #facc1555; outline: 1px solid #eab30899; border-radius: 3px; }

@@ -20,7 +20,7 @@ Ask your documents. Get cited answers. Upload `.docx` files and get AI-powered a
 
 ### [`superdoc-inline-revisions/`](./superdoc-inline-revisions) — Inline Revisions
 
-Comments and tracked-change review controls built with SuperDoc's custom UI API.
+Comments, tracked-change review controls, and a live document outline built with SuperDoc's public APIs.
 
 **Stack**: React, SuperDoc
 

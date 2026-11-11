@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { SuperDocUIProvider, useSetSuperDoc } from 'superdoc/ui/react';
 import type { SuperDocHost } from 'superdoc/ui/react';
 import { FormattingControls } from './FormattingControls';
@@ -11,6 +11,8 @@ import './DocumentToolbar.css';
 export interface DocumentToolbarProps {
   /** Pass an editor instance to use the toolbar without an existing UI provider. */
   superdoc?: SuperDocHost | null;
+  /** Optional app-owned view controls, placed before the style gallery. */
+  viewControls?: ReactNode;
   className?: string;
   style?: CSSProperties;
   'aria-label'?: string;
@@ -18,12 +20,13 @@ export interface DocumentToolbarProps {
 
 type ToolbarContentsProps = Omit<DocumentToolbarProps, 'superdoc'>;
 
-function ToolbarContents({ className = '', style, 'aria-label': label = 'Document toolbar' }: ToolbarContentsProps) {
+function ToolbarContents({ viewControls, className = '', style, 'aria-label': label = 'Document toolbar' }: ToolbarContentsProps) {
   return (
     <div className={`document-toolbar ${className}`.trim()} style={style} role="toolbar" aria-label={label}>
       {/* Mount editor interactions here so consumers get them with the toolbar. */}
       <FormattingShortcuts />
       <FormattingControls />
+      {viewControls}
       <StyleGallery />
       <TrackedChangesControls />
     </div>

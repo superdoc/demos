@@ -6,7 +6,7 @@ dependency on the demo's components, page CSS, document file, or application sta
 Dependencies: React, React DOM, and SuperDoc with `superdoc/ui/react` and atomic
 mutation-plan support (verified with SuperDoc 2.27.0).
 
-The single public component composes three sections:
+The single public component composes three sections (the `viewControls` prop can insert app-owned controls before the styles gallery):
 
 ```text
 DocumentToolbar
@@ -177,3 +177,7 @@ potentially stale UI snapshot.
 uses the example above. It verifies toolbar formatting, keyboard shortcuts,
 Undo, and tracked-change rejection on a locked control without demo components,
 demo styles, an application-owned UI provider, or custom event wiring.
+
+Pass `viewControls={<YourViewControls />}` to place optional view controls between
+formatting and the styles gallery. The demo uses this slot for Ruler and Outline
+checkboxes; the standalone toolbar remains independent of demo panels and state.

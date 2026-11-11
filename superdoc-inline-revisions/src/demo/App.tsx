@@ -1,10 +1,23 @@
-import { useState } from 'react';
-import type { SelectionCapture } from 'superdoc/ui';
+import { useCallback, useState, type CSSProperties } from 'react';
+import { useSuperDocCommand } from 'superdoc/ui/react';
+import type { OutlineMode } from '../outline/types';
+import { DocumentOutlinePanel } from '../components/DocumentOutline/DocumentOutlinePanel';
+import { ViewControls } from './components/topbar/ViewControls';
+import type { SelectionCapture, TextTarget } from 'superdoc/ui';
 import { SuperDocEditor } from '../superdoc/SuperDocEditor';
 import { CommentsRail } from './components/comments/CommentsRail';
 import { Topbar } from './components/topbar/Topbar';
 
 export default function App() {
+  const [documentVersion, setDocumentVersion] = useState(0);
+  const [outlineTarget, setOutlineTarget] = useState<TextTarget | null>(null);
+  const clearOutlineTarget = useCallback(() => setOutlineTarget(null), []);
+  const [outlineMode, setOutlineMode] = useState<OutlineMode>('headings');
+  const [outlineVisible, setOutlineVisible] = useState(true);
+  const [outlineWidth, setOutlineWidth] = useState(360);
+  const [resizing, setResizing] = useState(false);
+  const ruler = useSuperDocCommand('ruler');
+  const rulerVisible = Boolean(ruler.value ?? ruler.active);
   const [pendingComment, setPendingComment] = useState<SelectionCapture | null>(null);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [hoveredCommentId, setHoveredCommentId] = useState<string | null>(null);
@@ -12,9 +25,12 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Topbar />
-      <div className="workspace">
+      <Topbar onDocumentReplaced={() => setDocumentVersion((version) => version + 1)} viewControls={<ViewControls outlineVisible={outlineVisible} onOutlineChange={setOutlineVisible} />} />
+      <div className={`workspace ${outlineVisible ? 'with-outline' : ''} ${rulerVisible ? '' : 'ruler-hidden'} ${resizing ? 'resizing-outline' : ''}`} style={{ '--outline-width': `${outlineWidth}px` } as CSSProperties}>
+        {outlineVisible && <DocumentOutlinePanel onHighlight={setOutlineTarget} mode={outlineMode} onModeChange={setOutlineMode} documentVersion={documentVersion} width={outlineWidth} onResize={setOutlineWidth} onResizing={setResizing} onClose={() => setOutlineVisible(false)} /> }
         <SuperDocEditor
+          outlineTarget={outlineVisible && outlineMode === 'custom' ? outlineTarget : null}
+          onClearOutlineTarget={clearOutlineTarget}
           onStartComment={setPendingComment}
           commentDraftOpen={pendingComment !== null}
           activeCommentId={highlightedCommentId}

@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { SuperDoc } from 'superdoc';
-import type { SelectionCapture, TrackChangesItem } from 'superdoc/ui';
+import type { SelectionCapture, TextTarget, TrackChangesItem } from 'superdoc/ui';
 import { useSetSuperDoc, useSuperDocSelection, useSuperDocTrackChanges, useSuperDocUI } from 'superdoc/ui/react';
+import { OutlineTargetHighlight } from '../components/DocumentOutline/OutlineTargetHighlight';
 import { createContentControlMenu } from './contentControlMenu';
 
 export function SuperDocEditor({
+  outlineTarget,
+  onClearOutlineTarget,
   onStartComment,
   commentDraftOpen,
   activeCommentId,
   onActiveComment,
   onHoverComment,
 }: {
+  outlineTarget: TextTarget | null;
+  onClearOutlineTarget: () => void;
   onStartComment: (capture: SelectionCapture) => void;
   commentDraftOpen: boolean;
   activeCommentId: string | null;
@@ -44,6 +49,7 @@ export function SuperDocEditor({
       selector: mountRef.current,
       document: `${import.meta.env.BASE_URL}review-sample.docx`,
       documentMode: 'suggesting',
+      zoom: { mode: 'fit-width', fitWidth: { min: 20, max: 100, padding: 24 } },
       rulers: true,
       rulerContainer: rulerRef.current ?? undefined,
       ui: {
@@ -78,12 +84,13 @@ export function SuperDocEditor({
   }, [setSuperDoc]);
 
   return (
-    <main ref={stageRef} className="document-stage">
+    <main ref={stageRef} className="document-stage" onPointerDown={onClearOutlineTarget}>
       {error ? <div className="error-banner">{error}</div> : null}
       {actionError ? <div className="error-banner" role="alert">{actionError}<button type="button" aria-label="Dismiss content control message" onClick={() => setActionError('')}>×</button></div> : null}
       <div ref={rulerRef} className="fixed-ruler" aria-label="Document ruler" />
       <RulerPositioner ruler={rulerRef} relativeTo={stageRef} />
       <div ref={mountRef} className="editor-mount" aria-label="Editable contract" />
+      <OutlineTargetHighlight target={outlineTarget} relativeTo={stageRef} onClear={onClearOutlineTarget} />
       <CommentRangeActivation
         relativeTo={stageRef}
         activeCommentId={activeCommentId}

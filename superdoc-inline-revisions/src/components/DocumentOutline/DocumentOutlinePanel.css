@@ -1,0 +1,38 @@
+.document-outline-panel {
+  position: relative;
+  z-index: 9;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 24px 18px;
+  overflow: auto;
+  color: #23334c;
+  background: white;
+  border-right: 1px solid #e0e7f3;
+  font: 20px Arial, Helvetica, sans-serif;
+  --blue: #1355ff;
+}
+.document-outline-panel button { font-family: inherit; cursor: pointer; }
+.document-outline-panel button:focus-visible { outline: 3px solid #82a8ff; outline-offset: 3px; }
+.document-outline-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.document-outline-heading h2 { padding-right: 24px; margin: 8px 0 22px; font-size: 22px; letter-spacing: -.4px; }
+.document-outline-heading button { position: absolute; top: 6px; right: 6px; padding: 5px; color: #42516a; background: transparent; border: 0; font-size: 28px; }
+.document-outline-empty { padding: 24px 8px; color: #8595aa; font-size: 17px; line-height: 1.8; }
+.document-outline-empty strong { color: #435674; }
+.document-outline-error { color: #ae3c3c; font-size: 14px; }
+.document-outline-resize { position: absolute; top: 0; bottom: 0; left: calc(var(--outline-width, 360px) - 6px); z-index: 11; width: 12px; cursor: col-resize; touch-action: none; }
+.document-outline-resize:focus, .document-outline-resize:focus-visible, .document-outline-resize:active { outline: none; background: transparent; box-shadow: none; }
+.workspace.resizing-outline, .workspace.resizing-outline * { cursor: col-resize !important; user-select: none; }
+.document-outline-mode { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; background: #f0f3f9; border: 1px solid #e0e7f3; border-radius: 8px; }
+.document-outline-mode label { position: relative; flex: 1; min-width: 0; cursor: pointer; }
+.document-outline-mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.document-outline-mode-label { display: block; padding: 8px 12px; color: #627591; border-radius: 5px; text-align: center; font-size: 14px; }
+.document-outline-mode input:checked + span { color: #1355ff; background: white; box-shadow: 0 1px 3px #23334c18; }
+.document-outline-mode input:focus-visible + span { outline: 2px solid #82a8ff; outline-offset: 1px; }
+
+.document-outline-help { position: relative; z-index: 1; display: inline-flex; margin-left: 3px; vertical-align: middle; }
+.document-outline-help-icon { display: inline-flex; width: 14px; height: 14px; align-items: center; justify-content: center; border: 1px solid currentColor; border-radius: 50%; font-size: 10px; font-weight: 700; line-height: 1; cursor: help; }
+.document-outline-tooltip { position: absolute; top: calc(100% + 8px); right: 0; z-index: 20; display: none; width: 260px; max-width: calc(100vw - 48px); padding: 10px 12px; color: white; background: #23334c; border-radius: 6px; box-shadow: 0 4px 14px #23334c26; text-align: left; font-size: 12px; font-weight: 400; line-height: 1.5; pointer-events: none; }
+.document-outline-help:hover .document-outline-tooltip,
+.document-outline-mode input:focus-visible + span .document-outline-tooltip { display: block; }

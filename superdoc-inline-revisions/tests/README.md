@@ -16,7 +16,7 @@ Document and style-catalog initialization gets a 30-second readiness wait, with
 a 60-second total budget per test. Individual interaction assertions retain
 Playwright's five-second default. CI always starts its own preview server.
 
-`review-ui.spec.ts` checks the editor, ruler, three toolbar sections, and comments
+`review-ui.spec.ts` checks the editor, ruler, toolbar sections and the view controls, and comments
 rail. `toolbar.spec.ts` exercises real UI gestures and verifies rendered document
 changes, without mocking editor commands or exposing application globals:
 
@@ -30,7 +30,7 @@ changes, without mocking editor commands or exposing application globals:
 - Table-grid preview and inserting the chosen rows/columns.
 - Formatting marks and absence of unsupported placeholder controls.
 - Bulk accept/reject of actual insertion/deletion revisions.
-- Viewing-mode mutation guards across all three toolbar sections.
+- Viewing-mode mutation guards across all toolbar sections and the view controls.
 - Uncaught browser exceptions.
 
 The short standalone paragraph in the bundled sample gives formatting tests a
@@ -78,3 +78,20 @@ Playwright results. Failures also retain screenshots and traces under the ignore
 ```sh
 pnpm exec playwright show-trace test-results/<test-name>/trace.zip
 ```
+
+`outline.spec.ts` verifies independent Ruler/Outline checkboxes, panel closing,
+native heading hierarchy, duplicate-title navigation, live style/heading edits,
+invisible edge resizing, and refreshing the outline after document replacement.
+The outline DOCX fixtures are synthetic copies of the outline demo's test samples.
+
+The outline checks also cover the Headings/Custom selector, HTML-based title
+detection, repeated-label exclusions, navigation to detected titles, live title
+edits, mode persistence when reopening the panel, switching modes during reads,
+and document replacement in Custom mode. Returning to Headings verifies that
+custom detection did not create Word headings.
+
+`outline-generation.spec.ts` checks the plain skeleton contract, including duplicate
+labels, empty outlines, and skipped levels. `standalone-outline.spec.ts` copies only
+the renderer, its stylesheet, and plain types into a separate app and verifies
+expansion, ID-based selection, and replacing the supplied skeleton without any
+SuperDoc instance, document, provider, or generation module.
