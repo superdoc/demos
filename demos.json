@@ -71,5 +71,18 @@
     "buildCommandConsumer": "version-history/src/BuildThis.tsx",
     "buildCommandCheck": "dev",
     "buildCommandNote": "Requires Node.js 22.12+ and Git. Starts the editor on :5173 and the collaboration/version backend on :4191. No API keys needed."
+  },
+  {
+    "id": "document-outline",
+    "title": "Document Outline",
+    "description": "Explore native Word headings with expandable sections, live updates and precise navigation.",
+    "screenshot": "document-outline-poster.png",
+    "liveDemoUri": "/document-outline/",
+    "sourceUri": "https://github.com/superdoc/demos/tree/main/document-outline",
+    "packageDirectory": "document-outline",
+    "localSourceDirectory": "document-outline",
+    "buildCommandSource": "document-outline/src/build-app.sh",
+    "buildCommandConsumer": "document-outline/src/App.tsx",
+    "buildCommandCheck": "dev"
   }
 ]

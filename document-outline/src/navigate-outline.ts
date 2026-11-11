@@ -1,0 +1,41 @@
+import type { SuperDoc } from "superdoc";
+import type { TextTarget } from "superdoc/ui";
+import type { Entry } from "./read-outline";
+
+/** Resolve inside the native heading, so duplicate labels cannot pick another section. */
+export async function revealOutlineEntry(
+  superdoc: SuperDoc,
+  item: Entry,
+  current: () => boolean,
+): Promise<boolean> {
+  const doc = superdoc.activeEditor?.doc;
+  if (!doc || !item.within || !item.quote) return false;
+  const matches = await doc.query.match({
+    select: { type: "text", pattern: item.quote, caseSensitive: true },
+    within: item.within,
+    ...(item.story ? { in: item.story } : {}),
+  });
+  if (!current()) return false;
+  const match = matches.items[0];
+  if (!match || match.matchKind !== "text") return false;
+  const [first, ...rest] = match.blocks;
+  const target: TextTarget = {
+    kind: "text",
+    segments: [
+      { blockId: first.blockId, range: first.range },
+      ...rest.map((block) => ({ blockId: block.blockId, range: block.range })),
+    ],
+    ...(match.target.story ? { story: match.target.story } : {}),
+  };
+  // Each public call performs one bounded reveal step. Eight covers the supplied
+  // multi-page fixtures. Measure this budget for your application's longest files.
+  for (let step = 0; step < 8 && current(); step++) {
+    const result = await superdoc.ui.viewport.scrollIntoView({
+      target,
+      block: "center",
+      behavior: "instant",
+    });
+    if (result.success) return current();
+  }
+  return false;
+}
