@@ -165,35 +165,47 @@ node --test scripts/check-superdoc-release.test.mjs
 
 ## Deployment notifications
 
-The release workflow sends success and failure notifications to Google Chat using
-the `GOOGLE_CHAT_WEBHOOK_URL` repository secret. Each message includes the SuperDoc
-version, failed stages when applicable, a workflow-log link, and all demo titles
-and production links from `demos.json`. Adding a demo to that catalog automatically
-includes it in future notifications. Routine checks with no release stay silent.
+The release workflow sends success and failure notifications to `#int-demo-gallery`
+as the bot for Slack app **A0CGRCN48M9**, using
+[`chat.postMessage`](https://docs.slack.dev/reference/methods/chat.postMessage/).
+CI calls Slack directly; a running Bolt app or Slack CLI login is not required.
 
-Dry-run messages are labeled **DRY RUN** and describe validation rather than a live
-deployment. Their demo links open the current production demos. Failure messages
-list the targeted demos without claiming that a failed deployment updated them.
-A failure to record the deployed version is reported separately from a successful
-production deployment. Webhook delivery failures fail the notification job and do
-not roll back a successful deployment or reset its recorded version.
+Configure the existing app in [Slack App Settings](https://api.slack.com/apps/A0CGRCN48M9):
 
-The full simulated release command above sends a dry-run success notification
-after validation succeeds. To deliberately exercise the failure notification,
-run:
+1. Under **OAuth & Permissions**, add the **chat:write** bot token scope.
+2. Install or reinstall the app into workspace **T03MZHFGSDB** to grant that scope.
+3. Add the app to **#int-demo-gallery** using the channel's **Integrations → Add apps** menu.
+4. Copy the **Bot User OAuth Token** (`xoxb-…`) into the GitHub repository secret:
 
-```bash
-gh workflow run superdoc-npm-release.yml \
-  -f simulated_latest=2.25.0 \
-  -f simulated_deployed=0.0.0 \
-  -f simulate_failure=true
-```
+   ```bash
+   gh secret set SLACK_BOT_TOKEN --repo superdoc/demos
+   ```
 
-`simulate_failure` always forces dry-run and fails immediately after release
-detection, skipping dependency updates and deployments. The workflow is expected
-to be red while **Notify Google Chat** succeeds and delivers a clearly labeled
-simulated-failure message. Both kinds of simulation send real messages to the
-configured Chat space.
+   Paste it at the prompt. Use the bot token, not a CLI login token or app-level token.
+5. Open **#int-demo-gallery** channel details and copy its **Channel ID**. Save it
+   as the GitHub Actions repository variable (replace the example ID):
+
+   ```bash
+   gh variable set SLACK_CHANNEL_ID --repo superdoc/demos --body 'C_YOUR_CHANNEL_ID'
+   ```
+
+The former `GOOGLE_CHAT_WEBHOOK_URL` and `SLACK_WEBHOOK_URL` secrets are not used.
+
+Each message includes the SuperDoc version, failed stages when applicable, a
+workflow-log link, and all demo titles and production links from `demos.json`.
+Adding a demo to that catalog automatically includes it in future notifications.
+Notifications are sent for merged PR deployments and stable release runs.
+Routine checks with no release, PR updates, and manual dry runs or simulations
+stay silent.
+
+Failure messages list the targeted demos without claiming that a failed
+deployment updated them. A failure to record the deployed version is reported
+separately from a successful production deployment. Slack delivery failures
+fail the notification job and do not roll back a successful deployment or reset
+its recorded version.
+
+Test message generation and delivery locally with mocked requests (no Slack
+messages are sent):
 
 ```bash
 node --test scripts/check-superdoc-release.test.mjs scripts/notify-superdoc-release.test.mjs

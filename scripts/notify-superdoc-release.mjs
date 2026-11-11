@@ -2,7 +2,7 @@ import { appendFile, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const stages = { check: "Release detection", update: "Update SuperDoc", deploy: "Deploy Demos V2", record: "Record deployment" };
-const label = (value) => String(value).replace(/[<>|*`\r\n]/g, " ").replace(/\s+/g, " ").trim();
+const label = (value) => String(value).replace(/&/g, "&amp;").replace(/[<>|*`\r\n]/g, " ").replace(/\s+/g, " ").trim();
 
 export function shouldNotifyTrigger({ env, event = {} }) {
   if (env.GITHUB_EVENT_NAME === "pull_request") {
@@ -78,33 +78,38 @@ export function buildNotification({ needs, demos, version, dryRun, simulatedFail
   return { text: lines.join("\n") };
 }
 
-export async function sendNotification({ webhookUrl, message, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
-  if (!webhookUrl) throw new Error("GOOGLE_CHAT_WEBHOOK_URL is not configured");
-  let url;
-  try { url = new URL(webhookUrl); } catch { throw new Error("Invalid Google Chat webhook URL"); }
-  if (url.origin !== "https://chat.googleapis.com" || !/^\/v1\/spaces\/[^/]+\/messages$/.test(url.pathname) || !url.searchParams.has("key") || !url.searchParams.has("token")) {
-    throw new Error("Invalid Google Chat webhook URL");
-  }
+export async function sendNotification({ botToken, channelId, message, fetchImpl = fetch, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
+  if (!botToken) throw new Error("SLACK_BOT_TOKEN is not configured");
+  if (!channelId) throw new Error("SLACK_CHANNEL_ID is not configured (use the ID of #int-demo-gallery)");
+  if (!/^[CG][A-Z0-9]+$/.test(channelId)) throw new Error("Invalid SLACK_CHANNEL_ID; use a Slack channel ID");
   for (let attempt = 0; attempt < 3; attempt++) {
     let response;
     try {
-      response = await fetchImpl(url.href, {
+      response = await fetchImpl("https://slack.com/api/chat.postMessage", {
         method: "POST",
-        headers: { "Content-Type": "application/json; charset=UTF-8" },
-        body: JSON.stringify(message),
+        headers: { "Content-Type": "application/json; charset=UTF-8", Authorization: `Bearer ${botToken}` },
+        body: JSON.stringify({ ...message, channel: channelId, unfurl_links: false, unfurl_media: false }),
         signal: AbortSignal.timeout(30_000),
         redirect: "error",
       });
     } catch {
-      // Fetch errors and response bodies can contain the secret webhook URL.
-      throw new Error("Google Chat notification failed due to a network error");
+      // Never log request errors or response bodies: they may contain credentials.
+      throw new Error("Slack notification failed due to a network error");
     }
-    if (response.ok) return;
     if ((response.status === 429 || response.status >= 500) && attempt < 2) {
-      await sleep(1000 * 2 ** attempt);
+      const retryAfter = Number(response.headers.get("Retry-After"));
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt;
+      // Keep retries within the notification job's timeout without retrying early.
+      if (delay > 60_000) throw new Error("Slack notification rate limited; retry later");
+      await sleep(delay);
       continue;
     }
-    throw new Error(`Google Chat notification failed (HTTP ${response.status})`);
+    if (!response.ok) throw new Error(`Slack notification failed (HTTP ${response.status})`);
+    let result;
+    try { result = await response.json(); } catch { throw new Error("Slack notification failed (invalid API response)"); }
+    // Slack can return HTTP 200 for API errors such as missing_scope or not_in_channel.
+    if (result?.ok !== true) throw new Error("Slack notification rejected; check the bot token, chat:write scope, and channel membership");
+    return;
   }
 }
 
@@ -122,12 +127,12 @@ export async function notifyRelease({ env = process.env, root = process.cwd(), f
   const trigger = describeTrigger({ env, event });
   const message = buildNotification({ needs, demos, version: env.SUPERDOC_VERSION, dryRun, simulatedFailure: env.SIMULATE_FAILURE === "true", runUrl, trigger });
   if (!message) {
-    console.log("No release attempted; no Google Chat notification needed.");
+    console.log("No release attempted; no Slack notification needed.");
     return;
   }
-  await sendNotification({ webhookUrl: env.GOOGLE_CHAT_WEBHOOK_URL, message, fetchImpl });
-  console.log("Google Chat notification delivered.");
-  if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, `## Google Chat notification delivered\n\n${message.text}\n`);
+  await sendNotification({ botToken: env.SLACK_BOT_TOKEN, channelId: env.SLACK_CHANNEL_ID, message, fetchImpl });
+  console.log("Slack notification delivered.");
+  if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, `## Slack notification delivered\n\n${message.text}\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

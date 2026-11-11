@@ -8,7 +8,8 @@ import { buildNotification, describeTrigger, notifyRelease, sendNotification, sh
 const demos = JSON.parse(await readFile(new URL("../demos.json", import.meta.url), "utf8"));
 const success = { check: { result: "success" }, update: { result: "success" }, deploy: { result: "success" }, record: { result: "success" } };
 const options = { needs: success, demos, version: "2.25.0", dryRun: false, runUrl: "https://github.com/superdoc/demos/actions/runs/123/attempts/1" };
-const webhookUrl = "https://chat.googleapis.com/v1/spaces/test/messages?key=test-key&token=test-secret";
+const botToken = "xoxb-test-secret";
+const channelId = "C123DEMOS";
 const triggerEnv = { GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "superdoc/demos", GITHUB_REF_NAME: "main", GITHUB_ACTOR: "maintainer" };
 const pullRequest = { number: 93, title: "Collab quickstart integration", head: { ref: "simba-integration" }, base: { ref: "main" } };
 
@@ -44,9 +45,10 @@ test("push notifications link the commit without assuming a PR was merged", () =
   assert.equal(trigger, `Branch testing after push or merge — main — <https://github.com/superdoc/demos/commit/${commit}|aaaaaaa>`);
 });
 
-test("PR titles and branch names cannot inject Chat markup or mentions", () => {
-  const trigger = describeTrigger({ env: { ...triggerEnv, GITHUB_EVENT_NAME: "pull_request" }, event: { action: "synchronize", pull_request: { ...pullRequest, title: "<users/all>\n*test*|bad", head: { ref: "<users/all>" } } } });
-  assert.doesNotMatch(trigger, /<users\/all>|\n|\*test\*|\|bad/);
+test("PR titles and branch names cannot inject Slack markup or mentions", () => {
+  const trigger = describeTrigger({ env: { ...triggerEnv, GITHUB_EVENT_NAME: "pull_request" }, event: { action: "synchronize", pull_request: { ...pullRequest, title: "<!channel>\n*test*|bad &lt;!here&gt;", head: { ref: "<@U123>" } } } });
+  assert.doesNotMatch(trigger, /<!channel>|<@U123>|\n|\*test\*|\|bad/);
+  assert.ok(trigger.includes("&amp;lt;!here&amp;gt;"));
 });
 
 test("only merged PRs and stable release runs can notify", () => {
@@ -66,7 +68,7 @@ test("only merged PRs and stable release runs can notify", () => {
   }
 });
 
-test("PR updates never call the webhook, even when pipeline stages fail", async (t) => {
+test("PR updates never contact Slack, even when pipeline stages fail", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "superdoc-notification-suppression-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const action of ["opened", "synchronize", "reopened", "closed"]) {
@@ -130,29 +132,85 @@ test("unsafe links are rejected and catalog titles cannot inject mentions", () =
   for (const liveDemoUri of ["https://elsewhere.example/demo", "//elsewhere.example/demo", "/\\elsewhere.example/demo"]) {
     assert.throws(() => buildNotification({ ...options, demos: [{ title: "Bad demo", liveDemoUri }] }));
   }
-  const { text } = buildNotification({ ...options, demos: [{ title: "<users/all>\nDemo", liveDemoUri: "/new/" }] });
-  assert.doesNotMatch(text, /<users\/all>/);
+  const { text } = buildNotification({ ...options, demos: [{ title: "<!here>\nDemo & more", liveDemoUri: "/new/" }] });
+  assert.doesNotMatch(text, /<!here>/);
+  assert.ok(text.includes("Demo &amp; more"));
 });
 
-test("webhook delivery posts the payload and retries temporary HTTP errors", async () => {
+test("bot delivery validates configuration before contacting Slack", async () => {
+  const fetchImpl = () => assert.fail("Invalid configuration must not contact Slack");
+  await assert.rejects(sendNotification({ channelId, message: {}, fetchImpl }), /SLACK_BOT_TOKEN is not configured/);
+  await assert.rejects(sendNotification({ botToken, message: {}, fetchImpl }), /SLACK_CHANNEL_ID is not configured/);
+  for (const invalidId of ["#int-demo-gallery", "https://example.com", "C123\n", "D123"]) {
+    await assert.rejects(sendNotification({ botToken, channelId: invalidId, message: {}, fetchImpl }), /Invalid SLACK_CHANNEL_ID/);
+  }
+});
+
+test("bot delivery posts the message to the configured channel and retries temporary HTTP errors", async () => {
   const statuses = [429, 503, 200];
+  const delays = [];
   let calls = 0;
-  await sendNotification({ webhookUrl, message: { text: "test" }, sleep: async () => {}, fetchImpl: async (url, request) => {
-    assert.equal(url, webhookUrl);
+  await sendNotification({ botToken, channelId, message: { text: "test", channel: "COTHER" }, sleep: async (ms) => { delays.push(ms); }, fetchImpl: async (url, request) => {
+    assert.equal(url, "https://slack.com/api/chat.postMessage");
     assert.equal(request.method, "POST");
-    assert.deepEqual(JSON.parse(request.body), { text: "test" });
-    return new Response("", { status: statuses[calls++] });
+    assert.equal(request.headers.Authorization, `Bearer ${botToken}`);
+    assert.equal(request.redirect, "error");
+    assert.deepEqual(JSON.parse(request.body), { text: "test", channel: channelId, unfurl_links: false, unfurl_media: false });
+    return new Response(JSON.stringify({ ok: true }), { status: statuses[calls++], headers: { "Retry-After": calls === 1 ? "3" : "0" } });
   } });
   assert.equal(calls, 3);
+  assert.deepEqual(delays, [3000, 2000]);
 });
 
-test("webhook errors never expose its URL or response body", async () => {
-  await assert.rejects(sendNotification({ webhookUrl, message: {}, fetchImpl: async () => { throw new Error(webhookUrl); } }), (error) => {
-    assert.doesNotMatch(error.message, /test-secret|test-key|chat.googleapis.com/);
-    return true;
-  });
-  await assert.rejects(sendNotification({ webhookUrl, message: {}, fetchImpl: async () => new Response(webhookUrl, { status: 403 }) }), /^Error: Google Chat notification failed \(HTTP 403\)$/);
-  await assert.rejects(sendNotification({ webhookUrl: "", message: {} }), /not configured/);
+test("API errors and malformed responses fail even with HTTP 200", async () => {
+  for (const body of [JSON.stringify({ ok: false, error: "missing_scope" }), JSON.stringify({ ok: false, error: "not_in_channel" }), "null", "{}", "not JSON"]) {
+    await assert.rejects(sendNotification({ botToken, channelId, message: {}, fetchImpl: async () => new Response(body) }), /Slack notification (rejected|failed)/);
+  }
+});
+
+test("persistent errors stop retrying, and long rate limits are not retried early", async () => {
+  let calls = 0;
+  await assert.rejects(sendNotification({ botToken, channelId, message: {}, sleep: async () => {}, fetchImpl: async () => {
+    calls++;
+    return new Response("", { status: 503 });
+  } }), /HTTP 503/);
+  assert.equal(calls, 3);
+  await assert.rejects(sendNotification({ botToken, channelId, message: {}, sleep: () => assert.fail("Must not retry before Retry-After"), fetchImpl: async () => new Response("", { status: 429, headers: { "Retry-After": "120" } }) }), /rate limited/);
+});
+
+test("delivery errors never expose bot credentials or response bodies", async () => {
+  for (const fetchImpl of [
+    async () => { throw new Error(botToken); },
+    async () => new Response(botToken, { status: 403 }),
+    async () => new Response(botToken),
+    async () => new Response(JSON.stringify({ ok: false, error: botToken })),
+  ]) {
+    await assert.rejects(sendNotification({ botToken, channelId, message: {}, fetchImpl }), (error) => {
+      assert.doesNotMatch(error.message, /xoxb|test-secret/);
+      return true;
+    });
+  }
+});
+
+test("a stable release sends the catalog and workflow link through the Slack secret", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "superdoc-slack-release-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(`${root}/demos.json`, JSON.stringify(demos));
+  let calls = 0;
+  await notifyRelease({ root, env: {
+    ...triggerEnv,
+    GITHUB_EVENT_NAME: "schedule", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1",
+    RELEASE_RESULTS: JSON.stringify(success), SUPERDOC_VERSION: "2.25.0",
+    SLACK_BOT_TOKEN: botToken, SLACK_CHANNEL_ID: channelId,
+    GITHUB_STEP_SUMMARY: `${root}/summary`,
+  }, fetchImpl: async (url, request) => {
+    calls++;
+    assert.equal(url, "https://slack.com/api/chat.postMessage");
+    assert.deepEqual(JSON.parse(request.body), { ...buildNotification({ ...options, trigger: describeTrigger({ env: { ...triggerEnv, GITHUB_EVENT_NAME: "schedule" } }) }), channel: channelId, unfurl_links: false, unfurl_media: false });
+    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+  } });
+  assert.equal(calls, 1);
+  assert.match(await readFile(`${root}/summary`, "utf8"), /Slack notification delivered/);
 });
 
 test("a detection failure before outputs exist still sends a labeled dry-run notification", async (t) => {
@@ -164,13 +222,13 @@ test("a detection failure before outputs exist still sends a labeled dry-run not
   await notifyRelease({ root, env: {
     RELEASE_RESULTS: JSON.stringify({ check: { result: "failure" }, update: { result: "skipped" }, deploy: { result: "skipped" }, record: { result: "skipped" } }),
     RELEASE_DRY_RUN: "", TRIGGER_DRY_RUN: "true",
-    GOOGLE_CHAT_WEBHOOK_URL: webhookUrl,
+    SLACK_BOT_TOKEN: botToken, SLACK_CHANNEL_ID: channelId,
     GITHUB_SERVER_URL: "https://github.com", GITHUB_REPOSITORY: "superdoc/demos", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1",
     GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: `${root}/event.json`,
     GITHUB_STEP_SUMMARY: `${root}/summary`,
-  }, fetchImpl: async (_url, request) => { payload = JSON.parse(request.body); return new Response("", { status: 200 }); } });
+  }, fetchImpl: async (_url, request) => { payload = JSON.parse(request.body); return new Response(JSON.stringify({ ok: true }), { status: 200 }); } });
   assert.match(payload.text, /\[DRY RUN\].*FAILURE/);
   assert.match(payload.text, /unknown \(release detection did not complete\)/);
   assert.match(payload.text, /Trigger: PR merge.*PR #93: Collab quickstart integration/);
-  assert.match(await readFile(`${root}/summary`, "utf8"), /Google Chat notification delivered/);
+  assert.match(await readFile(`${root}/summary`, "utf8"), /Slack notification delivered/);
 });
