@@ -36,6 +36,7 @@ await cp(
   path.join(root, "dist-landing", "superdoc-logo.png"),
   path.join(output, "superdoc-logo.png"),
 );
+await cp(path.join(root, "dist-landing", "_redirects"), path.join(output, "_redirects"));
 for (const demo of manifest) {
   for (const asset of [demo.screenshot, demo.video].filter(Boolean)) {
     await cp(

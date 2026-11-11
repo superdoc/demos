@@ -1,6 +1,6 @@
-# Inline revisions browser tests
+# Custom Word Editor browser tests
 
-Run from `superdoc-inline-revisions`:
+Run from `custom-word-editor`:
 
 ```sh
 pnpm install --frozen-lockfile

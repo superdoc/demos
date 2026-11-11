@@ -32,7 +32,7 @@ test('the stable updater preserves an exception pin/lockfile and resumes updatin
   const root = await mkdtemp(path.join(tmpdir(), 'superdoc-update-policy-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const directories = [
-    'rag/apps/web', 'superdoc-inline-revisions', 'template-builder-document-api-v2-demo',
+    'rag/apps/web', 'custom-word-editor', 'template-builder-document-api-v2-demo',
     'version-history', 'canonical-collaboration-demo/client',
   ];
   const demos = directories.map((directory) => ({ id: directory, packageDirectory: directory }));
@@ -69,7 +69,7 @@ test('the stable updater preserves an exception pin/lockfile and resumes updatin
   update();
   assert.equal(await dependency('version-history'), '2.30.0-next.4');
   assert.equal(await readFile(historyLock, 'utf8'), 'original prerelease lockfile');
-  assert.equal(await dependency('superdoc-inline-revisions'), '2.31.0');
+  assert.equal(await dependency('custom-word-editor'), '2.31.0');
   assert.equal(await readFile(path.join(root, 'dist-landing/index.html'), 'utf8'), 'SuperDoc v2.31.0');
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(calls.find((call) => call.directory === 'version-history').args, ['install', '--frozen-lockfile']);

@@ -22,6 +22,11 @@ const contentTypes = {
 createServer(async (request, response) => {
   try {
     const requestUrl = new URL(request.url, "http://localhost");
+    if (requestUrl.pathname === "/revisions" || requestUrl.pathname.startsWith("/revisions/")) {
+      const destination = requestUrl.pathname.replace(/^\/revisions(?:\/|$)/, "/custom-word-editor/");
+      response.writeHead(301, { Location: `${destination}${requestUrl.search}` }).end();
+      return;
+    }
     const pathname = decodeURIComponent(requestUrl.pathname);
     let filePath = path.resolve(root, `.${pathname}`);
 

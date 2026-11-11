@@ -18,7 +18,7 @@ Ask your documents. Get cited answers. Upload `.docx` files and get AI-powered a
 
 **Stack**: Cloudflare Workers + R2, PostgreSQL + pgvector, React, SuperDoc, Claude, OpenAI embeddings
 
-### [`superdoc-inline-revisions/`](./superdoc-inline-revisions) — Inline Revisions
+### [`custom-word-editor/`](./custom-word-editor) — Custom Word Editor
 
 Comments, tracked-change review controls, and a live document outline built with SuperDoc's public APIs.
 
@@ -83,7 +83,7 @@ To run a standalone quickstart check locally, first install the browser runner:
 ```bash
 pnpm --dir tests install --frozen-lockfile
 pnpm --dir tests exec playwright install chromium
-node scripts/verify-build-this.mjs --demo inline-revisions --run
+node scripts/verify-build-this.mjs --demo custom-word-editor --run
 node scripts/verify-build-this.mjs --demo template-builder-api-v2 --run
 ```
 

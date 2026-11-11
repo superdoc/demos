@@ -28,7 +28,7 @@ const versions = {
 };
 const packages = [
   { directory: "rag/apps/web", manifest: "rag/apps/web/package.json", manager: "bun", dependencies: { superdoc: versions.superdoc } },
-  { directory: "superdoc-inline-revisions", manifest: "superdoc-inline-revisions/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
+  { directory: "custom-word-editor", manifest: "custom-word-editor/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
   { directory: "template-builder-document-api-v2-demo", manifest: "template-builder-document-api-v2-demo/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
   { directory: "version-history", manifest: "version-history/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
   {

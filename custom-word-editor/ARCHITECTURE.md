@@ -9,7 +9,7 @@ flowchart TB
     Ruler[SuperDoc ruler]
   end
 
-  subgraph Demo[Inline revisions demo components]
+  subgraph Demo[Custom Word Editor demo components]
     App[App]
     Topbar[Topbar]
     Ribbon[Ribbon]

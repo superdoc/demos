@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const allDemos = [
-	{ name: "superdoc-inline-revisions", cwd: "../superdoc-inline-revisions", port: 4173, command: "pnpm exec vite preview" },
+	{ name: "custom-word-editor", cwd: "../custom-word-editor", port: 4173, command: "pnpm exec vite preview" },
 	{ name: "template-builder-document-api-v2-demo", cwd: "../template-builder-document-api-v2-demo", port: 4174, command: "pnpm exec vite preview" },
 	{ name: "docrag", cwd: "../rag/apps/web", port: 4175, command: "bunx vite preview" },
 	{ name: "canonical-collaboration-demo", cwd: "../canonical-collaboration-demo/client", port: 4176, command: "npm exec vite -- preview" },

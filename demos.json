@@ -1,18 +1,18 @@
 [
   {
-    "id": "inline-revisions",
-    "buildCommandSource": "superdoc-inline-revisions/src/build-app.sh",
-    "buildCommandConsumer": "superdoc-inline-revisions/src/demo/components/topbar/BuildThis.tsx",
+    "id": "custom-word-editor",
+    "buildCommandSource": "custom-word-editor/src/build-app.sh",
+    "buildCommandConsumer": "custom-word-editor/src/demo/components/topbar/BuildThis.tsx",
     "buildCommandNote": "Requires Node.js 22.12+, pnpm, and Git. Open the local URL printed by Vite.",
     "buildCommandCheck": "dev",
     "screenshot": "inline-revisions-poster.jpg",
     "video": "inline-revisions-preview.mp4",
-    "title": "Inline Revisions",
-    "description": "Document review with comments and tracked changes with a familiar UX.",
-    "liveDemoUri": "/revisions/",
-    "sourceUri": "https://github.com/superdoc/demos/tree/main/superdoc-inline-revisions",
-    "packageDirectory": "superdoc-inline-revisions",
-    "localSourceDirectory": "superdoc-inline-revisions"
+    "title": "Custom Word Editor",
+    "description": "Create the familiar editing and tracked changes experience of Word directly in your product.",
+    "liveDemoUri": "/custom-word-editor/",
+    "sourceUri": "https://github.com/superdoc/demos/tree/main/custom-word-editor",
+    "packageDirectory": "custom-word-editor",
+    "localSourceDirectory": "custom-word-editor"
   },
   {
     "id": "agentic-collaboration",
