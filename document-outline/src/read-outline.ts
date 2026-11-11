@@ -24,7 +24,9 @@ export async function readOutline(
     story: item.story,
     within: { kind: "block", nodeType: "heading", nodeId: item.nodeId },
   });
-  const native = info.outline.map(nativeEntry);
+  const native = info.outline
+    .filter((item) => item.text.trim())
+    .map(nativeEntry);
   if (!detectTitles) return native;
   const projection = await doc.projectHtml({ reviewMode: "final" });
   if (projection.status === "failed")

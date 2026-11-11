@@ -22,3 +22,7 @@ Source: the native SuperDoc browser renderer running the synthetic Meridian proj
 - Mobile inspection used the same native fixture at 390 × 1000 CSS pixels and deviceScaleFactor 3. Its private test artifact is 1098 × 2784 pixels.
 
 Desktop and mobile captures were visually inspected. Images contain synthetic content, with no enlarged low-resolution sources, reconstructed UI or private document data.
+
+## Layout-marker regression, November 11
+
+An empty Heading 1 containing only a Word page break must not become an outline item. The structured synthetic fixture now contains that case. Native discovery ignores empty heading text; optional projection-based detection ignores `data-superdoc-placeholder` labels. Authored text beside placeholders and literal authored headings remain intact. Seven browser workflows pass in Chromium and seven in WebKit, including the actual DOM parser and preservation of the native block address. No customer document is included in this example or its fixtures.

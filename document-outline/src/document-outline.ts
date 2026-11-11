@@ -141,6 +141,13 @@ export function outlineFromHtml(
   const document = new DOMParser().parseFromString(html, "text/html");
   const text = (node: Node): string => {
     if (node.nodeType === 3) return node.nodeValue || "";
+    // Projection placeholders describe layout or non-text content. Their labels
+    // are not authored, addressable text and must not become outline entries.
+    if (
+      node.nodeType === 1 &&
+      (node as Element).hasAttribute("data-superdoc-placeholder")
+    )
+      return "";
     if (node.nodeName === "BR") return "\n";
     return Array.from(node.childNodes).map(text).join("");
   };

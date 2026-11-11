@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { stripTypeScriptTypes } from "node:module";
 async function ready(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(page.locator(".status")).toContainText("Ready", {
@@ -7,6 +9,9 @@ async function ready(page: import("@playwright/test").Page) {
   await expect(
     page.getByRole("button", { name: "Expand Overview", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Untitled heading", exact: true }),
+  ).toHaveCount(0);
 }
 test("native outline supports expandable hierarchy and live heading edits", async ({
   page,
@@ -181,4 +186,45 @@ test("Word export and build guide work without backend services", async ({
   const guide = await page.request.get("/guide.md");
   expect(guide.ok()).toBe(true);
   expect(await guide.text()).toContain("doc.info");
+});
+
+test("projection layout markers do not become outline text or replace authored labels", async ({
+  page,
+}) => {
+  const source = stripTypeScriptTypes(
+    await readFile(
+      new URL("../src/document-outline.ts", import.meta.url),
+      "utf8",
+    ),
+  );
+  await page.setContent("<!doctype html><html><body></body></html>");
+  const entries = await page.evaluate(async (source) => {
+    const url = URL.createObjectURL(
+      new Blob([source], { type: "text/javascript" }),
+    );
+    try {
+      const { outlineFromHtml } = await import(url);
+      const html =
+        '<h1>Real section</h1><h1><span data-superdoc-placeholder="page-break">[page break]</span></h1><h2>Page break <span data-superdoc-placeholder="page-break">[page break]</span>guidance</h2><p><strong><span data-superdoc-placeholder="image">[image]</span>Useful details</strong></p><h2>[page break]</h2>';
+      const start = html.indexOf("<h2>Page break "),
+        end = html.indexOf("</h2>", start) + 5;
+      return outlineFromHtml(html, [
+        {
+          identity: "public",
+          blockId: "authored-heading",
+          nodeType: "heading",
+          output: { start, end },
+        },
+      ]);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }, source);
+  expect(entries.map((entry: { text: string }) => entry.text)).toEqual([
+    "Real section",
+    "Page break guidance",
+    "Useful details",
+    "[page break]",
+  ]);
+  expect(entries[1].within.nodeId).toBe("authored-heading");
 });

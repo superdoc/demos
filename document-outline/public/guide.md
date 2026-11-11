@@ -33,7 +33,7 @@ const info = await doc.info({});
 const headings = info.outline;
 ```
 
-Render `headings` in document order. Nest an item beneath the preceding lower-level heading. Do not key by label: two sections can both be named “Notes.” Use native identity, including the story when the API supplies one.
+Render `headings` in document order. Nest an item beneath the preceding lower-level heading. Ignore empty native heading text, including heading-styled paragraphs that contain only a page break. Do not key by label: two sections can both be named “Notes.” Use native identity, including the story when the API supplies one.
 
 The copyable implementation is split into:
 
@@ -84,6 +84,8 @@ Preserve a story locator when provided. Do not construct or inspect private engi
 ## Optional detected section titles
 
 The default mode shows **native Word headings only**. “Detect section titles” adds an explicit application policy for visually structured documents that lack heading styles. It reads SuperDoc's canonical, read-only HTML projection and its public block map. The Word document remains native; it is not rebuilt from HTML.
+
+The parser ignores structural `data-superdoc-placeholder` labels such as `[page break]` and `[image]`, while preserving actual authored text in the same paragraph. These diagnostic labels are not addressable document text. A genuine heading about page breaks still appears.
 
 The example recognizes short emphasized titles and useful uppercase grouping labels, while excluding repeated badges, metrics and ordinary prose. Labels are navigation hints, not Word headings or AI-generated facts. This heuristic can need adjustment for a customer's document templates. Prefer proper Word heading styles when authoring documents.
 

@@ -4,6 +4,7 @@ import {
   Paragraph,
   HeadingLevel,
   TextRun,
+  PageBreak,
   Table,
   TableRow,
   TableCell,
@@ -44,6 +45,10 @@ const content = [
       `Delivery checkpoint ${i + 1}. Confirm the current document, review the remaining questions, and retain a clear next action. This is ordinary body copy and should never become an outline item.`,
     ),
   ),
+  new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    children: [new PageBreak()],
+  }),
   heading("Decisions", HeadingLevel.HEADING_1),
   heading("Notes", HeadingLevel.HEADING_2),
   body(
