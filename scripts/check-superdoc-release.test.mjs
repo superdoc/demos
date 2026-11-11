@@ -34,7 +34,7 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(`${root}/.github`);
   await writeFile(`${root}/.github/superdoc-release.json`, JSON.stringify({ version: "2.24.0" }));
-  const directories = ["rag/apps/web", "superdoc-inline-revisions", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client", "version-history"];
+  const directories = ["rag/apps/web", "custom-word-editor", "template-builder-document-api-v2-demo", "canonical-collaboration-demo/client", "version-history"];
   await writeFile(`${root}/demos.json`, JSON.stringify(directories.map((packageDirectory) => ({ id: packageDirectory, packageDirectory }))));
   for (const directory of directories) {
     await mkdir(`${root}/${directory}`, { recursive: true });
@@ -110,7 +110,7 @@ test("source deployment rejects mismatched versions and SuperDoc rollbacks", asy
   const env = { DEPLOY_CURRENT: "true", DRY_RUN: "false" };
   await writeFile(`${root}/.github/superdoc-release.json`, JSON.stringify({ version: "2.25.0" }));
   await assert.rejects(checkRelease({ root, env }), /roll back/);
-  await writeFile(`${root}/superdoc-inline-revisions/package.json`, JSON.stringify({ dependencies: { superdoc: "2.26.0" } }));
+  await writeFile(`${root}/custom-word-editor/package.json`, JSON.stringify({ dependencies: { superdoc: "2.26.0" } }));
   await assert.rejects(checkRelease({ root, env }), /matching exact stable/);
 });
 
@@ -138,7 +138,7 @@ test("a prerelease exception does not prevent scheduled stable updates or excuse
   const root = await fixture(t);
   await addPrereleaseException(root);
   assert.equal((await checkRelease({ root, env: { SIMULATED_LATEST: '2.25.0' } })).update, true);
-  await writeFile(`${root}/superdoc-inline-revisions/package.json`, JSON.stringify({ dependencies: { superdoc: '2.23.0' } }));
+  await writeFile(`${root}/custom-word-editor/package.json`, JSON.stringify({ dependencies: { superdoc: '2.23.0' } }));
   await assert.rejects(checkRelease({ root, env: { DEPLOY_CURRENT: 'true' } }), /matching exact stable/);
 });
 

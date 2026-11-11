@@ -91,7 +91,7 @@ jobs:
           bun run build:web
 
       - name: Build Inline Revisions
-        working-directory: superdoc-inline-revisions
+        working-directory: custom-word-editor
         run: |
           pnpm install --frozen-lockfile
           pnpm build

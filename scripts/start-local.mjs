@@ -34,7 +34,7 @@ function loadCollaborationEnvironment() {
   };
 }
 
-run("pnpm", ["--dir", "superdoc-inline-revisions", "install", "--frozen-lockfile"]);
+run("pnpm", ["--dir", "custom-word-editor", "install", "--frozen-lockfile"]);
 run("pnpm", ["--dir", "template-builder-document-api-v2-demo", "install", "--frozen-lockfile"]);
 run("make", ["install"], collaborationRoot);
 run(process.execPath, ["scripts/build-gallery.mjs"]);

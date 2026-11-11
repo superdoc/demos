@@ -12,7 +12,7 @@ export function BuildThis() {
       onClose={() => { setCopied(false); setError(''); }}
       onClick={(event) => { if (event.target === event.currentTarget) dialog.current?.close(); }}>
       <div className="build-dialog-header">
-        <div><h2 id="build-dialog-title">Build this app</h2><p>Copy this Bash snippet to clone and run Inline Revisions locally.</p></div>
+        <div><h2 id="build-dialog-title">Build this app</h2><p>Copy this Bash snippet to clone and run Custom Word Editor locally.</p></div>
         <button className="build-dialog-close" type="button" aria-label="Close" onClick={() => dialog.current?.close()}>×</button>
       </div>
       <div className="build-dialog-body">
@@ -25,7 +25,7 @@ export function BuildThis() {
               setError('');
             } catch { setError('Could not access the clipboard. Select the commands above and copy them.'); }
           }}>{copied ? 'Copied' : 'Copy all commands'}</button>
-          <a href="https://github.com/superdoc/demos/blob/main/superdoc-inline-revisions/README.md" target="_blank" rel="noreferrer">View the README on GitHub</a>
+          <a href="https://github.com/superdoc/demos/blob/main/custom-word-editor/README.md" target="_blank" rel="noreferrer">View the README on GitHub</a>
         </div>
         <p className="build-dialog-note" role="status">{error || (copied ? 'Commands copied to clipboard.' : 'Requires Node.js 22.12+, pnpm, and Git. Open the local URL printed by Vite.')}</p>
       </div>

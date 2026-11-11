@@ -65,7 +65,7 @@ jobs:
           COLLAB_API_URL: ${{ vars.COLLAB_API_URL || 'https://canonical-collab-demo-backend-production.up.railway.app' }}
         run: |
           bun run --cwd rag build:web
-          pnpm --dir superdoc-inline-revisions build
+          pnpm --dir custom-word-editor build
           pnpm --dir template-builder-document-api-v2-demo build
           BASE_PATH=/version-history/ pnpm --dir version-history build
           pnpm --dir version-history test:server
@@ -74,7 +74,7 @@ jobs:
       - name: Run unit tests when present
         run: |
           node scripts/run-optional-tests.mjs rag unit bun
-          node scripts/run-optional-tests.mjs superdoc-inline-revisions unit pnpm
+          node scripts/run-optional-tests.mjs custom-word-editor unit pnpm
           node scripts/run-optional-tests.mjs template-builder-document-api-v2-demo unit pnpm
           node scripts/run-optional-tests.mjs canonical-collaboration-demo/client unit npm
       - name: Install browser test runner
@@ -89,7 +89,7 @@ jobs:
       - name: Run demo-specific browser tests when present
         run: |
           node scripts/run-optional-tests.mjs rag browser bun
-          node scripts/run-optional-tests.mjs superdoc-inline-revisions browser pnpm
+          node scripts/run-optional-tests.mjs custom-word-editor browser pnpm
           node scripts/run-optional-tests.mjs template-builder-document-api-v2-demo browser pnpm
           node scripts/run-optional-tests.mjs canonical-collaboration-demo/client browser npm
           pnpm --dir version-history exec playwright install --with-deps chromium
@@ -118,7 +118,7 @@ jobs:
       - name: Commit update to main
         if: ${{ !inputs.dry_run }}
         run: |
-          resolved=$(node -p "require('./superdoc-inline-revisions/node_modules/superdoc/package.json').version")
+          resolved=$(node -p "require('./custom-word-editor/node_modules/superdoc/package.json').version")
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add --pathspec-from-file=.github/superdoc-update-files.txt

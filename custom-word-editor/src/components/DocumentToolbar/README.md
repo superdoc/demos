@@ -72,7 +72,7 @@ const setSuperDoc = useSetSuperDoc();
 onReady: ({ superdoc }) => setSuperDoc(superdoc)
 ```
 
-The inline revisions demo uses this approach so its toolbar, comments, and editor
+The Custom Word Editor demo uses this approach so its toolbar, comments, and editor
 share one instance-owned controller. Do not add a second provider around each
 section: all three sections share the toolbar's controller.
 

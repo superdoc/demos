@@ -1,0 +1,3 @@
+/revisions /custom-word-editor/ 301
+/revisions/ /custom-word-editor/ 301
+/revisions/* /custom-word-editor/:splat 301

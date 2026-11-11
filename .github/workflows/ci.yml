@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        demo: [agentic-collaboration, inline-revisions, template-builder-api-v2, version-history]
+        demo: [agentic-collaboration, custom-word-editor, template-builder-api-v2, version-history]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -73,8 +73,8 @@ jobs:
             manager: bun
             install: bun install --frozen-lockfile
             check: bunx biome check . && bunx tsc --noEmit && bun run build:web
-          - demo: inline-revisions
-            directory: superdoc-inline-revisions
+          - demo: custom-word-editor
+            directory: custom-word-editor
             manager: pnpm
             install: pnpm install --frozen-lockfile
             check: pnpm build
@@ -136,8 +136,8 @@ jobs:
             directory: rag
             manager: bun
             install: bun install --frozen-lockfile
-          - demo: inline-revisions
-            directory: superdoc-inline-revisions
+          - demo: custom-word-editor
+            directory: custom-word-editor
             manager: pnpm
             install: pnpm install --frozen-lockfile
           - demo: template-builder-api-v2
@@ -187,8 +187,8 @@ jobs:
             manager: bun
             install: bun install --frozen-lockfile
             build: bun run build:web
-          - demo: superdoc-inline-revisions
-            directory: superdoc-inline-revisions
+          - demo: custom-word-editor
+            directory: custom-word-editor
             manager: pnpm
             install: pnpm install --frozen-lockfile
             build: pnpm build
