@@ -111,12 +111,6 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build Document Outline
-        working-directory: document-outline
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
-
       - name: Build Version History
         working-directory: version-history
         env:

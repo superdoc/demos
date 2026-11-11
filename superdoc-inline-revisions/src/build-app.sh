@@ -3,6 +3,6 @@ set -euo pipefail
 
 git clone https://github.com/superdoc/demos.git
 cd demos/superdoc-inline-revisions
-npm install
-npm run dev
+pnpm install
+pnpm dev
 SUPERDOC_QUICKSTART

@@ -27,7 +27,7 @@ export function BuildThis() {
           }}>{copied ? 'Copied' : 'Copy all commands'}</button>
           <a href="https://github.com/superdoc/demos/blob/main/superdoc-inline-revisions/README.md" target="_blank" rel="noreferrer">View the README on GitHub</a>
         </div>
-        <p className="build-dialog-note" role="status">{error || (copied ? 'Commands copied to clipboard.' : 'Requires Node.js 22+ and Git. Open the local URL printed by Vite.')}</p>
+        <p className="build-dialog-note" role="status">{error || (copied ? 'Commands copied to clipboard.' : 'Requires Node.js 22.12+, pnpm, and Git. Open the local URL printed by Vite.')}</p>
       </div>
     </dialog>
   </>;

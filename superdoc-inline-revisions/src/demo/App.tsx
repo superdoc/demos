@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import { useSuperDocCommand } from 'superdoc/ui/react';
-import type { OutlineMode } from '../superdoc/outline';
+import type { OutlineMode } from '../outline/types';
 import { DocumentOutlinePanel } from '../components/DocumentOutline/DocumentOutlinePanel';
 import { ViewControls } from './components/topbar/ViewControls';
 import type { SelectionCapture } from 'superdoc/ui';

@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import type { BorrowedSuperDocUI, BrowserDocumentApi } from "superdoc/ui";
 import type { SuperDocHost } from "superdoc/ui/react";
-import { readOutline, readCustomOutline, type OutlineEntry, type OutlineMode } from "../../superdoc/outline";
+import { generateOutline, type GeneratedOutline } from "../../outline/generate-outline";
+import type { OutlineMode } from "../../outline/types";
 export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocUI | null, host: SuperDocHost | null, replacementVersion: number, mode: OutlineMode) {
-  const [entries, setEntries] = useState<OutlineEntry[]>([]),
+  const [data, setData] = useState<GeneratedOutline>({ entries: [], skeleton: [] }),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [documentVersion, setDocumentVersion] = useState(0);
   useEffect(() => {
-    setEntries([]);
+    setData({ entries: [], skeleton: [] });
     setError("");
     setLoading(true);
     if (!doc || !ui) return;
@@ -19,15 +20,15 @@ export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocU
       const request = ++generation;
       try {
         const current = host?.getDocumentApi?.() ?? doc;
-        const next = await (mode === 'custom' ? readCustomOutline(current) : readOutline(current));
+        const next = await generateOutline(current, mode);
         if (!disposed && request === generation) {
-          setEntries(next);
+          setData(next);
           setLoading(false);
           setError("");
         }
       } catch {
         if (!disposed && request === generation) {
-          setEntries([]);
+          setData({ entries: [], skeleton: [] });
           setLoading(false);
           setError(
             "The outline could not be read. Reload the document to retry.",
@@ -44,7 +45,7 @@ export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocU
     const replace = () => {
       generation++;
       clearTimeout(timer);
-      setEntries([]);
+      setData({ entries: [], skeleton: [] });
       setError("");
       setLoading(true);
       setDocumentVersion((version) => version + 1);
@@ -59,5 +60,5 @@ export function useOutline(doc: BrowserDocumentApi | null, ui: BorrowedSuperDocU
       stop();
     };
   }, [doc, ui, host, replacementVersion, mode]);
-  return { entries, error, loading, documentVersion };
+  return { ...data, error, loading, documentVersion };
 }

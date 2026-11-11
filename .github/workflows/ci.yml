@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        demo: [agentic-collaboration, inline-revisions, template-builder-api-v2, version-history, document-outline]
+        demo: [agentic-collaboration, inline-revisions, template-builder-api-v2, version-history]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -68,11 +68,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - demo: document-outline
-            directory: document-outline
-            manager: pnpm
-            install: pnpm install --frozen-lockfile
-            check: pnpm build
           - demo: docrag
             directory: rag
             manager: bun
@@ -209,11 +204,6 @@ jobs:
             build: npm run build
           - demo: version-history
             directory: version-history
-            manager: pnpm
-            install: pnpm install --frozen-lockfile
-            build: pnpm build
-          - demo: document-outline
-            directory: document-outline
             manager: pnpm
             install: pnpm install --frozen-lockfile
             build: pnpm build

@@ -5,7 +5,7 @@ A standalone React demo showing comments in a dedicated rail and tracked-change 
 ## Run locally
 
 ```bash
-pnpm install --frozen-lockfile
+pnpm install
 pnpm dev
 ```
 
@@ -13,7 +13,7 @@ The app uses the latest published `superdoc` package and does not depend on the 
 
 The app and gallery's **Build this** modals share `src/build-app.sh`. Their
 copyable quickstart clones the demos repository, enters this directory, and runs
-`npm install` followed by `npm run dev`; no backend or API key is needed. Open
+`pnpm install` followed by `pnpm dev`; no backend or API key is needed. Open
 the URL Vite prints. CI compares the commands, runs the quickstart in a clean
 clone of the tested source, checks the document and modal in Chromium, and builds
 the installed app. See the root README for the quickstart test runner.
@@ -84,13 +84,29 @@ styles, while leaving the comment rail available on the right.
 **Ruler** toggles the editor's public ruler command independently of the outline.
 These controls change the view without editing the document.
 
-The reusable, framework-independent helpers are in `src/superdoc/outline.ts`:
-`readOutline(doc)` lists native headings, `readCustomOutline(doc)` reads the HTML-based custom outline, and `outlineTree(entries)` builds the hierarchy,
-and `revealOutlineEntry(doc, ui, entry, current)` navigates to an exact heading.
-The React hook in `src/components/DocumentOutline/use-outline.ts` handles live
-subscriptions and component state.
+Outline generation is isolated in [`src/outline`](./src/outline/README.md).
+`generateOutline(doc, mode)` returns `{ entries, skeleton }`; the generator has no
+React or rendering dependency. `entries` retain document addresses for navigation,
+while `skeleton` contains only nested IDs, labels, and children.
 
-The original custom-title rules live in `src/superdoc/custom-outline.ts`. They
+The renderer accepts that skeleton as a prop:
+
+```tsx
+<OutlineNavigation
+  skeleton={outline.skeleton}
+  activeId={activeId}
+  onNavigate={handleNavigate}
+/>
+```
+
+[`OutlineNavigation.tsx`](./src/components/DocumentOutline/OutlineNavigation.tsx)
+owns expansion and selection presentation. It imports only React, plain skeleton
+types, and its own stylesheet, so it also works without a SuperDoc provider.
+The React hook in `src/components/DocumentOutline/use-outline.ts` adapts document
+changes to generator calls. The panel wires the resulting data to the renderer,
+handles resizing, and delegates navigation to `src/outline/navigate-outline.ts`.
+
+The original custom-title rules live in `src/outline/custom-outline.ts`. They
 recognize short bold titles and uppercase group labels, excluding repeated labels,
 list items, URLs and sentence-like text. Native headings retain their levels and
 identities. Custom entries retain the projection's public block IDs for navigation.

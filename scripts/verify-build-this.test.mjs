@@ -23,11 +23,11 @@ test('the actual gallery and collaboration dialog display and copy the same comm
   assert.match(command, /make dev/);
 });
 
-for (const demoId of ['inline-revisions', 'template-builder-api-v2', 'document-outline']) {
+for (const demoId of ['inline-revisions', 'template-builder-api-v2']) {
   test(`${demoId} uses the same simple clone/install/dev command in the app and gallery`, async () => {
     const command = await verifyBuildCommands(undefined, demoId);
     assert.match(command, /git clone https:\/\/github.com\/superdoc\/demos\.git/);
-    assert.match(command, demoId === 'document-outline' ? /pnpm install\npnpm dev/ : /npm install\nnpm run dev/);
+    assert.match(command, demoId === 'template-builder-api-v2' ? /npm install\nnpm run dev/ : /pnpm install\npnpm dev/);
     assert.doesNotMatch(command, /OPENAI_API_KEY|make build/);
   });
 }

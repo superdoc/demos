@@ -34,7 +34,6 @@ function loadCollaborationEnvironment() {
   };
 }
 
-run("pnpm", ["--dir", "document-outline", "install", "--frozen-lockfile"]);
 run("pnpm", ["--dir", "superdoc-inline-revisions", "install", "--frozen-lockfile"]);
 run("pnpm", ["--dir", "template-builder-document-api-v2-demo", "install", "--frozen-lockfile"]);
 run("make", ["install"], collaborationRoot);

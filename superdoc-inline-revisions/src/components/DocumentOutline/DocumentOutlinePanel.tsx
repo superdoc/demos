@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useSuperDocDocumentApi, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import OutlineNavigation from './OutlineNavigation';
 import { useOutline } from './use-outline';
-import { revealOutlineEntry, type OutlineEntry, type OutlineMode } from '../../superdoc/outline';
+import { revealOutlineEntry } from '../../outline/navigate-outline';
+import type { OutlineEntry } from '../../outline/generate-outline';
+import type { OutlineMode } from '../../outline/types';
 import './DocumentOutlinePanel.css';
 
 export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, width, onResize, onResizing, onClose }: {
@@ -14,6 +16,7 @@ export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, widt
   onResizing: (resizing: boolean) => void;
   onClose: () => void;
 }) {
+  const customHelpId = useId();
   const doc = useSuperDocDocumentApi();
   const ui = useSuperDocUI();
   const host = useSuperDocHost();
@@ -75,15 +78,20 @@ export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, widt
       </div>
       <div className="document-outline-mode" role="radiogroup" aria-label="Outline source">
         {(['headings', 'custom'] as const).map((value) => <label key={value}>
-          <input type="radio" name="outline-source" value={value} checked={mode === value} onChange={() => onModeChange(value)} />
-          <span>{value === 'headings' ? 'Headings' : 'Custom'}</span>
+          <input type="radio" name="outline-source" value={value} aria-label={value === 'headings' ? 'Headings' : 'Custom'} aria-describedby={value === 'custom' ? customHelpId : undefined} checked={mode === value} onChange={() => onModeChange(value)} />
+          <span className="document-outline-mode-label">
+            {value === 'headings' ? 'Headings' : <>Custom <span className="document-outline-help">
+              <span className="document-outline-help-icon" aria-hidden="true">?</span>
+              <span className="document-outline-tooltip" id={customHelpId} role="tooltip">A custom heuristic can be used for identifying outlines from projected HTML, even when headings are missing.</span>
+            </span></>}
+          </span>
         </label>)}
       </div>
       {error && <p className="document-outline-error" role="alert">{error}</p>}
       {outline.loading ? <p role="status">Reading headings…</p>
         : outline.error ? <p role="alert">{outline.error}</p>
         : !outline.entries.length ? <div className="document-outline-empty"><strong>{mode === 'headings' ? 'No headings found.' : 'No section titles found.'}</strong><p>{mode === 'headings' ? 'Inserting a heading to see it here' : 'Add a short bold title to see it here.'}</p></div>
-        : <OutlineNavigation key={`${documentVersion}:${outline.documentVersion}:${mode}`} items={outline.entries} activeId={active} disabled={!doc || !ui} onNavigate={(id) => {
+        : <OutlineNavigation key={`${documentVersion}:${outline.documentVersion}:${mode}`} skeleton={outline.skeleton} activeId={active} disabled={!doc || !ui} onNavigate={(id) => {
           const item = outline.entries.find((entry) => entry.id === id);
           if (item) void navigate(item);
         }} />}

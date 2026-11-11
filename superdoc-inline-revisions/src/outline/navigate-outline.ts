@@ -1,14 +1,14 @@
-import type { SuperDoc } from "superdoc";
-import type { TextTarget } from "superdoc/ui";
-import type { Entry } from "./read-outline";
+/** Optional editor navigation, separate from generation and rendering. */
+import type { BorrowedSuperDocUI, BrowserDocumentApi, TextTarget } from 'superdoc/ui';
+import type { OutlineEntry } from './generate-outline';
 
-/** Resolve inside the native heading, so duplicate labels cannot pick another section. */
+/** Resolve inside the entry’s native block, so duplicate labels cannot pick another section. */
 export async function revealOutlineEntry(
-  superdoc: SuperDoc,
-  item: Entry,
+  doc: BrowserDocumentApi,
+  ui: BorrowedSuperDocUI,
+  item: OutlineEntry,
   current: () => boolean,
 ): Promise<boolean> {
-  const doc = superdoc.activeEditor?.doc;
   if (!doc || !item.within || !item.quote) return false;
   const matches = await doc.query.match({
     select: { type: "text", pattern: item.quote, caseSensitive: true },
@@ -30,7 +30,7 @@ export async function revealOutlineEntry(
   // Each public call performs one bounded reveal step. Eight covers the supplied
   // multi-page fixtures. Measure this budget for your application's longest files.
   for (let step = 0; step < 8 && current(); step++) {
-    const result = await superdoc.ui.viewport.scrollIntoView({
+    const result = await ui.viewport.scrollIntoView({
       target,
       block: "center",
       behavior: "instant",

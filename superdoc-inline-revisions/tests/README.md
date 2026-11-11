@@ -89,3 +89,9 @@ detection, repeated-label exclusions, navigation to detected titles, live title
 edits, mode persistence when reopening the panel, switching modes during reads,
 and document replacement in Custom mode. Returning to Headings verifies that
 custom detection did not create Word headings.
+
+`outline-generation.spec.ts` checks the plain skeleton contract, including duplicate
+labels, empty outlines, and skipped levels. `standalone-outline.spec.ts` copies only
+the renderer, its stylesheet, and plain types into a separate app and verifies
+expansion, ID-based selection, and replacing the supplied skeleton without any
+SuperDoc instance, document, provider, or generation module.

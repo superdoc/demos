@@ -65,7 +65,6 @@ jobs:
           COLLAB_API_URL: ${{ vars.COLLAB_API_URL || 'https://canonical-collab-demo-backend-production.up.railway.app' }}
         run: |
           bun run --cwd rag build:web
-          pnpm --dir document-outline build
           pnpm --dir superdoc-inline-revisions build
           pnpm --dir template-builder-document-api-v2-demo build
           BASE_PATH=/version-history/ pnpm --dir version-history build
@@ -90,7 +89,6 @@ jobs:
       - name: Run demo-specific browser tests when present
         run: |
           node scripts/run-optional-tests.mjs rag browser bun
-          node scripts/run-optional-tests.mjs document-outline browser pnpm
           node scripts/run-optional-tests.mjs superdoc-inline-revisions browser pnpm
           node scripts/run-optional-tests.mjs template-builder-document-api-v2-demo browser pnpm
           node scripts/run-optional-tests.mjs canonical-collaboration-demo/client browser npm

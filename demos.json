@@ -3,6 +3,7 @@
     "id": "inline-revisions",
     "buildCommandSource": "superdoc-inline-revisions/src/build-app.sh",
     "buildCommandConsumer": "superdoc-inline-revisions/src/demo/components/topbar/BuildThis.tsx",
+    "buildCommandNote": "Requires Node.js 22.12+, pnpm, and Git. Open the local URL printed by Vite.",
     "buildCommandCheck": "dev",
     "screenshot": "inline-revisions-poster.jpg",
     "video": "inline-revisions-preview.mp4",
@@ -70,18 +71,5 @@
     "buildCommandConsumer": "version-history/src/BuildThis.tsx",
     "buildCommandCheck": "dev",
     "buildCommandNote": "Requires Node.js 22.12+ and Git. Starts the editor on :5173 and the collaboration/version backend on :4191. No API keys needed."
-  },
-  {
-    "id": "document-outline",
-    "title": "Document Outline",
-    "description": "Explore native Word headings with expandable sections, live updates and precise navigation.",
-    "screenshot": "document-outline-poster.png",
-    "liveDemoUri": "/document-outline/",
-    "sourceUri": "https://github.com/superdoc/demos/tree/main/document-outline",
-    "packageDirectory": "document-outline",
-    "localSourceDirectory": "document-outline",
-    "buildCommandSource": "document-outline/src/build-app.sh",
-    "buildCommandConsumer": "document-outline/src/App.tsx",
-    "buildCommandCheck": "dev"
   }
 ]
