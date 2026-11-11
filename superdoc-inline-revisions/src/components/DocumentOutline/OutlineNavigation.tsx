@@ -13,7 +13,6 @@ export type OutlineNavigationProps = {
 /** Renders a supplied outline skeleton. Does not read or mutate a document. */
 export default function OutlineNavigation({ skeleton, activeId = null, disabled = false, onNavigate }: OutlineNavigationProps) {
   const prefix = useId();
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const { parents, activeAncestors } = useMemo(() => {
     const parents = new Set<string>();
     let activeAncestors: string[] = [];
@@ -29,6 +28,7 @@ export default function OutlineNavigation({ skeleton, activeId = null, disabled 
     visit(skeleton, []);
     return { parents, activeAncestors };
   }, [skeleton, activeId]);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(parents));
 
   useEffect(() => {
     setExpanded((current) => {

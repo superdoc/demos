@@ -71,7 +71,7 @@ standalone editor-instance and shared-provider setups, plus a complete example.
 
 ## Document outline
 
-Enable **Outline** beside the styles gallery to open the navigation panel. Choose **Headings** to read native Word headings through `doc.info().outline`, or
+The outline panel opens with all sections expanded by default. Use **Outline** beside the styles gallery to hide or show it. Choose **Headings** to read native Word headings through `doc.info().outline`, or
 **Custom** to combine those headings with title-like text detected from
 `doc.projectHtml({ reviewMode: "final" })`, using the original outline demo rules.
 Both modes refresh after document edits and file replacement, and use the public

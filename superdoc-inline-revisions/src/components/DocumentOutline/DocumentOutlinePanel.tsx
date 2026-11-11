@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import type { TextTarget } from 'superdoc/ui';
 import { useSuperDocDocumentApi, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
 import OutlineNavigation from './OutlineNavigation';
 import { useOutline } from './use-outline';
@@ -7,10 +8,11 @@ import type { OutlineEntry } from '../../outline/generate-outline';
 import type { OutlineMode } from '../../outline/types';
 import './DocumentOutlinePanel.css';
 
-export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, width, onResize, onResizing, onClose }: {
+export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, onHighlight, width, onResize, onResizing, onClose }: {
   documentVersion: number;
   mode: OutlineMode;
   onModeChange: (mode: OutlineMode) => void;
+  onHighlight: (target: TextTarget | null) => void;
   width: number;
   onResize: (width: number) => void;
   onResizing: (resizing: boolean) => void;
@@ -31,8 +33,9 @@ export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, widt
   useEffect(() => {
     setActive(null);
     setError('');
-    return () => { request.current++; };
-  }, [doc, outline.documentVersion, documentVersion, mode]);
+    onHighlight(null);
+    return () => { request.current++; onHighlight(null); };
+  }, [doc, outline.documentVersion, documentVersion, mode, onHighlight]);
 
   useEffect(() => {
     const workspace = panel.current?.parentElement;
@@ -52,10 +55,12 @@ export function DocumentOutlinePanel({ documentVersion, mode, onModeChange, widt
     if (!doc || !ui) return;
     const generation = ++request.current;
     setError('');
+    onHighlight(null);
     try {
-      const reached = await revealOutlineEntry(doc, ui, item, () => generation === request.current);
+      const target = await revealOutlineEntry(doc, ui, item, () => generation === request.current);
       if (generation !== request.current) return;
-      if (!reached) throw new Error('Unreachable heading');
+      if (!target) throw new Error('Unreachable heading');
+      if (mode === 'custom') onHighlight(target);
       setActive(item.id);
     } catch {
       if (generation === request.current) setError('This section could not be reached. Try again.');

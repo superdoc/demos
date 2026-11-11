@@ -69,6 +69,8 @@ test('renderer accepts a skeleton without a document or provider', async ({ page
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(appUrl);
   const notes = page.getByRole('button', { name: 'Notes', exact: true });
+  await expect(notes.first()).toBeVisible();
+  await page.getByRole('button', { name: 'Collapse Plan', exact: true }).click();
   await expect(notes.first()).not.toBeVisible();
   await page.getByRole('button', { name: 'Expand Plan', exact: true }).click();
   await expect(notes).toHaveCount(2);

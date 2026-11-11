@@ -1,17 +1,19 @@
-import { useState, type CSSProperties } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import { useSuperDocCommand } from 'superdoc/ui/react';
 import type { OutlineMode } from '../outline/types';
 import { DocumentOutlinePanel } from '../components/DocumentOutline/DocumentOutlinePanel';
 import { ViewControls } from './components/topbar/ViewControls';
-import type { SelectionCapture } from 'superdoc/ui';
+import type { SelectionCapture, TextTarget } from 'superdoc/ui';
 import { SuperDocEditor } from '../superdoc/SuperDocEditor';
 import { CommentsRail } from './components/comments/CommentsRail';
 import { Topbar } from './components/topbar/Topbar';
 
 export default function App() {
   const [documentVersion, setDocumentVersion] = useState(0);
+  const [outlineTarget, setOutlineTarget] = useState<TextTarget | null>(null);
+  const clearOutlineTarget = useCallback(() => setOutlineTarget(null), []);
   const [outlineMode, setOutlineMode] = useState<OutlineMode>('headings');
-  const [outlineVisible, setOutlineVisible] = useState(false);
+  const [outlineVisible, setOutlineVisible] = useState(true);
   const [outlineWidth, setOutlineWidth] = useState(360);
   const [resizing, setResizing] = useState(false);
   const ruler = useSuperDocCommand('ruler');
@@ -25,8 +27,10 @@ export default function App() {
     <div className="app-shell">
       <Topbar onDocumentReplaced={() => setDocumentVersion((version) => version + 1)} viewControls={<ViewControls outlineVisible={outlineVisible} onOutlineChange={setOutlineVisible} />} />
       <div className={`workspace ${outlineVisible ? 'with-outline' : ''} ${rulerVisible ? '' : 'ruler-hidden'} ${resizing ? 'resizing-outline' : ''}`} style={{ '--outline-width': `${outlineWidth}px` } as CSSProperties}>
-        {outlineVisible && <DocumentOutlinePanel mode={outlineMode} onModeChange={setOutlineMode} documentVersion={documentVersion} width={outlineWidth} onResize={setOutlineWidth} onResizing={setResizing} onClose={() => setOutlineVisible(false)} /> }
+        {outlineVisible && <DocumentOutlinePanel onHighlight={setOutlineTarget} mode={outlineMode} onModeChange={setOutlineMode} documentVersion={documentVersion} width={outlineWidth} onResize={setOutlineWidth} onResizing={setResizing} onClose={() => setOutlineVisible(false)} /> }
         <SuperDocEditor
+          outlineTarget={outlineVisible && outlineMode === 'custom' ? outlineTarget : null}
+          onClearOutlineTarget={clearOutlineTarget}
           onStartComment={setPendingComment}
           commentDraftOpen={pendingComment !== null}
           activeCommentId={highlightedCommentId}

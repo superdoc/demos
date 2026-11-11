@@ -8,16 +8,16 @@ export async function revealOutlineEntry(
   ui: BorrowedSuperDocUI,
   item: OutlineEntry,
   current: () => boolean,
-): Promise<boolean> {
-  if (!doc || !item.within || !item.quote) return false;
+): Promise<TextTarget | null> {
+  if (!doc || !item.within || !item.quote) return null;
   const matches = await doc.query.match({
     select: { type: "text", pattern: item.quote, caseSensitive: true },
     within: item.within,
     ...(item.story ? { in: item.story } : {}),
   });
-  if (!current()) return false;
+  if (!current()) return null;
   const match = matches.items[0];
-  if (!match || match.matchKind !== "text") return false;
+  if (!match || match.matchKind !== "text") return null;
   const [first, ...rest] = match.blocks;
   const target: TextTarget = {
     kind: "text",
@@ -35,7 +35,7 @@ export async function revealOutlineEntry(
       block: "center",
       behavior: "instant",
     });
-    if (result.success) return current();
+    if (result.success) return current() ? target : null;
   }
-  return false;
+  return null;
 }

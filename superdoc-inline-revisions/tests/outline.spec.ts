@@ -16,7 +16,10 @@ test('view checkboxes toggle the ruler and outline independently', async ({ page
   const ruler = page.getByRole('checkbox', { name: 'Ruler', exact: true });
   const outline = page.getByRole('checkbox', { name: 'Outline', exact: true });
   await expect(ruler).toBeChecked();
-  await expect(outline).not.toBeChecked();
+  await expect(outline).toBeChecked();
+  await expect(page.getByRole('complementary', { name: 'Document outline', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Collapse all', exact: true })).toBeVisible();
+  await outline.uncheck();
   await expect(page.getByRole('complementary', { name: 'Document outline', exact: true })).toHaveCount(0);
   await ruler.uncheck();
   await expect(page.getByLabel('Document ruler', { exact: true })).not.toBeVisible();
@@ -40,10 +43,8 @@ test('outline supports live hierarchy, navigation, resizing and document replace
   await upload(page, 'outline.docx');
   const toggle = page.getByRole('checkbox', { name: 'Outline', exact: true });
   await toggle.check();
-  await expect(page.getByRole('button', { name: 'Expand Overview', exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole('button', { name: 'Goals and outcomes', exact: true })).not.toBeVisible();
-  await page.getByRole('button', { name: 'Expand Delivery plan', exact: true }).click();
-  await page.getByRole('button', { name: 'Expand Milestones', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Collapse Overview', exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Goals and outcomes', exact: true })).toBeVisible();
   const plan = page.locator('.outline-tree > li').filter({ has: page.getByRole('button', { name: 'Delivery plan', exact: true }) });
   const milestones = plan.locator(':scope > ul > li').filter({ has: page.getByRole('button', { name: 'Milestones', exact: true }) });
   const preparation = milestones.locator(':scope > ul > li').getByRole('button', { name: 'Preparation', exact: true });
@@ -81,7 +82,7 @@ test('outline supports live hierarchy, navigation, resizing and document replace
   await expect(page.getByText('No headings found.', { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toHaveCount(0);
   await upload(page, 'outline.docx');
-  await expect(page.getByRole('button', { name: 'Expand Overview', exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Collapse Overview', exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('[role="alert"]')).toHaveCount(0);
 });
 
@@ -90,7 +91,6 @@ test(`applying, renaming and removing Heading ${level} updates the outline`, asy
   await ready(page);
   await page.getByLabel('Document mode', { exact: true }).selectOption('editing');
   await page.getByRole('checkbox', { name: 'Outline', exact: true }).check();
-  await page.getByRole('button', { name: 'Expand all', exact: true }).click();
   const sample = page.locator('.superdoc-text-run').filter({ hasText: /^and$/ });
   await sample.dblclick();
   await page.getByRole('button', { name: `Apply heading ${level}`, exact: true }).click();
@@ -114,7 +114,7 @@ test('Custom detects and navigates bold titles without changing Word headings', 
   await page.getByRole('radio', { name: 'Custom', exact: true }).check();
   const title = page.getByRole('button', { name: 'Meridian planning notes', exact: true });
   await expect(title).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: 'Expand Meridian planning notes', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Collapse Meridian planning notes', exact: true })).toBeVisible();
   const child = page.getByRole('button', { name: 'Keep the original intent', exact: true });
   await expect(child).toBeVisible();
   await expect(page.getByRole('button', { name: 'AI PREPARES', exact: true })).toHaveCount(0);
@@ -145,7 +145,6 @@ test('Custom preserves native hierarchy and refreshes after document replacement
   await upload(page, 'outline.docx');
   await page.getByRole('checkbox', { name: 'Outline', exact: true }).check();
   await page.getByRole('radio', { name: 'Custom', exact: true }).check();
-  await page.getByRole('button', { name: 'Expand all', exact: true }).click();
   const plan = page.locator('.outline-tree > li').filter({ has: page.getByRole('button', { name: 'Delivery plan', exact: true }) });
   const milestones = plan.locator(':scope > ul > li').filter({ has: page.getByRole('button', { name: 'Milestones', exact: true }) });
   await expect(milestones.locator(':scope > ul > li').getByRole('button', { name: 'Preparation', exact: true })).toBeVisible();
