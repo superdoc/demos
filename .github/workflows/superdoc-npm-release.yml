@@ -117,7 +117,7 @@ jobs:
           git push origin "HEAD:${{ github.event.repository.default_branch }}"
 
   notify:
-    name: Notify Google Chat
+    name: Notify Slack
     needs: [check, update, deploy, record]
     if: ${{ always() && ((github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run && inputs.simulated_latest == '' && inputs.simulated_deployed == '' && !inputs.simulate_failure)) && (needs.check.result == 'failure' || needs.update.result == 'failure' || needs.deploy.result == 'failure' || needs.record.result == 'failure' || needs.check.result == 'cancelled' || needs.update.result == 'cancelled' || needs.deploy.result == 'cancelled' || needs.record.result == 'cancelled' || needs.deploy.result == 'success') }}
     runs-on: ubuntu-latest
@@ -131,7 +131,8 @@ jobs:
           node-version: 22
       - name: Send release result and demo links
         env:
-          GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ vars.SLACK_CHANNEL_ID }}
           RELEASE_RESULTS: ${{ toJSON(needs) }}
           SUPERDOC_VERSION: ${{ needs.check.outputs.version || inputs.simulated_latest }}
           RELEASE_DRY_RUN: ${{ needs.check.outputs.dry_run }}
