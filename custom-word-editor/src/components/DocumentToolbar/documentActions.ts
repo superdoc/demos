@@ -18,10 +18,9 @@ export function runDocumentAction(doc: PartialBrowserDocumentApi, action: () => 
 }
 
 /** Applying a UI selection only queues worker input; confirm the actual range before continuing. */
-export async function applyDocumentSelection(doc: PartialBrowserDocumentApi, ui: BorrowedSuperDocUI, target: SelectionTarget, signal?: AbortSignal) {
-  signal?.throwIfAborted();
+export async function applyDocumentSelection(doc: PartialBrowserDocumentApi, ui: BorrowedSuperDocUI, target: SelectionTarget) {
   if (!ui.selection.apply(target).ok) throw new Error('The document selection could not be restored.');
-  await waitForDocumentSelection(doc, target, 5000, signal);
+  await waitForDocumentSelection(doc, target);
 }
 
 export async function restoreDocumentSelection(doc: PartialBrowserDocumentApi, ui: BorrowedSuperDocUI, capture: SelectionCapture) {
@@ -30,7 +29,7 @@ export async function restoreDocumentSelection(doc: PartialBrowserDocumentApi, u
   await waitForDocumentSelection(doc, capture.selectionTarget);
 }
 
-export function waitForDocumentSelection(doc: PartialBrowserDocumentApi, target: SelectionTarget, timeoutMs = 5000, signal?: AbortSignal): Promise<void> {
+export function waitForDocumentSelection(doc: PartialBrowserDocumentApi, target: SelectionTarget, timeoutMs = 5000): Promise<void> {
   const current = doc.selection?.current?.bind(doc.selection);
   if (!current) return Promise.reject(new Error('Document selection is unavailable.'));
   return new Promise((resolve, reject) => {
@@ -41,13 +40,9 @@ export function waitForDocumentSelection(doc: PartialBrowserDocumentApi, target:
       done = true;
       clearTimeout(timeout);
       clearTimeout(poll);
-      signal?.removeEventListener('abort', abort);
       if (error) reject(error); else resolve();
     };
-    const abort = () => finish(signal?.reason);
     const timeout = setTimeout(() => finish(new Error('The document selection could not be restored. Select the text again.')), timeoutMs);
-    signal?.addEventListener('abort', abort, { once: true });
-    if (signal?.aborted) { abort(); return; }
     const check = async () => {
       try {
         const selection = await current();

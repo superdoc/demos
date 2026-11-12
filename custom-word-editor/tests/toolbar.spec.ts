@@ -96,9 +96,9 @@ test('subscript and superscript apply and toggle off', async ({ page }) => {
   const sample = await selectSample(page);
   for (const [name, sign] of [['Subscript', -1], ['Superscript', 1]] as const) {
     await tool(page, name).click();
-    await expect.poll(async () => Math.sign(await sample.evaluate(el => (parseFloat(getComputedStyle(el).top) || 0)))).toBe(-sign);
+    await expect.poll(async () => Math.sign(await sample.evaluate(el => parseFloat(getComputedStyle(el).verticalAlign)))).toBe(sign);
     await tool(page, name).click();
-    await expect.poll(async () => sample.evaluate((el) => parseFloat(getComputedStyle(el).top) || 0)).toBe(0);
+    await expect(sample).toHaveCSS('vertical-align', 'baseline');
   }
 });
 
@@ -123,14 +123,14 @@ test('alignment, indentation, and every spacing option change the paragraph', as
   const line = sample.locator('..');
   for (const alignment of ['center', 'right', 'justify', 'left']) {
     await tool(page, alignment === 'justify' ? 'Justify' : `Align ${alignment}`).click();
-    // CSS justification leaves the last line left-aligned in the browser.
-    await expect(line).toHaveCSS('text-align', alignment);
+    // The renderer correctly leaves a final justified line left-aligned.
+    await expect(line).toHaveCSS('text-align', alignment === 'justify' ? 'left' : alignment);
     await expect(tool(page, alignment === 'justify' ? 'Justify' : `Align ${alignment}`)).toHaveAttribute('aria-pressed', 'true');
   }
   await tool(page, 'Increase Indent').click();
-  await expect(sample).toHaveCSS('margin-left', '48px');
+  await expect(line).toHaveCSS('padding-left', '48px');
   await tool(page, 'Decrease Indent').click();
-  await expect(sample).toHaveCSS('margin-left', '0px');
+  await expect(line).toHaveCSS('padding-left', '0px');
   for (const spacing of ['1', '1.15', '1.5', '2', '2.5', '3']) {
     const before = await line.getAttribute('style');
     await menuChoice(page, 'Line and Paragraph Spacing', spacing);
@@ -189,7 +189,7 @@ test('style gallery applies each displayed paragraph style', async ({ page }) =>
     ['List Paragraph', 'ListParagraph'], ['Normal', 'Normal'],
   ]) {
     await tool(page, `Apply ${name}`).click();
-    await expect(sample.locator('xpath=ancestor::*[@data-block-id][1]')).toHaveAttribute('data-style-id', styleId);
+    await expect(sample).toHaveAttribute('styleid', styleId);
     await expect(tool(page, `Apply ${name}`)).toHaveClass(/is-active/);
   }
 });

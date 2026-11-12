@@ -36,6 +36,25 @@ test('gallery keeps exempt demos visible while deriving its shared version from 
   assert.match(html, /SuperDoc v2\.29\.0/);
   assert.match(html, /<h2>history<\/h2>/);
   assert.match(html, /href="\/history\/"/);
+  assert.match(html, /class="site-version">SuperDoc v2\.29\.0/);
+  assert.deepEqual([...html.matchAll(/class="card-version"[^>]*>(.*?)<\/span>/g)].map((match) => match[1]), [
+    'v2.29.0', 'v2.29.0', 'v2.30.0-next.4',
+  ]);
+});
+
+test('local gallery labels remote demos from their manifests and includes legacy unversioned cards', async (t) => {
+  const { root, demos } = await fixture(t);
+  demos[0].localSourceDirectory = demos[0].packageDirectory;
+  demos[1].versioned = false;
+  await writeFile(path.join(root, 'demos.json'), JSON.stringify(demos));
+  await writeFile(path.join(root, 'second/package.json'), JSON.stringify({ dependencies: { superdoc: '2.28.0' } }));
+  await writeFile(path.join(root, 'history/package.json'), JSON.stringify({ dependencies: { superdoc: '2.30.0-next.4' } }));
+  await renderGallery({ root, mode: 'local', output: 'index.html' });
+  const html = await readFile(path.join(root, 'index.html'), 'utf8');
+  assert.match(html, /class="site-version">SuperDoc v2\.29\.0/);
+  assert.deepEqual([...html.matchAll(/class="card-version"[^>]*>(.*?)<\/span>/g)].map((match) => match[1]), [
+    'v2.29.0', 'v2.28.0', 'v2.30.0-next.4',
+  ]);
 });
 
 test('gallery still rejects mismatched stable demos and unexpected exception versions', async (t) => {

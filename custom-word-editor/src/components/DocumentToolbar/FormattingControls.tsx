@@ -151,7 +151,7 @@ export function FormattingControls({ className = '' }: { className?: string }) {
   const changeCase = async (transform: (text: string) => string) => {
     if (readOnly || formattingPending) return;
     const doc = host?.activeEditor?.doc;
-    if (!doc?.selection?.current) return;
+    if (!doc?.selection?.current || !doc.invoke) return;
     setFormattingPending(true);
     try {
       await restore();

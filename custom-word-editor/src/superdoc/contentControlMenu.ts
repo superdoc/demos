@@ -80,27 +80,6 @@ export function createContentControlMenu(getUI: () => BorrowedSuperDocUI | null,
   const config: ContextMenuConfig = {
     defaultItems: true,
     openOnSlash: false,
-    menuProvider: (_context, sections) => sections.map((section) => ({
-      ...section,
-      items: section.items.map((item) => {
-        if (item.id !== 'undo' && item.id !== 'redo') return item;
-        return {
-          ...item,
-          intent: undefined,
-          onSelect: async () => {
-            const doc = getDoc();
-            const ui = getUI();
-            if (!doc || !ui) return;
-            try {
-              await runDocumentAction(doc, async () => {
-                onError('');
-                checkReceipt(await ui.commands.executeAsync(item.id));
-              });
-            } catch { onError('The history action could not be applied.'); }
-          },
-        };
-      }),
-    })),
     sections: [{ id: 'content-controls', items: [
       { id: 'wrap-content-control', label: 'Wrap in content control', showWhen: (context) => context.hasSelection && !control, enabledWhen: (context) => context.isEditable, onSelect: (payload) => act(payload, 'wrap') },
       { id: 'lock-content-control', label: 'Lock content control', showWhen: () => control?.lockMode === 'unlocked', enabledWhen: (context) => context.isEditable, onSelect: (payload) => act(payload, 'lock') },

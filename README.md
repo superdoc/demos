@@ -95,12 +95,13 @@ to check all three demos.
 ### Temporary version exceptions
 
 All demos normally share the same stable SuperDoc version. A demo that needs a
-prerelease can declare an explicit exception in its `demos.json` entry:
+prerelease or an older stable version can declare an explicit exception in its
+`demos.json` entry:
 
 ```json
 "superdocVersionException": {
-  "version": "2.30.0-next.4",
-  "reason": "Temporarily needs the Changes API before its stable release."
+  "version": "2.29.0",
+  "reason": "Waiting for a stable fix for tracked formatting in imported content controls."
 }
 ```
 
@@ -113,9 +114,12 @@ The gallery badge and release marker continue to describe the shared stable
 version. `versioned: false` is an older gallery-badge setting and does not provide
 this release/update exception.
 
-No gallery demo currently requires an exception. When a demo's required API
-is available in stable, update its dependency and lockfile to the common stable
-version and remove `superdocVersionException` to restore normal checks/updates.
+Custom Word Editor is temporarily held on 2.29.0 because 2.30.0 fails tracked
+formatting in untouched imported content controls. The other demos use the shared
+stable version. Each gallery card shows its own SuperDoc version, while the header
+shows the shared latest version. Once the editor browser suite passes on a newer
+stable release, update its dependency and lockfile and remove
+`superdocVersionException` to restore normal checks/updates.
 
 ### Release workflow
 

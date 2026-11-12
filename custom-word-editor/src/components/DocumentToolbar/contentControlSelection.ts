@@ -40,17 +40,6 @@ export async function getFormattingSelection(doc: PartialBrowserDocumentApi, ui:
     return withTextRange(current, bounds, control.text);
   }
 
-  if (range?.start.kind === 'text' && doc.contentControls.listInRange) {
-    const controls = await doc.contentControls.listInRange({
-      startBlockId: range.start.blockId, endBlockId: range.start.blockId, limit: 100,
-    });
-    for (const control of [...controls.items].reverse()) {
-      if (isContentLocked(control) && control.selectionTarget && containsCaret(control.selectionTarget, range, false)) {
-        return withTextRange(current, control.selectionTarget, control.text);
-      }
-    }
-  }
-
   return current;
 }
 
@@ -96,14 +85,14 @@ function withTextRange(current: SelectionInfo, range: SelectionTarget, text = cu
   return { ...current, empty: false, selectionTarget: range, target, text };
 }
 
-function containsCaret(bounds: SelectionTarget, selection: SelectionTarget | null | undefined, includeEdges = true): boolean {
+function containsCaret(bounds: SelectionTarget, selection: SelectionTarget | null | undefined): boolean {
   if (selection?.start.kind !== 'text') return true;
   if (!isTextRange(bounds) || bounds.start.blockId !== bounds.end.blockId) return false;
 
   const caret = selection.start;
   return caret.blockId === bounds.start.blockId
-    && (includeEdges ? caret.offset >= bounds.start.offset : caret.offset > bounds.start.offset)
-    && (includeEdges ? caret.offset <= bounds.end.offset : caret.offset < bounds.end.offset);
+    && caret.offset >= bounds.start.offset
+    && caret.offset <= bounds.end.offset;
 }
 
 function overlapsSelection(control: ContentControlInfo, selection: TextRange): boolean {
