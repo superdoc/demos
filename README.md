@@ -95,7 +95,8 @@ to check all three demos.
 ### Temporary version exceptions
 
 All demos normally share the same stable SuperDoc version. A demo that needs a
-prerelease can declare an explicit exception in its `demos.json` entry:
+prerelease or must retain a compatible stable release can declare an explicit
+exception in its `demos.json` entry:
 
 ```json
 "superdocVersionException": {
@@ -116,6 +117,11 @@ this release/update exception.
 Version History currently uses this temporary exception. When its required API
 is available in stable, update its dependency and lockfile to the common stable
 version and remove `superdocVersionException` to restore normal checks/updates.
+
+Custom Word Editor stays on 2.29.0 because 2.30.0 fails its locked-control Undo,
+text replacement, and formatting browser checks. All its tests still run. Remove
+its exception and update its dependency/lockfile after the full browser suite
+passes on a newer stable package.
 
 ### Release workflow
 

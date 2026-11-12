@@ -51,6 +51,7 @@ jobs:
         with:
           node-version: 22
       - name: Update all demos and gallery version labels
+        id: dependencies
         env:
           SUPERDOC_VERSION: ${{ inputs.version }}
         run: node scripts/update-superdoc.mjs "$SUPERDOC_VERSION"
@@ -117,13 +118,14 @@ jobs:
           retention-days: 7
       - name: Commit update to main
         if: ${{ !inputs.dry_run }}
+        env:
+          SUPERDOC_VERSION: ${{ steps.dependencies.outputs.version }}
         run: |
-          resolved=$(node -p "require('./custom-word-editor/node_modules/superdoc/package.json').version")
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add --pathspec-from-file=.github/superdoc-update-files.txt
           if ! git diff --cached --quiet; then
-            git commit -m "chore: update SuperDoc to ${resolved}"
+            git commit -m "chore: update SuperDoc to ${SUPERDOC_VERSION}"
             git push origin HEAD:main
           fi
       - name: Capture tested source revision

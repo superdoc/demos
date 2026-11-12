@@ -28,7 +28,7 @@ for (const [name, version] of Object.entries(manifest.dependencies)) {
 if (!args.includes('--frozen-lockfile') && args[0] !== 'ci') fs.writeFileSync('pnpm-lock.yaml', 'updated lockfile');
 `;
 
-test('the stable updater preserves an exception pin/lockfile and resumes updating after its removal', async (t) => {
+test('the stable updater preserves stable/prerelease exceptions and reports the shared version', async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), 'superdoc-update-policy-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const directories = [
@@ -36,6 +36,9 @@ test('the stable updater preserves an exception pin/lockfile and resumes updatin
     'version-history', 'canonical-collaboration-demo/client',
   ];
   const demos = directories.map((directory) => ({ id: directory, packageDirectory: directory }));
+  demos.find((demo) => demo.id === 'custom-word-editor').superdocVersionException = {
+    version: '2.29.0', reason: 'Waiting for compatible locked-control formatting',
+  };
   demos.find((demo) => demo.id === 'version-history').superdocVersionException = {
     version: '2.30.0-next.4', reason: 'Waiting for stable Changes API',
   };
@@ -49,17 +52,20 @@ test('the stable updater preserves an exception pin/lockfile and resumes updatin
   }
   const historyLock = path.join(root, 'version-history/pnpm-lock.yaml');
   await writeFile(historyLock, 'original prerelease lockfile');
+  const editorLock = path.join(root, 'custom-word-editor/pnpm-lock.yaml');
+  await writeFile(editorLock, 'original stable lockfile');
   await mkdir(path.join(root, 'dist-landing'));
   await writeFile(path.join(root, 'dist-landing/index.html'), 'SuperDoc v2.29.0');
   const bin = path.join(root, 'bin');
   await mkdir(bin);
   for (const name of ['npm', 'pnpm', 'bun']) await writeFile(path.join(bin, name), manager, { mode: 0o755 });
   const log = path.join(root, 'manager.log');
+  const output = path.join(root, 'github-output');
   const script = path.resolve(import.meta.dirname, 'update-superdoc.mjs');
   const update = () => {
     const result = spawnSync(process.execPath, [script, '2.31.0'], {
       cwd: root, encoding: 'utf8', env: {
-        ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, TEST_ROOT: root, MANAGER_LOG: log,
+        ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`, TEST_ROOT: root, MANAGER_LOG: log, GITHUB_OUTPUT: output,
       },
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
@@ -69,14 +75,21 @@ test('the stable updater preserves an exception pin/lockfile and resumes updatin
   update();
   assert.equal(await dependency('version-history'), '2.30.0-next.4');
   assert.equal(await readFile(historyLock, 'utf8'), 'original prerelease lockfile');
-  assert.equal(await dependency('custom-word-editor'), '2.31.0');
+  assert.equal(await dependency('custom-word-editor'), '2.29.0');
+  assert.equal(await readFile(editorLock, 'utf8'), 'original stable lockfile');
+  assert.equal(await dependency('template-builder-document-api-v2-demo'), '2.31.0');
+  assert.equal(await readFile(output, 'utf8'), 'version=2.31.0\n');
   assert.equal(await readFile(path.join(root, 'dist-landing/index.html'), 'utf8'), 'SuperDoc v2.31.0');
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(calls.find((call) => call.directory === 'version-history').args, ['install', '--frozen-lockfile']);
+  assert.deepEqual(calls.find((call) => call.directory === 'custom-word-editor').args, ['install', '--frozen-lockfile']);
 
   delete demos.find((demo) => demo.id === 'version-history').superdocVersionException;
+  delete demos.find((demo) => demo.id === 'custom-word-editor').superdocVersionException;
   await writeFile(path.join(root, 'demos.json'), JSON.stringify(demos));
   update();
   assert.equal(await dependency('version-history'), '2.31.0');
   assert.equal(await readFile(historyLock, 'utf8'), 'updated lockfile');
+  assert.equal(await dependency('custom-word-editor'), '2.31.0');
+  assert.equal(await readFile(editorLock, 'utf8'), 'updated lockfile');
 });
