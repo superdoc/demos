@@ -209,9 +209,9 @@ jobs:
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         run: node scripts/verify-production-gallery.mjs
 
-      - name: Verify production collaboration editor workers
+      - name: Verify production collaboration JavaScript assets
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
-        run: node scripts/verify-collab-workers.mjs
+        run: node scripts/verify-collab-assets.mjs
 
       - name: Verify production Version History route and API proxy
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
@@ -236,11 +236,11 @@ jobs:
           test -n "$url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      - name: Verify staging collaboration editor workers
+      - name: Verify staging collaboration JavaScript assets
         if: ${{ steps.staging.outputs.url != '' }}
         env:
           DEMOS_VERIFY_URL: ${{ steps.staging.outputs.url }}
-        run: node scripts/verify-collab-workers.mjs
+        run: node scripts/verify-collab-assets.mjs
 
       - name: Publish staging URL
         if: ${{ steps.staging.outputs.url != '' }}
