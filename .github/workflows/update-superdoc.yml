@@ -95,6 +95,17 @@ jobs:
           node scripts/run-optional-tests.mjs canonical-collaboration-demo/client browser npm
           pnpm --dir version-history exec playwright install --with-deps chromium
           node scripts/run-optional-tests.mjs version-history browser pnpm
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: superdoc-update-browser-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            tests/test-results/
+            custom-word-editor/test-results/
+            version-history/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Rebuild DocRAG for its production base path
         working-directory: rag
         env:

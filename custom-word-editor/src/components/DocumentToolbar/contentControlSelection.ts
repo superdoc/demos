@@ -40,13 +40,29 @@ export async function getFormattingSelection(doc: PartialBrowserDocumentApi, ui:
     return withTextRange(current, bounds, control.text);
   }
 
+  if (isTextRange(range)) {
+    const controls = await listControlsInRange(doc, range);
+    for (const control of controls.reverse()) {
+      const bounds = control.selectionTarget;
+      if (isContentLocked(control) && bounds && containsCaret(bounds, range, false)) {
+        return withTextRange(current, bounds, control.text);
+      }
+    }
+  }
+
   return current;
 }
 
 /** Find all intersecting controls, including enclosing controls, without unlocking neighbors. */
 export async function getSelectedContentControls(doc: PartialBrowserDocumentApi, selection: SelectionInfo): Promise<ContentControlInfo[]> {
   const range = selection.selectionTarget;
-  if (selection.empty || !isTextRange(range) || !doc.contentControls?.listInRange) return [];
+  if (selection.empty || !isTextRange(range)) return [];
+  const controls = await listControlsInRange(doc, range);
+  return controls.filter((control) => overlapsSelection(control, range));
+}
+
+async function listControlsInRange(doc: PartialBrowserDocumentApi, range: TextRange): Promise<ContentControlInfo[]> {
+  if (!doc.contentControls?.listInRange) return [];
 
   const controls: ContentControlInfo[] = [];
   let total = Infinity;
@@ -62,7 +78,7 @@ export async function getSelectedContentControls(doc: PartialBrowserDocumentApi,
     if (page.items.length === 0) break;
   }
 
-  return controls.filter((control) => overlapsSelection(control, range));
+  return controls;
 }
 
 async function resolveControlEdge(doc: PartialBrowserDocumentApi, point: SelectionPoint): Promise<SelectionPoint> {
@@ -85,14 +101,15 @@ function withTextRange(current: SelectionInfo, range: SelectionTarget, text = cu
   return { ...current, empty: false, selectionTarget: range, target, text };
 }
 
-function containsCaret(bounds: SelectionTarget, selection: SelectionTarget | null | undefined): boolean {
+function containsCaret(bounds: SelectionTarget, selection: SelectionTarget | null | undefined, includeEdges = true): boolean {
   if (selection?.start.kind !== 'text') return true;
   if (!isTextRange(bounds) || bounds.start.blockId !== bounds.end.blockId) return false;
+  if (storyKey(bounds.story ?? bounds.start.story) !== storyKey(selection.story ?? selection.start.story)) return false;
 
   const caret = selection.start;
   return caret.blockId === bounds.start.blockId
-    && caret.offset >= bounds.start.offset
-    && caret.offset <= bounds.end.offset;
+    && (includeEdges ? caret.offset >= bounds.start.offset : caret.offset > bounds.start.offset)
+    && (includeEdges ? caret.offset <= bounds.end.offset : caret.offset < bounds.end.offset);
 }
 
 function overlapsSelection(control: ContentControlInfo, selection: TextRange): boolean {
