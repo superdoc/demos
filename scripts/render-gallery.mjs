@@ -45,8 +45,8 @@ export async function renderGallery({ mode, output, root = defaultRoot }) {
     .map(async (demo) => [demo.id, await readBuildCommand(root, demo)])));
 
   const versionEntries = mode === "local"
-    ? manifest.filter((demo) => demo.localSourceDirectory && demo.versioned !== false)
-    : manifest.filter((demo) => demo.versioned !== false);
+    ? manifest.filter((demo) => demo.localSourceDirectory)
+    : manifest;
   const installed = await Promise.all(versionEntries.map(async (demo) => {
     const packageJson = await readFile(
       path.join(root, demo.packageDirectory, "node_modules", "superdoc", "package.json"),
@@ -56,9 +56,17 @@ export async function renderGallery({ mode, output, root = defaultRoot }) {
     assertExceptionVersion(exceptions, demo.packageDirectory, version);
     return { demo, version };
   }));
-  const versions = installed.filter(({ demo }) => !exceptions.has(demo.packageDirectory)).map(({ version }) => version);
+  const versions = installed.filter(({ demo }) => demo.versioned !== false && !exceptions.has(demo.packageDirectory)).map(({ version }) => version);
   if (new Set(versions).size !== 1) {
     throw new Error(`Demos resolved different SuperDoc versions: ${versions.join(", ")}`);
+  }
+  const cardVersions = new Map(installed.map(({ demo, version }) => [demo.id, version]));
+  for (const demo of visibleDemos.filter((demo) => !cardVersions.has(demo.id))) {
+    const packageJson = JSON.parse(await readFile(path.join(root, demo.packageDirectory, "package.json"), "utf8"));
+    const version = packageJson.dependencies?.superdoc;
+    if (!version) throw new Error(`${demo.id}: missing SuperDoc dependency for the gallery version label`);
+    assertExceptionVersion(exceptions, demo.packageDirectory, version);
+    cardVersions.set(demo.id, version);
   }
 
   const backgrounds = visibleDemos.map((_, index) =>
@@ -81,7 +89,7 @@ export async function renderGallery({ mode, output, root = defaultRoot }) {
         <div class="demo-card">
           <a class="card-main-link" href="${escapeHtml(liveUri)}" aria-label="Open ${escapeHtml(demo.title)} demo"></a>
           <div class="card-media"><img class="card-poster" src="/${escapeHtml(demo.screenshot)}" alt="${escapeHtml(demo.title)} demo preview">${video}</div>
-          <div class="card-body"><h2>${escapeHtml(demo.title)}</h2><p>${escapeHtml(demo.description)}</p><div class="card-actions"><a href="${escapeHtml(liveUri)}">Live demo</a><span>|</span><a href="${escapeHtml(demo.sourceUri)}" target="_blank" rel="noopener noreferrer">Source</a>${buildButton}</div></div>
+          <div class="card-body"><h2>${escapeHtml(demo.title)}</h2><p>${escapeHtml(demo.description)}</p><div class="card-footer"><span class="card-version" aria-label="SuperDoc v${escapeHtml(cardVersions.get(demo.id))}">v${escapeHtml(cardVersions.get(demo.id))}</span><div class="card-actions"><a href="${escapeHtml(liveUri)}">Live demo</a><span>|</span><a href="${escapeHtml(demo.sourceUri)}" target="_blank" rel="noopener noreferrer">Source</a>${buildButton}</div></div></div>
         </div>
       </article>`;
   }).join("\n");

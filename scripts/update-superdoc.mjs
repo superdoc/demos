@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { assertExceptionVersion, dependencyUpdatePlan, readVersionPolicy } from "./demo-version-policy.mjs";
 
@@ -92,4 +92,5 @@ const sdkVersion = await resolveInstalledVersion(sdkEntry, "@superdoc/sdk");
 const landingPath = "dist-landing/index.html";
 const landing = await readFile(landingPath, "utf8");
 await writeFile(landingPath, landing.replace(/SuperDoc v\d+\.\d+\.\d+(?:[-+][\w.-]+)?/g, `SuperDoc v${resolved}`));
+if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `version=${resolved}\n`);
 console.log(`Updated SuperDoc packages: superdoc ${resolved}, @superdoc/react ${reactVersion}, @superdoc/sdk ${sdkVersion}`);

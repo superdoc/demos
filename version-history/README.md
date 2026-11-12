@@ -16,8 +16,8 @@ That command clones the repository, uses pinned pnpm through `npx` to install
 the frozen lockfile, and starts both services together. No API keys or hosted
 services are required for local collaboration and saved versions.
 
-Requires Node 22.12+ and pnpm. The demo pins the published prerelease
-`superdoc@2.30.0-next.4`, which includes the Changes API. No local Orbit build
+Requires Node 22.12+ and pnpm. The demo uses the published stable release
+`superdoc@2.30.0`, which includes the Changes API. No local Orbit build
 is needed. An older build without the API shows a capability error and disables saving.
 
 ```sh
@@ -32,7 +32,7 @@ to collaborate. Saved versions refresh every five seconds.
 
 ### Optional: verify local Orbit changes
 
-Normal development and CI use the published prerelease. To test unpublished
+Normal development and CI use the published stable package. To test unpublished
 engine changes instead, use a clean Orbit checkout containing the API. Install its public and V2
 workspaces with their frozen lockfiles. Set these absolute paths:
 

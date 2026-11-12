@@ -51,7 +51,9 @@
     .card-body { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 164px; padding: 20px; color: #212121; background: #fff; text-align: left; }
     .card-body h2 { margin: 0 0 6px; font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; }
     .card-body p { margin: 0; color: #5a5a61; font-size: 14px; line-height: 1.55; }
-    .card-actions { position: relative; z-index: 3; display: flex; flex-wrap: wrap; justify-content: flex-end; align-self: flex-end; align-items: center; gap: 8px; margin-top: auto; padding-top: 18px; color: #71717a; font-size: 13px; font-weight: 600; }
+    .card-footer { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: auto; padding-top: 18px; }
+    .card-version { flex-shrink: 0; padding-bottom: 8px; color: #71717a; font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 500; white-space: nowrap; }
+    .card-actions { position: relative; z-index: 3; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; color: #71717a; font-size: 13px; font-weight: 600; }
     .card-actions a { color: #1355ff; text-decoration: none; }
     .card-actions a:hover { text-decoration: underline; }
     .build-app-button, .build-command-copy { border: 0; border-radius: 6px; padding: 8px 12px; color: #fff; background: #1355ff; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -86,7 +88,6 @@
       .selector { position: static; display: flex; justify-content: center; margin-bottom: 18px; transform: none; }
       .card-video { display: none; }
       .card-body { min-height: 164px; padding: 20px; }
-      .card-actions { align-self: flex-start; }
       .backdrop-label { display: none; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -102,7 +103,7 @@
   <main class="showcase">
     <a class="site-header" href="https://superdoc.dev" aria-label="Visit SuperDoc">
       <img src="/superdoc-logo.png" alt="">
-      <div class="site-title"><h1>SuperDoc Demos</h1><p class="site-subheading">Open source demos</p><p class="site-version">SuperDoc v2.29.0 (latest)</p></div>
+      <div class="site-title"><h1>SuperDoc Demos</h1><p class="site-subheading">Open source demos</p><p class="site-version">SuperDoc v2.30.0 (latest)</p></div>
     </a>
     <div class="demo-stage">
       <nav class="selector" aria-label="Choose a demo">
