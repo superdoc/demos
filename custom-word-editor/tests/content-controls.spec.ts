@@ -93,9 +93,9 @@ test('inline formatting, font menus, and clear formatting preserve a locked cont
   await expect(sample).toHaveCSS('background-color', 'rgb(255, 242, 0)');
   for (const [name, sign] of [['Subscript', -1], ['Superscript', 1]] as const) {
     await tool(page, name).click();
-    await expect.poll(async () => Math.sign(await sample.evaluate((el) => parseFloat(getComputedStyle(el).verticalAlign)))).toBe(sign);
+    await expect.poll(async () => Math.sign(await sample.evaluate((el) => (parseFloat(getComputedStyle(el).top) || 0)))).toBe(-sign);
     await tool(page, name).click();
-    await expect(sample).toHaveCSS('vertical-align', 'baseline');
+    await expect.poll(async () => sample.evaluate((el) => parseFloat(getComputedStyle(el).top) || 0)).toBe(0);
   }
   await tool(page, 'Clear All Formatting').click();
   await expect(sample).toHaveCSS('color', 'rgb(0, 0, 0)');
@@ -114,16 +114,16 @@ test('paragraph formatting and styles preserve a locked control', async ({ page 
   await tool(page, 'Align left').click();
   await expect(line).toHaveCSS('text-align', 'left');
   await tool(page, 'Increase Indent').click();
-  await expect(line).toHaveCSS('padding-left', '48px');
+  await expect(sample).toHaveCSS('margin-left', '48px');
   await tool(page, 'Increase Indent').click();
-  await expect(line).toHaveCSS('padding-left', '96px');
+  await expect(sample).toHaveCSS('margin-left', '96px');
   await tool(page, 'Decrease Indent').click();
-  await expect(line).toHaveCSS('padding-left', '48px');
+  await expect(sample).toHaveCSS('margin-left', '48px');
   await tool(page, 'Line and Paragraph Spacing').click();
   await menuItem(page, '2').click();
   await expect(line).toHaveCSS('line-height', /[34]\d\./);
   await tool(page, 'Apply heading 1').click();
-  await expect(sample).toHaveAttribute('styleid', 'Heading1');
+  await expect(sample.locator('xpath=ancestor::*[@data-block-id][1]')).toHaveAttribute('data-style-id', 'Heading1');
   await expect(sample).toHaveAttribute('data-lock-mode', 'sdtContentLocked');
   await expect(page.getByRole('status')).toHaveCount(0);
 });

@@ -1,10 +1,6 @@
 [
   {
     "id": "custom-word-editor",
-    "superdocVersionException": {
-      "version": "2.29.0",
-      "reason": "SuperDoc 2.30.0 fails the editor's locked-control Undo, text replacement, and formatting browser checks. Keep the tested 2.29.0 package until these checks pass on a newer stable release, then remove this exception."
-    },
     "buildCommandSource": "custom-word-editor/src/build-app.sh",
     "buildCommandConsumer": "custom-word-editor/src/demo/components/topbar/BuildThis.tsx",
     "buildCommandNote": "Requires Node.js 22.12+, pnpm, and Git. Open the local URL printed by Vite.",
@@ -59,10 +55,6 @@
   },
   {
     "id": "version-history",
-    "superdocVersionException": {
-      "version": "2.30.0-next.4",
-      "reason": "Temporarily requires the Changes API before it is available in a stable release. Remove this exception when moving to stable."
-    },
     "screenshot": "version-history-poster.png",
     "video": "version-history-preview.mp4",
     "title": "Version History",

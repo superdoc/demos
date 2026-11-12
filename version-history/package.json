@@ -22,7 +22,7 @@
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
-    "superdoc": "2.30.0-next.4",
+    "superdoc": "2.30.0",
     "typescript": "latest",
     "vite": "latest",
     "ws": "8.18.3",

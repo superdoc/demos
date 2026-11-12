@@ -138,16 +138,15 @@ Railway. `demos.json` exposes the Version History card in the gallery.
 
 ## Dependency and verification
 
-The demo pins the published prerelease `superdoc@2.30.0-next.4`, which includes
+The demo uses the published stable release `superdoc@2.30.0`, which includes
 the Changes API. Normal development and CI must use the installed npm package;
 a local Orbit build is optional when testing unpublished engine changes. The
 runtime capability check fails clearly on older packages rather than recreating
 hidden suggestions. Do not skip integration tests for an unsupported dependency.
 
-`demos.json` declares a temporary `superdocVersionException` for this exact
-prerelease. Shared-version checks and automatic stable updates honor it; the
-demo still builds, tests and deploys. Move the dependency/lockfile to the common
-stable version and remove the exception once the Changes API is stable.
+The demo participates in shared-version checks and automatic stable updates.
+Keep its dependency and lockfile on the common stable version; it no longer
+requires a `superdocVersionException` in `demos.json`.
 
 Run `pnpm test:server`, `pnpm build`, and `pnpm test` with an API-capable build.
 Tests cover real normal-mode typing, multi-author collaboration, immutable
