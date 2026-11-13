@@ -43,7 +43,7 @@ export function buildOutlineSkeleton(entries: readonly OutlineLabel[]): OutlineS
 /** List native Word headings in document order through the public Document API. */
 export async function readOutline(doc: BrowserDocumentApi): Promise<OutlineEntry[]> {
   const info = await doc.info({});
-  return info.outline.map((item: {
+  return info.outline.filter((item) => item.text.trim()).map((item: {
     nodeId: string;
     text: string;
     level: number;

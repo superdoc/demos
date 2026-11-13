@@ -11,6 +11,32 @@ async function upload(page: Page, fixture: string) {
   await expect(page.getByRole('combobox', { name: 'File', exact: true })).toBeEnabled({ timeout: 30_000 });
 }
 
+test('generated outlines exclude blank headings and page-break placeholders in both modes', async ({ page }) => {
+  await ready(page);
+  await upload(page, 'outline-page-breaks.docx');
+  await page.getByRole('checkbox', { name: 'Outline', exact: true }).check();
+  const panel = page.getByRole('complementary', { name: 'Document outline', exact: true });
+  const labels = panel.locator('.outline-item-label');
+  const headings = [
+    'Overview', 'Goals and outcomes', 'Scope', 'Delivery plan', 'Milestones',
+    'Preparation', 'Notes', 'Decisions', 'Notes', 'Next steps',
+  ];
+  await expect(labels).toHaveText(headings);
+  await page.getByRole('radio', { name: 'Custom', exact: true }).check();
+  await expect(panel.getByRole('button', { name: 'Overview', exact: true })).toBeVisible();
+  await expect.poll(async () => (await labels.allTextContents()).map((text) => text.trim()))
+    .toEqual(expect.arrayContaining(headings));
+  const customLabels = (await labels.allTextContents()).map((text) => text.trim());
+  expect(customLabels.every((text) => text.length > 0)).toBe(true);
+  expect(customLabels).not.toContain('Untitled heading');
+  expect(customLabels).not.toContain('[page break]');
+  expect(customLabels).not.toContain('[image]');
+  expect(customLabels.filter((text) => text === 'Notes')).toHaveLength(2);
+  await page.getByRole('radio', { name: 'Headings', exact: true }).check();
+  await expect(labels).toHaveText(headings);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+});
+
 test('view checkboxes toggle the ruler and outline independently', async ({ page }, testInfo) => {
   await ready(page);
   const ruler = page.getByRole('checkbox', { name: 'Ruler', exact: true });

@@ -83,6 +83,10 @@ pnpm exec playwright show-trace test-results/<test-name>/trace.zip
 native heading hierarchy, duplicate-title navigation, live style/heading edits,
 invisible edge resizing, and refreshing the outline after document replacement.
 The outline DOCX fixtures are synthetic copies of the outline demo's test samples.
+The page-break regression opens `fixtures/outline-page-breaks.docx` and verifies
+that neither Headings nor Custom lists blank headings or layout placeholders,
+while real headings and duplicate titles remain available. Fixture provenance is
+recorded in `fixtures/outline-page-breaks.md`.
 
 The outline checks also cover the Headings/Custom selector, HTML-based title
 detection, repeated-label exclusions, navigation to detected titles, live title
@@ -91,7 +95,10 @@ and document replacement in Custom mode. Returning to Headings verifies that
 custom detection did not create Word headings.
 
 `outline-generation.spec.ts` checks the plain skeleton contract, including duplicate
-labels, empty outlines, and skipped levels. `standalone-outline.spec.ts` copies only
+labels, empty outlines, and skipped levels. It also checks native empty-text
+filtering and runs the HTML parser in Chromium to exclude placeholder-only
+headings and inferred titles while preserving authored labels and block IDs.
+`standalone-outline.spec.ts` copies only
 the renderer, its stylesheet, and plain types into a separate app and verifies
 expansion, ID-based selection, and replacing the supplied skeleton without any
 SuperDoc instance, document, provider, or generation module.
