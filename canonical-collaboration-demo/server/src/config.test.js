@@ -8,6 +8,7 @@ test('uses the checked-in example profile by default', () => {
   assert.equal(config.collaborationApi, 'on');
   assert.equal(config.collaborationClient, 'on');
   assert.equal(config.collaborationAgent, 'on');
+  assert.equal(config.collaborationAgentPresence, 'on');
   assert.deepEqual(config.collaborationAuth, { mode: 'none' });
   assert.equal(config.collaborationStorage, 'memory');
   assert.deepEqual(config.collaborationDocx, { mode: 'off' });

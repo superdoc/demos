@@ -36,3 +36,11 @@ test("a SuperDoc exception does not suppress updates of unrelated dependencies",
   assert.deepEqual(plan.dependencies, { "@superdoc/react": "2.30.0" });
   assert.deepEqual(plan.args, ["install", "@superdoc/react@2.30.0", "--save-exact"]);
 });
+
+test("Next exceptions advance their pins while fixed exceptions remain frozen", () => {
+  const demo = { ...independent, superdocVersionException: { ...independent.superdocVersionException, channel: 'next' } };
+  const plan = dependencyUpdatePlan({ directory: 'version-history', manager: 'npm',
+    dependencies: { superdoc: '2.32.0-next.14' } }, versionExceptions([demo]));
+  assert.deepEqual(plan.args, ['install', 'superdoc@2.32.0-next.14', '--save-exact']);
+  assert.throws(() => versionExceptions([{ ...demo, superdocVersionException: { ...demo.superdocVersionException, channel: 'unknown' } }]), /channel must be next/);
+});

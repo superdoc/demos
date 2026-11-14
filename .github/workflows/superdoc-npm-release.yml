@@ -107,8 +107,10 @@ jobs:
       - name: Record successful production deployment
         env:
           SUPERDOC_VERSION: ${{ needs.check.outputs.version }}
+          DEPLOYED_SOURCE_SHA: ${{ needs.update.outputs.commit_sha || github.event.pull_request.merge_commit_sha || github.sha }}
         run: |
-          node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync(".github/superdoc-release.json", JSON.stringify({ version: process.env.SUPERDOC_VERSION }, null, 2) + "\n")'
+          git fetch --depth=1 origin "$DEPLOYED_SOURCE_SHA"
+          node scripts/record-superdoc-release.mjs
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add .github/superdoc-release.json

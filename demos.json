@@ -30,6 +30,11 @@
     "liveDemoUri": "/collab/",
     "sourceUri": "https://github.com/superdoc/demos/tree/main/canonical-collaboration-demo",
     "packageDirectory": "canonical-collaboration-demo/client",
+    "superdocVersionException": {
+      "version": "2.32.0-next.14",
+      "channel": "next",
+      "reason": "Agent cursor presence follows the latest Next editor, React wrapper, and SDK releases instead of the shared stable release."
+    },
     "versioned": false
   },
   {

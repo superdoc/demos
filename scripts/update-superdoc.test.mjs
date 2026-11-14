@@ -13,7 +13,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
 if (args[0] === 'view') {
-  const version = args[1].startsWith('superdoc@') ? '2.31.0' : '3.0.0';
+  const version = args[1].endsWith('@next')
+    ? (args[1].startsWith('superdoc@') ? '2.32.0-next.14' : '3.1.0-next.14')
+    : (args[1].startsWith('superdoc@') ? '2.31.0' : '3.0.0');
   console.log(JSON.stringify(version));
   process.exit(0);
 }
@@ -42,11 +44,14 @@ test('the stable updater preserves stable/prerelease exceptions and reports the 
   demos.find((demo) => demo.id === 'version-history').superdocVersionException = {
     version: '2.30.0-next.4', reason: 'Waiting for stable Changes API',
   };
+  demos.find((demo) => demo.id === 'canonical-collaboration-demo/client').superdocVersionException = {
+    version: '2.31.0-next.8', channel: 'next', reason: 'Track Next agent cursor support',
+  };
   await writeFile(path.join(root, 'demos.json'), JSON.stringify(demos));
   for (const directory of [...directories, 'canonical-collaboration-demo/server']) {
     await mkdir(path.join(root, directory), { recursive: true });
     const dependencies = directory.endsWith('/server') ? { '@superdoc/sdk': '2.29.0' }
-      : { superdoc: directory === 'version-history' ? '2.30.0-next.4' : '2.29.0' };
+      : { superdoc: directory.endsWith('/client') ? '2.31.0-next.8' : directory === 'version-history' ? '2.30.0-next.4' : '2.29.0' };
     if (directory.endsWith('/client')) dependencies['@superdoc/react'] = '2.29.0';
     await writeFile(path.join(root, directory, 'package.json'), JSON.stringify({ name: directory, dependencies }));
   }
@@ -83,10 +88,17 @@ test('the stable updater preserves stable/prerelease exceptions and reports the 
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(calls.find((call) => call.directory === 'version-history').args, ['install', '--frozen-lockfile']);
   assert.deepEqual(calls.find((call) => call.directory === 'custom-word-editor').args, ['install', '--frozen-lockfile']);
+  assert.deepEqual(calls.find((call) => call.directory === 'canonical-collaboration-demo/server').args, ['install', '@superdoc/sdk@3.1.0-next.14', '--save-exact']);
+  const server = JSON.parse(await readFile(path.join(root, 'canonical-collaboration-demo/server/package.json'), 'utf8'));
+  assert.equal(server.dependencies['@superdoc/sdk'], '3.1.0-next.14');
+  assert.equal(await dependency('canonical-collaboration-demo/client'), '2.32.0-next.14');
+  const updatedDemos = JSON.parse(await readFile(path.join(root, 'demos.json'), 'utf8'));
+  assert.equal(updatedDemos.find((demo) => demo.id === 'canonical-collaboration-demo/client').superdocVersionException.version, '2.32.0-next.14');
+  await writeFile(path.join(root, 'demos.json'), JSON.stringify(updatedDemos));
 
-  delete demos.find((demo) => demo.id === 'version-history').superdocVersionException;
-  delete demos.find((demo) => demo.id === 'custom-word-editor').superdocVersionException;
-  await writeFile(path.join(root, 'demos.json'), JSON.stringify(demos));
+  delete updatedDemos.find((demo) => demo.id === 'version-history').superdocVersionException;
+  delete updatedDemos.find((demo) => demo.id === 'custom-word-editor').superdocVersionException;
+  await writeFile(path.join(root, 'demos.json'), JSON.stringify(updatedDemos));
   update();
   assert.equal(await dependency('version-history'), '2.31.0');
   assert.equal(await readFile(historyLock, 'utf8'), 'updated lockfile');

@@ -27,6 +27,7 @@ function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room |
 
 const params = new URLSearchParams(window.location.search);
 const agentEnabled = import.meta.env.VITE_COLLABORATION_AGENT !== 'off';
+const agentAvailable = import.meta.env.VITE_COLLABORATION_AGENT_AVAILABLE !== 'off';
 const initialRoomId = params.get('room') ?? `room-${crypto.randomUUID()}`;
 if (!params.has('room')) {
   const initialUrl = new URL(window.location.href);
@@ -294,6 +295,7 @@ export default function App() {
           superdoc={superdoc}
           documentKey={room ? `${room.document_id}:${room.generation}` : undefined}
           disabled={!room || busy || referenceBusy}
+          unavailableReason={agentAvailable ? undefined : 'Configure an OpenAI API key in the demo’s .env file and restart to run the agent.'}
           width={chatWidth}
           onWidthChange={setChatWidth}
           onDocumentUpdated={refreshReferences}
