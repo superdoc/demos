@@ -24,6 +24,7 @@ export const config = Object.freeze({
   collaborationApi: componentMode('COLLABORATION_API', process.env.COLLABORATION_API),
   collaborationClient: componentMode('COLLABORATION_CLIENT', process.env.COLLABORATION_CLIENT),
   collaborationAgent: componentMode('COLLABORATION_AGENT', process.env.COLLABORATION_AGENT),
+  collaborationAgentPresence: componentMode('COLLABORATION_AGENT_PRESENCE', process.env.COLLABORATION_AGENT_PRESENCE),
   collaborationAuth: authMode(process.env),
   collaborationStorage: storageMode(process.env.COLLABORATION_STORAGE),
   collaborationDocx: docxMode(process.env),

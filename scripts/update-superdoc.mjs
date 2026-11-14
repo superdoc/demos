@@ -2,7 +2,7 @@ import { appendFile, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { assertExceptionVersion, dependencyUpdatePlan, readVersionPolicy } from "./demo-version-policy.mjs";
 
-const { exceptions } = await readVersionPolicy(process.cwd());
+const { demos, exceptions } = await readVersionPolicy(process.cwd());
 
 const requested = process.argv[2] || "latest";
 const resolveVersion = (dependency, specifier) => {
@@ -26,6 +26,13 @@ const versions = {
   "@superdoc/react": resolveVersion("@superdoc/react", "latest"),
   "@superdoc/sdk": resolveVersion("@superdoc/sdk", "latest"),
 };
+const collaborationDirectory = "canonical-collaboration-demo/client";
+const collaborationException = exceptions.get(collaborationDirectory);
+const collaborationVersions = collaborationException?.channel === "next" ? {
+  superdoc: resolveVersion("superdoc", "next"),
+  "@superdoc/react": resolveVersion("@superdoc/react", "next"),
+  "@superdoc/sdk": resolveVersion("@superdoc/sdk", "next"),
+} : versions;
 const packages = [
   { directory: "rag/apps/web", manifest: "rag/apps/web/package.json", manager: "bun", dependencies: { superdoc: versions.superdoc } },
   { directory: "custom-word-editor", manifest: "custom-word-editor/package.json", manager: "pnpm", dependencies: { superdoc: versions.superdoc } },
@@ -35,13 +42,13 @@ const packages = [
     directory: "canonical-collaboration-demo/client",
     manifest: "canonical-collaboration-demo/client/package.json",
     manager: "npm",
-    dependencies: { superdoc: versions.superdoc, "@superdoc/react": versions["@superdoc/react"] },
+    dependencies: { superdoc: collaborationVersions.superdoc, "@superdoc/react": collaborationVersions["@superdoc/react"] },
   },
   {
     directory: "canonical-collaboration-demo/server",
     manifest: "canonical-collaboration-demo/server/package.json",
     manager: "npm",
-    dependencies: { "@superdoc/sdk": versions["@superdoc/sdk"] },
+    dependencies: { "@superdoc/sdk": collaborationVersions["@superdoc/sdk"] },
   },
 ];
 
@@ -49,7 +56,7 @@ for (const entry of packages) {
   const manifest = JSON.parse(await readFile(entry.manifest, "utf8"));
   assertExceptionVersion(exceptions, entry.directory, manifest.dependencies?.superdoc);
   const exception = exceptions.get(entry.directory);
-  if (exception) console.log(`Keeping ${exception.id} on ${exception.version}: ${exception.reason}`);
+  if (exception) console.log(`${exception.channel === "next" ? "Advancing Next release for" : "Keeping pinned"} ${exception.id}: ${exception.reason}`);
   const plan = dependencyUpdatePlan(entry, exceptions);
   for (const [name, version] of Object.entries(plan.dependencies)) manifest.dependencies[name] = version;
   await writeFile(entry.manifest, `${JSON.stringify(manifest, null, manifest.name === "@docrag/web" ? "\t" : 2)}\n`);
@@ -57,7 +64,14 @@ for (const entry of packages) {
   const result = spawnSync(entry.manager, plan.args, { cwd: entry.directory, stdio: "inherit" });
   if (result.status !== 0) process.exit(result.status ?? 1);
 
+  if (exception?.channel === "next") {
+    exception.version = manifest.dependencies.superdoc;
+    demos.find((demo) => demo.packageDirectory === entry.directory).superdocVersionException.version = exception.version;
+  }
+
 }
+
+if (collaborationException?.channel === "next") await writeFile("demos.json", `${JSON.stringify(demos, null, 2)}\n`);
 
 const resolveInstalledVersion = async (entry, dependency) => {
   const candidates = [

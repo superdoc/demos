@@ -60,7 +60,8 @@ if (clientMode === 'on' && apiMode === 'off') {
 if (agentMode === 'on' && !environment.OPENAI_API_KEY) {
   throw new Error('Add OPENAI_API_KEY to .env, or set COLLABORATION_AGENT=off.');
 }
-environment.VITE_COLLABORATION_AGENT = agentMode;
+environment.VITE_COLLABORATION_AGENT ??= agentMode;
+environment.VITE_COLLABORATION_AGENT_AVAILABLE = agentMode;
 
 const services = [
   {

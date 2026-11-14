@@ -11,3 +11,4 @@ canonical-collaboration-demo/client/package-lock.json
 canonical-collaboration-demo/server/package.json
 canonical-collaboration-demo/server/package-lock.json
 dist-landing/index.html
+demos.json

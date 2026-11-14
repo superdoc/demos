@@ -1,6 +1,6 @@
 import { appendFile, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { assertExceptionVersion, readVersionPolicy } from "./demo-version-policy.mjs";
+import { assertExceptionVersion, nextDependencyTargets, readVersionPolicy } from "./demo-version-policy.mjs";
 
 export function stableVersion(version) {
   return typeof version === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version);
@@ -26,6 +26,22 @@ export function decideRelease({ latest, deployed, installed }) {
     return { update: false, reason: "This version has already been deployed" };
   }
   return { update: true, reason: deployed === null ? "No successful automated deployment recorded" : "New stable npm release" };
+}
+
+async function changedNextDependencies({ root, demos, deployedNext, fetchImpl }) {
+  const changed = await Promise.all(nextDependencyTargets(demos).map(async ({ directory, dependency }) => {
+    const response = await fetchImpl(`https://registry.npmjs.org/${encodeURIComponent(dependency)}/next`, {
+      signal: AbortSignal.timeout(30_000), headers: { accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`npm Next registry returned HTTP ${response.status}`);
+    const version = (await response.json()).version;
+    if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+      throw new Error(`Invalid Next version for ${dependency}`);
+    }
+    const manifest = JSON.parse(await readFile(`${root}/${directory}/package.json`, "utf8"));
+    return manifest.dependencies?.[dependency] !== version || deployedNext?.[directory]?.[dependency] !== version;
+  }));
+  return changed.some(Boolean);
 }
 
 export async function checkRelease({ env = process.env, root = process.cwd(), fetchImpl = fetch } = {}) {
@@ -63,9 +79,14 @@ export async function checkRelease({ env = process.env, root = process.cwd(), fe
     latest = (await response.json()).version;
   }
   if (simulation && !stableVersion(latest)) throw new Error("Simulated npm latest must be an exact stable version");
-  const decision = deployCurrent
+  let decision = deployCurrent
     ? { update: true, reason: "Deploy current source regardless of the previous version marker" }
     : decideRelease({ latest, deployed, installed });
+  if (!deployCurrent && !simulation && !decision.update && stableVersion(latest) && latest === deployed
+    && installed.every((version) => compareVersions(version, latest) <= 0)
+    && await changedNextDependencies({ root, demos, deployedNext: state.next, fetchImpl })) {
+    decision = { update: true, reason: "New npm Next release for an exception demo" };
+  }
   const result = { ...decision, version: latest, dry_run: dryRun, simulation };
   if (env.GITHUB_OUTPUT) {
     await appendFile(env.GITHUB_OUTPUT, `update=${result.update}\nversion=${stableVersion(latest) ? latest : ""}\ndry_run=${dryRun}\ndeploy_current=${deployCurrent}\n`);

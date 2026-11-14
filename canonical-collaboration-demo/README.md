@@ -2,6 +2,18 @@
 
 A small reference application showing a browser user and a server-side Node agent editing the same SuperDoc document. Everything runs locally, and model requests go directly to OpenAI with your API key.
 
+## Agent cursor presence
+
+The demo follows the published Next channel: `@superdoc/sdk` 2.29.0-next.14, `superdoc` 2.32.0-next.14, and `@superdoc/react` 2.27.0-next.14. Its `superdocVersionException` in `demos.json` declares `channel: "next"`, so the updater advances all three packages from npm's `next` tags and keeps the manifest's exact editor pin in sync. Other demos continue following stable or their existing fixed exceptions. Run the normal `make dev` command; no Orbit checkout or local package build is required.
+
+With both `COLLABORATION_AGENT=on` and `COLLABORATION_AGENT_PRESENCE=on`, the backend SDK session publishes a purple **Agent** cursor through native collaboration presence. The SDK moves it after successful edits, including each incremental text update while the model streams. Every browser in the room sees the cursor. The backend identity stays connected while the room is open; the toolbar's connected-user count continues to count browser users. Closing or deleting the room removes the agent's presence. With `COLLABORATION_AGENT=off`, the backend does not publish agent presence.
+
+Presence is configured in `server/src/rooms/store.js` through the SDK's `collaboration.presence` option. The reference integration receives that configuration through its existing document-open boundary.
+
+`npm run test:browser --prefix client` starts the real demo backend and a built frontend with a local OpenAI-compatible stream. It checks cursor movement during direct/tracked streaming in two browser clients, human-user counts, and presence removal after document deletion. Run `make install` and `npm exec --prefix client -- playwright install chromium` first. The scenario builds its own frontend in the test output directory and needs no model key. It uses ports 18000 and 18173; the normal development server can keep running.
+
+To preview the agent panel without a model key, run `COLLABORATION_AGENT=off VITE_COLLABORATION_AGENT=on make dev`. You can compose a prompt; Run agent remains disabled with a configuration message until the backend agent is enabled.
+
 ## Architecture
 
 ```mermaid

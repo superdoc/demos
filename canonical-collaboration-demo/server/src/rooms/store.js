@@ -160,6 +160,9 @@ export class RoomStore {
           documentId,
           roomMode,
           syncTimeoutMs: 90_000,
+          ...(config.collaborationAgent === 'on' && config.collaborationAgentPresence === 'on'
+            ? { presence: { name: 'Agent', userId: 'document-service@demo.local', color: '#8B5CF6' } }
+            : {}),
         },
         collaborationAuth: { type: 'token', token: this.#createServiceToken(documentId) },
       });

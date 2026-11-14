@@ -3,7 +3,9 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { execFileSync } from 'node:child_process';
 import { checkRelease, decideRelease } from "./check-superdoc-release.mjs";
+import { recordRelease } from './record-superdoc-release.mjs';
 
 const installed = ["2.24.0", "2.24.0", "2.24.0", "2.24.0"];
 
@@ -152,4 +154,59 @@ test("removing an exception restores strict parity; changing its pinned version 
   delete demos.find((demo) => demo.id === 'version-history').superdocVersionException;
   await writeFile(`${root}/demos.json`, JSON.stringify(demos));
   await assert.rejects(checkRelease({ root, env }), /matching exact stable/);
+});
+
+test("scheduled checks notice Next-only SDK releases without changing the shared stable version", async (t) => {
+  const root = await fixture(t);
+  const demos = JSON.parse(await readFile(`${root}/demos.json`, 'utf8'));
+  demos.find((demo) => demo.packageDirectory === 'canonical-collaboration-demo/client').superdocVersionException = {
+    version: '2.32.0-next.14', channel: 'next', reason: 'Follow Next agent features',
+  };
+  await writeFile(`${root}/demos.json`, JSON.stringify(demos));
+  await writeFile(`${root}/canonical-collaboration-demo/client/package.json`, JSON.stringify({ dependencies: {
+    superdoc: '2.32.0-next.14', '@superdoc/react': '2.27.0-next.14',
+  } }));
+  await mkdir(`${root}/canonical-collaboration-demo/server`);
+  await writeFile(`${root}/canonical-collaboration-demo/server/package.json`, JSON.stringify({ dependencies: {
+    '@superdoc/sdk': '2.29.0-next.14',
+  } }));
+  const registry = {
+    '/superdoc/latest': '2.24.0', '/superdoc/next': '2.32.0-next.14',
+    '/@superdoc/react/next': '2.27.0-next.14', '/@superdoc/sdk/next': '2.29.0-next.14',
+  };
+  const fetchImpl = async (url) => {
+    const version = registry[decodeURIComponent(new URL(url).pathname)];
+    assert.ok(version, `Unexpected registry URL: ${url}`);
+    return Response.json({ version });
+  };
+  const recorded = await recordRelease({ root, version: '2.24.0' });
+  assert.equal(recorded.next['canonical-collaboration-demo/server']['@superdoc/sdk'], '2.29.0-next.14');
+  assert.equal((await checkRelease({ root, env: {}, fetchImpl })).update, false);
+  registry['/@superdoc/sdk/next'] = '2.29.0-next.15';
+  const result = await checkRelease({ root, env: {}, fetchImpl });
+  assert.equal(result.update, true);
+  assert.equal(result.version, '2.24.0');
+  assert.match(result.reason, /Next release/);
+  await writeFile(`${root}/canonical-collaboration-demo/server/package.json`, JSON.stringify({ dependencies: {
+    '@superdoc/sdk': '2.29.0-next.15',
+  } }));
+  assert.equal((await checkRelease({ root, env: {}, fetchImpl })).update, true, 'A failed Next deployment must retry after its package pins were committed.');
+  await recordRelease({ root, version: '2.24.0' });
+  assert.equal((await checkRelease({ root, env: {}, fetchImpl })).update, false);
+  await assert.rejects(checkRelease({ root, env: {}, fetchImpl: async (url) => url.endsWith('/latest')
+    ? Response.json({ version: '2.24.0' }) : new Response('unavailable', { status: 503 }) }), /Next registry returned HTTP 503/);
+  const simulation = await checkRelease({ root, env: { SIMULATED_LATEST: '2.24.0' },
+    fetchImpl: () => assert.fail('Simulation must not query Next tags') });
+  assert.equal(simulation.simulation, true);
+  assert.equal(simulation.update, false);
+
+  execFileSync('git', ['init', '--quiet'], { cwd: root });
+  execFileSync('git', ['add', '.'], { cwd: root });
+  execFileSync('git', ['-c', 'user.name=Release test', '-c', 'user.email=release@test.invalid', 'commit', '--quiet', '-m', 'Test deployed source'], { cwd: root });
+  const sourceRef = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  await writeFile(`${root}/canonical-collaboration-demo/server/package.json`, JSON.stringify({ dependencies: {
+    '@superdoc/sdk': '2.29.0-next.16',
+  } }));
+  const exactState = await recordRelease({ root, version: '2.24.0', sourceRef });
+  assert.equal(exactState.next['canonical-collaboration-demo/server']['@superdoc/sdk'], '2.29.0-next.15', 'Record the deployed commit rather than a newer main checkout.');
 });

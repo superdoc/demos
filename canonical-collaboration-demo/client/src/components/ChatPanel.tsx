@@ -9,6 +9,7 @@ type ChatPanelProps = {
   hidden?: boolean;
   roomId: string;
   disabled: boolean;
+  unavailableReason?: string;
   width: number;
   onWidthChange: (width: number) => void;
   reservedWidth?: number;
@@ -64,7 +65,7 @@ function JobStatus({ job }: { job: Job }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false, superdoc, documentKey }: ChatPanelProps) {
+export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false, superdoc, documentKey }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
   const [selectedText, setSelectedText] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(true);
@@ -200,7 +201,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
       return;
     }
     const message = prompt.trim();
-    if (!message) return;
+    if (disabled || unavailableReason || !message) return;
     setError(undefined);
     submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
     submittedPromptsRef.current.push(message);
@@ -254,6 +255,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
       <header>
         <h2>Document agent</h2>
         <p>Ask the agent to edit the current document.</p>
+        {unavailableReason && <p role="status">{unavailableReason}</p>}
       </header>
 
       <div ref={historyRef} className="chat-history">
@@ -317,7 +319,7 @@ export function ChatPanel({ roomId, disabled, width, onWidthChange, reservedWidt
           disabled={disabled || Boolean(activeJob)}
         />
         {error && <p className="error">{error}</p>}
-        <button className={activeJob ? 'stop-agent' : undefined} disabled={disabled || (!activeJob && !prompt.trim())}>
+        <button className={activeJob ? 'stop-agent' : undefined} disabled={disabled || (!activeJob && (Boolean(unavailableReason) || !prompt.trim()))}>
           {activeJob ? 'Stop agent' : 'Run agent'}
         </button>
       </form>
