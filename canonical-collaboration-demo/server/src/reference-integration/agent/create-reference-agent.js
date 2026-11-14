@@ -64,8 +64,8 @@ export function createReferenceAgent(documents, { client, model = 'gpt-5-mini', 
         };
         toolCalls.push(toolCall);
         const outcome = await adapter.execute(call.function.name, call.function.arguments, {
-          dispatch: (tool, args) => streamed.writers.has(call.id)
-            ? streamed.writers.get(call.id).commit(args) : document.dispatch(tool, args),
+          dispatch: (tool, args, options) => streamed.writers.has(call.id)
+            ? streamed.writers.get(call.id).commit(args) : document.dispatch(tool, args, options),
           onStarted(args) {
           if (typeof args.action === 'string') toolCall.action = args.action;
           onToolCall({ ...toolCall });

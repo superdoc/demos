@@ -1,4 +1,6 @@
 export function toolFailed(result) {
+  if (typeof result?.total === 'number' && result.completed !== result.total) return true;
+  if (Array.isArray(result?.receipts) && result.receipts.some(receipt => receipt.ok === false || toolFailed(receipt.result))) return true;
   return result?.ok === false || result?.success === false || result?.result?.success === false
     || result?.status === 'failed' || Boolean(result?.error);
 }
