@@ -13,16 +13,17 @@ agent framework, model provider, UI, collaboration transport, and document ident
 
 | Part | Maintained source | What it contributes |
 | --- | --- | --- |
-| Native SuperDoc APIs | `server/src/reference-integration/native/`, native handle calls in `reference-document.js`, and `client/src/reference-integration/native/` | SDK session opening, core inspection/read/dispatch, save/replace, browser selection and viewport geometry |
-| Custom tools | `server/src/reference-integration/tools/` | `superdoc_references` for source CRUD, `superdoc_insert_citation`, `superdoc_insert_footnote`, and `superdoc_bibliographies`; schemas and semantic-anchor contracts |
+| Native SuperDoc APIs | `server/src/reference-integration/native/`, native handle calls in `reference-document.js`, and `client/src/reference-integration/native/` | SDK session opening, Full inspection/read/API dispatch, save/replace, browser selection and viewport geometry |
+| Custom tools | `server/src/reference-integration/tools/` | `superdoc_stream_text` only; source, citation, footnote and bibliography operations use the SDK Full toolkit |
 | Workarounds/fixes | `server/src/reference-integration/workarounds/` and browser compatibility components/helpers in `client/src/reference-integration/` | Stable imported sources, exact anchor resolution/verification, field/note insertion, rendering and deletion, XML repair, review labels, and tracked-typing correction |
 
 `ReferenceDocument` connects the native operations to the custom tools and fixes.
 `agent/reference-agent-adapter.js` supplies the policy needed to run them through an
 existing agent: fresh source context, trusted change mode, error handling, bounded
 repeated retries, and reporting based on successful receipts. These safeguards belong
-to the reusable integration. Calling only the native citation/footnote methods or
-copying only tool schemas would omit the fixes that made this demo work.
+to the reusable integration. Agent citation/footnote insertion dispatches through the
+SDK Full toolkit; the toolbar keeps its existing snapshot insertion and compatibility
+fixes. Copying only tool schemas would omit the remaining integration safeguards.
 
 Use the source directories in place when they share a repository, or bring the two
 source directories into the corresponding target app areas with their internal layout
@@ -33,7 +34,7 @@ adapters are examples; its room server, chat, routes, and model runner are not r
 
 ## Minimal server adapter
 
-The target app supplies its existing SDK client/core toolkit, one live document,
+The target app supplies its existing SDK client and Full toolkit, one live document,
 current prompt, and trusted tracked/direct mode. The SDK document must participate
 in the same collaboration session as the app's editor.
 
@@ -44,19 +45,23 @@ the existing SDK client. This runs the known import repairs before opening the n
 handle, then returns the reference-aware document wrapper:
 
 ```js
+import { createAgentToolkit } from '@superdoc/sdk';
 import { openReferenceDocument, createReferenceToolkit, createReferenceAgentAdapter }
   from './reference-integration/index.js';
+
+// Requires @superdoc/sdk 2.26.0 or later. Preserve the app's provider.
+const agentToolkit = await createAgentToolkit({ provider: 'openai', preset: 'full' });
 
 // These values come from the target app's existing document lifecycle.
 const document = await openReferenceDocument({
   client: sdkClient,
-  toolkit: coreToolkit,
+  toolkit: agentToolkit,
   id: documentId,
   filename,
   path: workingPath,
   collaboration,
 });
-const referenceToolkit = createReferenceToolkit(coreToolkit);
+const referenceToolkit = createReferenceToolkit(agentToolkit);
 ```
 
 The import path above assumes the server source directory was brought into the app
@@ -92,10 +97,10 @@ agent framework:
 
 | Adapter output | Host wiring |
 | --- | --- |
-| `tools` | Register alongside the app's other tools. Includes native core tools and the four custom tools. Map provider envelopes if needed; preserve schemas and validation. |
+| `tools` | Register alongside the app's other tools. Includes the four Full preset tools plus `superdoc_stream_text` only. Map provider envelopes if needed; preserve schemas and validation. |
 | `systemPrompt` | Append to the existing system instructions. Includes native toolkit guidance, reference instructions, and the request's mode policy. |
 | `contextMessage` | Add to this request before the user's prompt. Contains the fresh source library, stable IDs, bibliography style, and revision. Treat metadata as data. |
-| `initialToolChoice` | Optional provider-specific first-turn selection for an explicit bibliography-creation request. Translate its function name into the framework's selection mechanism. |
+| `initialToolChoice` | Optional provider-specific first-turn API-search selection for an explicit bibliography-creation request. Translate its function name into the framework's selection mechanism. |
 | `execute(toolName, arguments)` | Route registered native/reference calls here; accepts a JSON argument string or object. Other application tools retain their existing dispatch. |
 | `interruptionReport('turn_limit')` | Use when the host reaches its turn limit; reports actual completed work rather than intermediate model claims. |
 
@@ -116,10 +121,9 @@ not be retried as though it failed. Reject cancelled runs in the host before dis
 
 Create a new adapter for every prompt so source context and receipt/retry state are
 fresh. Enforce per-document job exclusivity through the app's existing coordination.
-Mode enforcement happens inside `execute`, overriding model-supplied modes for native
-text mutations and citation/footnote insertion. Source metadata CRUD is direct.
-Bibliography mutation currently requires direct mode and fails with
-`BIBLIOGRAPHY_REQUIRES_DIRECT` in Reviewing mode. The optional `editingModeHint` adapts
+Mode enforcement starts inside `execute` and is enforced again at native dispatch,
+overriding model-supplied modes for document edits. Source metadata CRUD is direct. Full API calls in Reviewing mode carry the SDK's tracked-mode enforcement through dispatch, including batches. Prose insertion and replacement still use the streaming tool; direct API calls cannot bypass that policy. If supplying a custom dispatch callback to execute, forward its third options argument to document.dispatch(tool, args, options). Incomplete API batches are failures, even when earlier entries succeeded.
+Bibliography mutation requires direct mode; the SDK rejects it in Reviewing mode. The optional `editingModeHint` adapts
 that error's UI guidance to the target application; never silently switch user mode.
 
 `createReferenceAgent` is an optional example runner, not a requirement. It uses the
@@ -128,19 +132,39 @@ agent rather than replacing it with this demo's OpenAI chat-completions loop.
 
 ### 3. Keep targeting and receipt safeguards
 
-The agent uses exact semantic anchors: `sectionEnd` for a named section ending,
-`afterText` for an exact phrase, or `paragraphEnd` with an inspected block ID. Keep
-strict schemas and nullable unused scopes. The host resolves current visible UTF-16
-positions and verifies the inserted field/note before applying the snapshot. Never
-let the model calculate character offsets or invent source IDs.
+The agent uses the SDK Full toolkit for citation and footnote insertion. For footnotes,
+use `superdoc_perform_action` with `action: 'insert_footnote'` and inspected `anchorText`.
+For citations, discover the native insertion schema with `superdoc_api_search`, then
+call it with `superdoc_api_call`. Follow the SDK's targeting contract, inspect the
+requested location, copy real source IDs, and verify the native result. The removed
+custom insertion tools' semantic-anchor schemas and placement receipts do not apply
+to these agent calls. SDK 2.29.0-next.14 marks citation insertion as direct-only: Reviewing
+mode must refuse it. Footnote insertion supports tracked mode.
 
-Creating references without insertion must call `superdoc_references` to save metadata,
+The reference library reads the authoritative native source list. Agents use native
+`doc.citations.sources.*` operations through `superdoc_api_search` and
+`superdoc_api_call`. The app's shared dispatcher enforces edit-mode and cited-source
+deletion policies, serializes reference mutations, and refreshes formatted field
+caches after updates/removals. These behaviors are not separate model tools.
+Bibliography operations likewise use native `doc.citations.bibliography.*`; app-side
+CSL formatting and complex-field normalization remain internal compatibility steps.
+
+At open/import, `native/reference-sources.js` reconciles preserved Word sources into
+the native catalog, preferring persisted IDs and using unambiguous metadata matches
+for older documents. Missing sources are inserted through the native API. A persisted
+Word-tag/native-ID mapping prevents duplicate imports and preserves distinct sources
+with identical metadata. Original Word tags and opaque XML are retained for export;
+only current native records supply the live list and supported field values. Source
+type changes are unsupported by native update. Existing citation instructions are
+mapped to native IDs while their displayed text and revision markup are preserved.
+
+Creating references without insertion calls native `doc.citations.sources.insert` to save metadata,
 without changing body text. Inserting citations then uses those returned source IDs.
 Footnote text is exact; do not type manual superscripts, plain-text parenthetical
-citations, or fake note sections as fallback behavior. Keep the prompt instructions,
-validators, deterministic resolver, and verification receipts connected.
+citations, or fake note sections as fallback behavior. Report native API failures.
+The toolbar retains its selection-based snapshot insertion paths and their guards.
 
-The wrapper serializes its reference mutations and checks revisions before replacement.
+The wrapper serializes reference metadata mutations, performs native source CRUD, and checks revisions before compatibility snapshot replacement.
 The final check/replacement is not atomic compare-and-swap; browser edits can race it.
 Use the app's write coordination if preventing that race is required. The integration
 does not supply a distributed lock or durable storage. The host authorizes document
@@ -195,14 +219,14 @@ Empty bibliography cleanup adds `onlyIfEmpty: true` on the host after normalizin
 `delete` arguments; this guard is not an agent argument. Return `success`, `removed`,
 and optional `caret`. Preserve document identity/generation checks and refuse conflicting
 agent/reference work. Toolbar selections must retain story, coordinate space, and
-UTF-16 offsets; semantic agent anchors must not be converted into guessed selections.
+UTF-16 offsets. Agent insertion follows the SDK Full toolkit targeting contract.
 
 ## Versions, assets, and verification
 
-Validated baseline: server `@superdoc/sdk` 2.15.0; browser `superdoc` 2.18.0, React 19;
+The demo follows the published Next channel for agent presence. Current pinned packages: server `@superdoc/sdk` 2.29.0-next.14; browser `superdoc` 2.32.0-next.14, React 19;
 JSZip 3.10.1; citeproc 2.4.63; `@xmldom/xmldom` 0.9.12. Server modules are ESM and
 require Node 22+; direct TypeScript tests use Node 24. The demo mounts its editor with
-`@superdoc/react` 2.13.0; browser adapters require only the SuperDoc instance. Keep
+`@superdoc/react` 2.27.0-next.14; browser adapters require only the SuperDoc instance. Keep
 `server/src/reference-integration/assets/csl/` and its attribution/license links with
 the renderer. The [inventory](reference-integration.md) records each fix's reason and
 removal condition. Revalidate fixes individually when changing SuperDoc versions.
@@ -227,3 +251,5 @@ Word export and a second collaborator. If interactive fixes are mounted, also ve
 final-character citation deletion, empty-bibliography cleanup, footnote body navigation,
 and partial-word replacement after earlier tracked edits at slow and rapid typing rates.
 Keep customer evidence outside source control.
+
+For UI synchronization, subscribe to the host collaboration change stream and debounce native catalog reads. Metadata-only source edits may not emit editor text-transaction events. The demo exposes a room-scoped `/document-events` invalidation stream and reads the native API on each refresh. Unsubscribe and cancel pending refreshes on document changes/unmount. No second app-owned source store is needed.

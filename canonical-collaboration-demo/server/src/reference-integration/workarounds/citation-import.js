@@ -9,6 +9,8 @@ const relationshipsNS = 'http://schemas.openxmlformats.org/package/2006/relation
 const officeRelationships = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
 const propertiesNS = 'http://schemas.openxmlformats.org/officeDocument/2006/customXml';
 const contentTypesNS = 'http://schemas.openxmlformats.org/package/2006/content-types';
+const aliasesPath = 'customXml/superdoc-reference-aliases.xml';
+const aliasesNS = 'https://superdoc.dev/demos/reference-aliases';
 const serializer = new XMLSerializer();
 const sourceTypes = {
   Book: 'book', BookSection: 'book', JournalArticle: 'journalArticle', ArticleInAPeriodical: 'journalArticle',
@@ -61,6 +63,20 @@ async function catalogs(zip) {
   return result;
 }
 
+function readSourceRecord(source) {
+  const tag = text(source, 'Tag');
+  const fields = {};
+  for (const [xmlName, name] of Object.entries(fieldNames)) {
+    const value = text(source, xmlName);
+    if (value) fields[name] = value;
+  }
+  fields.authors = people(source, 'Author');
+  fields.editor = people(source, 'Editor');
+  fields.translator = people(source, 'Translator');
+  return { tag, type: sourceTypes[text(source, 'SourceType')] ?? 'misc', fields,
+    xml: serializer.serializeToString(source) };
+}
+
 export async function readCitationImport(bytes) {
   const zip = await JSZip.loadAsync(bytes);
   const records = new Map();
@@ -74,23 +90,34 @@ export async function readCitationImport(bytes) {
     for (const source of children(root, bibliographyNS, 'Source')) {
       const tag = text(source, 'Tag');
       if (!tag) continue;
-      const fields = {};
-      for (const [xmlName, name] of Object.entries(fieldNames)) {
-        const value = text(source, xmlName);
-        if (value) fields[name] = value;
-      }
-      fields.authors = people(source, 'Author');
-      fields.editor = people(source, 'Editor');
-      fields.translator = people(source, 'Translator');
-      const record = { tag, type: sourceTypes[text(source, 'SourceType')] ?? 'misc', fields,
-        xml: serializer.serializeToString(source) };
+      const record = readSourceRecord(source);
+      const { fields } = record;
       if (records.has(tag) && JSON.stringify(records.get(tag).fields) !== JSON.stringify(fields)) {
         throw new Error(`The document contains conflicting reference records for "${tag}".`);
       }
       records.set(tag, record);
     }
   }
-  return { records: [...records.values()], template, style };
+  const aliases = {};
+  const preservedSources = {};
+  const aliasesFile = zip.file(aliasesPath);
+  if (aliasesFile) {
+    const root = parse(await aliasesFile.async('string')).documentElement;
+    if (root.namespaceURI !== aliasesNS || root.localName !== 'referenceAliases') throw new Error('Invalid reference source alias metadata.');
+    for (const entry of children(root, aliasesNS, 'source')) {
+      const tag = entry.getAttribute('wordTag');
+      const sourceId = entry.getAttribute('sourceId');
+      if (!tag || !sourceId || (Object.hasOwn(aliases, tag) && aliases[tag] !== sourceId)) throw new Error('Conflicting reference source alias metadata.');
+      Object.defineProperty(aliases, tag, { value: sourceId, enumerable: true, configurable: true });
+      const xml = children(entry, aliasesNS, 'wordSource')[0]?.textContent;
+      if (xml) {
+        const source = parse(xml).documentElement;
+        if (source.namespaceURI !== bibliographyNS || source.localName !== 'Source' || text(source, 'Tag') !== tag) throw new Error('Invalid preserved Word source metadata.');
+        Object.defineProperty(preservedSources, sourceId, { value: readSourceRecord(source), enumerable: true, configurable: true });
+      }
+    }
+  }
+  return { records: [...records.values()], template, style, aliases, preservedSources };
 }
 
 function element(document, namespace, name, attributes = {}) {
@@ -99,9 +126,14 @@ function element(document, namespace, name, attributes = {}) {
   return result;
 }
 
-function remapInstruction(instruction, aliases) {
+function remapCitationInstruction(instruction, aliases) {
   if (!/^\s*CITATION\s/i.test(instruction)) return instruction;
-  return instruction.replace(/"[^"]*"|\S+/g, (token) => {
+  let index = 0;
+  let sourceNext = false;
+  return instruction.replace(/"[^"]*"|\S+/g, token => {
+    const isSource = index++ === 1 || sourceNext;
+    sourceNext = token === '\\m';
+    if (!isSource) return token;
     const quoted = token.startsWith('"');
     const id = quoted ? token.slice(1, -1) : token;
     const tag = aliases.get(id);
@@ -163,49 +195,37 @@ export async function preserveCitationImport(outputPath, imported, aliases, { re
     const document = parse(xml);
     for (const field of Array.from(document.getElementsByTagNameNS(wordNS, 'fldSimple'))) {
       const instruction = field.getAttributeNS(wordNS, 'instr');
-      field.setAttributeNS(wordNS, 'w:instr', remapInstruction(instruction, aliases));
+      field.setAttributeNS(wordNS, 'w:instr', remapCitationInstruction(instruction, aliases));
     }
-    for (const instruction of Array.from(document.getElementsByTagNameNS(wordNS, 'instrText'))) {
-      instruction.textContent = remapInstruction(instruction.textContent, aliases);
+    const stack = [];
+    const flush = field => {
+      if (!field?.nodes.length) return;
+      const original = field.nodes.map(node => node.textContent).join('');
+      const remapped = remapCitationInstruction(original, aliases);
+      if (remapped !== original) {
+        field.nodes[0].textContent = remapped;
+        field.nodes[0].setAttributeNS('http://www.w3.org/XML/1998/namespace', 'xml:space', 'preserve');
+        for (const node of field.nodes.slice(1)) node.textContent = '';
+      }
+      field.nodes = [];
+    };
+    for (const node of Array.from(document.getElementsByTagNameNS(wordNS, '*'))) {
+      if (node.localName === 'fldChar') {
+        const type = node.getAttributeNS(wordNS, 'fldCharType');
+        if (type === 'begin') stack.push({ nodes: [], separated: false });
+        else if (type === 'separate' && stack.length) { flush(stack.at(-1)); stack.at(-1).separated = true; }
+        else if (type === 'end') flush(stack.pop());
+      } else if (['instrText', 'delInstrText'].includes(node.localName)) {
+        if (stack.length && !stack.at(-1).separated) stack.at(-1).nodes.push(node);
+        else if (!stack.length) node.textContent = remapCitationInstruction(node.textContent, aliases);
+      }
     }
     zip.file(file.name, serializer.serializeToString(document));
   }
   await fs.writeFile(outputPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }
 
-function sourceIsCited(document, tag) {
-  const instructions = Array.from(document.getElementsByTagNameNS(wordNS, 'fldSimple')).map((field) => field.getAttributeNS(wordNS, 'instr'));
-  const stack = [];
-  for (const node of Array.from(document.getElementsByTagNameNS(wordNS, '*'))) {
-    if (node.localName === 'fldChar') {
-      const type = node.getAttributeNS(wordNS, 'fldCharType');
-      if (type === 'begin') stack.push('');
-      else if (type === 'end' && stack.length) instructions.push(stack.pop());
-    } else if (node.localName === 'instrText' && stack.length) stack[stack.length - 1] += node.textContent;
-  }
-  return instructions.some((instruction) => {
-    const tokens = instruction.match(/"[^"]*"|\S+/g) ?? [];
-    return /^CITATION$/i.test(tokens[0] ?? '') && tokens.some((token, index) =>
-      (index === 1 || tokens[index - 1] === '\\m') && token.replace(/^"|"$/g, '') === tag);
-  });
-}
-
-export async function mutateReferenceSnapshot(outputPath, { action, sourceId, type, fields = {} }) {
-  const imported = await readCitationImport(await fs.readFile(outputPath));
-  const previous = imported.records.find((record) => record.tag === sourceId);
-  if (action !== 'create' && !previous) throw new Error('Reference not found. Read the current reference library.');
-  if (action === 'delete') {
-    const zip = await JSZip.loadAsync(await fs.readFile(outputPath));
-    for (const file of zip.file(/^word\/(?!_rels\/).*\.xml$/)) {
-      const xml = await file.async('string');
-      if (/CITATION/i.test(xml) && sourceIsCited(parse(xml), sourceId)) throw new Error('This reference is still cited in the document. Remove its citation fields before deleting the saved source.');
-    }
-    imported.records = imported.records.filter((record) => record.tag !== sourceId);
-    await preserveCitationImport(outputPath, imported, new Map(), { removedTags: new Set([sourceId]) });
-    return { sourceId };
-  }
-
-  const tag = previous?.tag ?? `ref_${randomUUID().replaceAll('-', '')}`;
+export function referenceSourceRecord({ tag, type, fields = {} }, previous) {
   const document = parse(previous?.xml || `<b:Source xmlns:b="${bibliographyNS}"/>`);
   const root = document.documentElement;
   function set(parent, name, value) {
@@ -217,7 +237,7 @@ export async function mutateReferenceSnapshot(outputPath, { action, sourceId, ty
     return child;
   }
   set(root, 'Tag', tag);
-  if (type || !previous) {
+  if ((type && type !== previous?.type) || !previous) {
     const wordType = Object.entries(sourceTypes).find(([, value]) => value === type)?.[0];
     set(root, 'SourceType', wordType || 'Misc');
   }
@@ -239,9 +259,31 @@ export async function mutateReferenceSnapshot(outputPath, { action, sourceId, ty
       }
     }
   }
-  const record = { tag, xml: serializer.serializeToString(root) };
-  if (previous) imported.records = imported.records.map((item) => item.tag === tag ? record : item);
-  else imported.records.push(record);
-  await preserveCitationImport(outputPath, imported, new Map());
-  return { sourceId: tag };
+  return { tag, type: type ?? previous?.type, fields: { ...previous?.fields, ...fields }, xml: serializer.serializeToString(root) };
+}
+
+export async function preserveSourceAliases(outputPath, aliases, preservedSources = new Map()) {
+  const zip = await JSZip.loadAsync(await fs.readFile(outputPath));
+  const document = parse(`<referenceAliases xmlns="${aliasesNS}"/>`);
+  for (const [wordTag, sourceId] of aliases) {
+    const entry = element(document, aliasesNS, 'source', { wordTag, sourceId });
+    const record = preservedSources.get(sourceId);
+    if (record) {
+      const source = element(document, aliasesNS, 'wordSource');
+      source.textContent = record.xml;
+      entry.appendChild(source);
+    }
+    document.documentElement.appendChild(entry);
+  }
+  zip.file(aliasesPath, serializer.serializeToString(document));
+  const relsPath = 'word/_rels/document.xml.rels';
+  const rels = parse(await zip.file(relsPath).async('string'));
+  const target = '../' + aliasesPath;
+  if (!Array.from(rels.documentElement.childNodes).some(node => node.nodeType === 1 && node.getAttribute('Target') === target)) {
+    rels.documentElement.appendChild(element(rels, relationshipsNS, 'Relationship', {
+      Id: `rIdReferenceAliases${randomUUID().replaceAll('-', '')}`, Type: `${officeRelationships}customXml`, Target: target,
+    }));
+    zip.file(relsPath, serializer.serializeToString(rels));
+  }
+  await fs.writeFile(outputPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }

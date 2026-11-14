@@ -1,20 +1,20 @@
+import { NativeReferenceSources, nativeSourceFields, requireSourceSuccess } from './native/reference-sources.js';
 import { readBibliographies } from './workarounds/bibliography-read.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { readCitationImport, preserveCitationImport, mutateReferenceSnapshot } from './workarounds/citation-import.js';
-import { preserveDocxNamespaces, renderReferenceFields } from './workarounds/reference-rendering.js';
+import { readCitationImport } from './workarounds/citation-import.js';
+import { preserveDocxNamespaces, renderReferenceFields, prepareNativeBibliography } from './workarounds/reference-rendering.js';
 import { insertFootnoteInSnapshot, normalizeFootnoteParts } from './workarounds/footnote-insert.js';
-import { footnoteTool, footnoteInstructions, footnoteInput } from './tools/footnote-tool.js';
-import { citationTool, citationInstructions, citationInput, referenceLibraryContext } from './tools/citation-tool.js';
-import { referenceTool, referenceInstructions, referenceInput } from './tools/reference-tool.js';
-import { bibliographyTool, bibliographyInstructions, bibliographyInput } from './tools/bibliography-tool.js';
+import { referenceLibraryContext, referenceInsertionInstructions } from './agent/reference-context.js';
+import { referenceInput } from './native/reference-input.js';
+import { createReferenceApi, assertSourceUncited, nativeOperationId } from './native/reference-api.js';
+import { bibliographyInput } from './native/bibliography-input.js';
 import { removeBibliographyInSnapshot } from './workarounds/bibliography-remove.js';
 import { insertBibliographyInSnapshot } from './workarounds/bibliography-insert.js';
 import { removeCitationInSnapshot } from './workarounds/citation-remove.js';
 import { insertCitationInSnapshot } from './workarounds/citation-insert.js';
 import { resolveReferenceAnchor, verifyInsertedReference } from './workarounds/reference-anchors.js';
-import { referenceAnchorInstructions } from './tools/reference-anchor-contract.js';
 import { streamTextTool } from './tools/stream-text-tool.js';
 import { createTextStream } from './native/stream-text.js';
 import { streamingTools, streamingInstructions } from './agent/streaming-policy.js';
@@ -25,23 +25,49 @@ export class ReferenceDocument {
   #toolkit;
   #onClose;
   #closed = false;
-  #importedCitations;
+  #sources;
+  #dispatchApi;
   #referenceQueue = Promise.resolve();
   #referencePending = 0;
   #bibliographyStyle;
   #fieldCodes = false;
 
-  constructor({ id, filename, path, handle, toolkit, onClose = () => {}, importedCitations, logEvent = () => {} }) {
+  constructor({ id, filename, path: documentPath, handle, toolkit, onClose = () => {}, importedCitations, logEvent = () => {} }) {
     this.#logEvent = logEvent;
     this.id = id;
     this.filename = filename;
-    this.path = path;
+    this.path = documentPath;
     this.generation = 1;
     this.#handle = handle;
     this.#toolkit = toolkit;
     this.#onClose = onClose;
-    this.#importedCitations = importedCitations;
+    this.#sources = new NativeReferenceSources(this.#handle, importedCitations);
     this.#bibliographyStyle = importedCitations.style;
+    this.#dispatchApi = createReferenceApi({ handle, toolkit,
+      withMutation: action => this.#referenceMutation(action),
+      onBibliographyFallback: async (method, args) => {
+        const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'superdoc-native-bibliography-'));
+        try {
+          const before = await this.citationSources();
+          const snapshot = path.join(directory, 'document.docx');
+          await this.#writeSnapshot(snapshot);
+          await prepareNativeBibliography(snapshot, args.target.nodeId);
+          if ((await this.citationSources()).evaluatedRevision !== before.evaluatedRevision) throw new Error('The document changed during bibliography normalization. Read it again.');
+          await this.#handle.replaceFile(await fs.readFile(snapshot), { timeoutMs: 150_000 });
+          try { return await this.#handle.citations.bibliography[method](args); }
+          catch (error) {
+            await this.#applyReferenceStyle(this.#bibliographyStyle).catch(() => {});
+            throw error;
+          }
+        } finally { await fs.rm(directory, { recursive: true, force: true }); }
+      },
+      onChanged: async calls => {
+        const refresh = calls.filter(call => nativeOperationId(call.operationId) !== 'doc.citations.sources.insert');
+        if (!refresh.length) return;
+        const style = [...refresh].reverse().find(call => call.args?.style)?.args.style ?? this.#bibliographyStyle;
+        await this.#applyReferenceStyle(style);
+      },
+    });
   }
 
   get referenceBusy() { return this.#referencePending > 0; }
@@ -61,8 +87,9 @@ export class ReferenceDocument {
     await normalizeFootnoteParts(documentPath);
     const importedCitations = await readCitationImport(await fs.readFile(documentPath));
     await this.#handle.replaceFile(documentPath, { timeoutMs: 150_000 });
-    this.#importedCitations = importedCitations;
+    this.#sources = new NativeReferenceSources(this.#handle, importedCitations);
     this.#bibliographyStyle = importedCitations.style;
+    await this.#sources.ready();
     this.#fieldCodes = false;
     const previousPath = this.path;
     this.filename = filename;
@@ -72,14 +99,11 @@ export class ReferenceDocument {
     this.#logEvent('document-service', 'document.replaced', { documentId: this.id, generation: this.generation });
   }
 
-  dispatch(tool, args) {
+  dispatch(tool, args, options) {
     this.#requireOpen();
-    if (tool === footnoteTool.function.name) return this.insertFootnote(footnoteInput(args));
-    if (tool === citationTool.function.name) return this.insertCitation(citationInput(args));
-    if (tool === referenceTool.function.name) return this.manageReferences(referenceInput(args));
-    if (tool === bibliographyTool.function.name) return this.manageBibliographies(bibliographyInput(args));
     if (tool === streamTextTool.function.name) return this.#streamText(args);
-    return this.#toolkit.dispatch(this.#handle, tool, args);
+    return this.#sources.ready().then(() => tool === 'superdoc_api_call'
+      ? this.#dispatchApi(args, options) : this.#toolkit.dispatch(this.#handle, tool, args, options));
   }
 
   createTextStream(options) {
@@ -94,14 +118,8 @@ export class ReferenceDocument {
 
   async citationSources() {
     this.#requireOpen();
-    const { evaluatedRevision } = await this.#handle.citations.sources.list({ limit: 1 });
-    return {
-      items: this.#importedCitations.records.map((source) => ({
-        id: source.tag, sourceId: source.tag, tag: source.tag, type: source.type, fields: source.fields,
-        address: { kind: 'entity', entityType: 'citationSource', sourceId: source.tag },
-      })),
-      evaluatedRevision, bibliographyStyle: this.#bibliographyStyle, fieldCodes: this.#fieldCodes,
-    };
+    const { items, evaluatedRevision } = await this.#sources.list();
+    return { items, evaluatedRevision, bibliographyStyle: this.#bibliographyStyle, fieldCodes: this.#fieldCodes };
   }
 
   async createCitationSource(input) {
@@ -123,7 +141,10 @@ export class ReferenceDocument {
       if (input.action === 'get' && !bibliography) throw new Error('Bibliography not found. Read list for current bibliography IDs.');
       return { success: true, action: input.action, ...catalog, ...(bibliography ? { bibliography } : {}) };
     }
-    return this.#referenceMutation(async () => {
+    return this.#referenceMutation(() => this.#mutateBibliography(input));
+  }
+
+  async #mutateBibliography(input) {
       if (input.changeMode !== 'direct') {
         const error = new Error('Native bibliography mutations currently require Editing mode. No changes were made.');
         error.code = 'BIBLIOGRAPHY_REQUIRES_DIRECT';
@@ -144,9 +165,7 @@ export class ReferenceDocument {
           const current = await this.citationSources();
           if (current.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed during bibliography deletion. Read list and try again.');
           const bytes = await fs.readFile(snapshot);
-          const imported = await readCitationImport(bytes);
           await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-          this.#importedCitations = imported;
           return { success: true, action: input.action, ...removal, deletedBibliographyId: input.bibliographyId, ...await this.#readBibliographies() };
         } finally {
           await fs.rm(directory, { recursive: true, force: true });
@@ -168,9 +187,7 @@ export class ReferenceDocument {
         const current = await this.citationSources();
         if (current.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed during bibliography insertion. Read list and try again.');
         const bytes = await fs.readFile(snapshot);
-        const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-        this.#importedCitations = imported;
         this.#bibliographyStyle = style;
         const result = { success: true, action: input.action, bibliography, bibliographyId: bibliography.nodeId,
           bibliographyStyle: style };
@@ -182,7 +199,6 @@ export class ReferenceDocument {
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
       }
-    });
   }
 
   async manageReferences(input) {
@@ -201,22 +217,30 @@ export class ReferenceDocument {
     return this.#referenceMutation(async () => {
       const start = await this.citationSources();
       if (start.evaluatedRevision !== input.expectedRevision) throw new Error('The document changed. Read the current reference library before editing it.');
-      const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'superdoc-reference-library-'));
-      try {
-        const snapshot = path.join(directory, 'document.docx');
-        await this.#writeSnapshot(snapshot);
-        const { sourceId } = await mutateReferenceSnapshot(snapshot, input);
-        if (input.action !== 'create') await renderReferenceFields(snapshot, { style: this.#bibliographyStyle, fieldCodes: this.#fieldCodes });
-        const current = await this.citationSources();
-        if (current.evaluatedRevision !== start.evaluatedRevision) throw new Error('The document changed during the reference update. Try again.');
-        const bytes = await fs.readFile(snapshot);
-        const imported = await readCitationImport(bytes);
-        await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-        this.#importedCitations = imported;
-        return { ...await libraryResult(sourceId), ...(input.action === 'delete' ? { deletedSourceId: sourceId } : {}) };
-      } finally {
-        await fs.rm(directory, { recursive: true, force: true });
+      const source = start.items.find(item => item.sourceId === input.sourceId);
+      if (input.action !== 'create' && !source) throw new Error('Reference not found. Read the current reference library.');
+      if (input.action === 'update' && input.type && input.type !== source.type) throw new Error('The native API cannot change a source type. Create the correct source instead.');
+      const target = { kind: 'entity', entityType: 'citationSource', sourceId: input.sourceId };
+      let sourceId = input.sourceId;
+      if (input.action === 'create') {
+        const result = requireSourceSuccess(await this.#handle.citations.sources.insert({ type: input.type, fields: nativeSourceFields(input.fields) }));
+        sourceId = result.source.sourceId;
+      } else if (input.action === 'update') {
+        requireSourceSuccess(await this.#handle.citations.sources.update({ target, patch: nativeSourceFields(input.fields) }));
+      } else {
+        await assertSourceUncited(this.#handle, sourceId);
+        requireSourceSuccess(await this.#handle.citations.sources.remove({ target }));
       }
+      if (input.action !== 'delete') this.#sources.remember(sourceId, input.type ?? source?.type, input.fields);
+      // Source CRUD is native. Keep the existing style renderer for cached Word
+      // citation/bibliography results after metadata updates or deletions.
+      let formattingWarning;
+      if (input.action !== 'create') {
+        try { await this.#applyReferenceStyle(this.#bibliographyStyle); }
+        catch { formattingWarning = 'Source metadata was saved. Citation/bibliography formatting could not be refreshed; do not repeat the metadata mutation.'; }
+      }
+      return { ...await libraryResult(sourceId), ...(input.action === 'delete' ? { deletedSourceId: sourceId } : {}),
+        ...(formattingWarning ? { formattingWarning } : {}) };
     });
   }
 
@@ -243,9 +267,7 @@ export class ReferenceDocument {
         const current = await this.citationSources();
         if (current.evaluatedRevision !== catalog.evaluatedRevision) throw new Error('The document changed during citation insertion. Try again.');
         const bytes = await fs.readFile(snapshot);
-        const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-        this.#importedCitations = imported;
         // A post-insertion lookup failure must not invite a duplicate insertion.
         try {
           let offset = 0;
@@ -286,9 +308,7 @@ export class ReferenceDocument {
         const current = await this.citationSources();
         if (current.evaluatedRevision !== start.evaluatedRevision) throw new Error('The document changed during citation deletion. Try again.');
         const bytes = await fs.readFile(snapshot);
-        const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-        this.#importedCitations = imported;
         return result;
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
@@ -317,9 +337,7 @@ export class ReferenceDocument {
         const current = await this.#handle.citations.sources.list({ limit: 1 });
         if (current.evaluatedRevision !== start.evaluatedRevision) throw new Error('The document changed during insertion. Try again.');
         const bytes = await fs.readFile(snapshot);
-        const imported = await readCitationImport(bytes);
         await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-        this.#importedCitations = imported;
         return { ...result, ...(resolved.resolvedAnchor ? { resolvedAnchor: { ...resolved.resolvedAnchor, verified: true } } : {}) };
       } finally {
         await fs.rm(directory, { recursive: true, force: true });
@@ -327,11 +345,12 @@ export class ReferenceDocument {
     });
   }
 
-  async #writeSnapshot(outputPath) {
+  async #writeSnapshot(outputPath, options) {
+    await this.#sources.ready();
     const result = await this.#handle.save({ out: outputPath, force: true });
     await preserveDocxNamespaces(outputPath, this.path);
     await normalizeFootnoteParts(outputPath);
-    await preserveCitationImport(outputPath, this.#importedCitations, new Map(), { canonical: true });
+    await this.#sources.preserve(outputPath, options);
     return result;
   }
 
@@ -348,9 +367,7 @@ export class ReferenceDocument {
       const current = await this.#handle.citations.sources.list({ limit: 1 });
       if (current.evaluatedRevision !== start.evaluatedRevision) throw new Error('The document revision changed during the reference update. Try again.');
       const bytes = await fs.readFile(snapshot);
-      const imported = await readCitationImport(bytes);
       await this.#handle.replaceFile(bytes, { timeoutMs: 150_000 });
-      this.#importedCitations = imported;
       this.#bibliographyStyle = style;
       this.#fieldCodes = fieldCodes;
       return { success: true, bibliographyStyle: style, fieldCodes };
@@ -362,7 +379,7 @@ export class ReferenceDocument {
   async save(outputPath, { fieldCodes = false } = {}) {
     this.#requireOpen();
     await this.#referenceQueue;
-    const result = await this.#writeSnapshot(outputPath);
+    const result = await this.#writeSnapshot(outputPath, { wordTags: true });
     if (fieldCodes || this.#fieldCodes) await renderReferenceFields(outputPath, { style: this.#bibliographyStyle, fieldCodes });
     return result;
   }
@@ -384,10 +401,10 @@ export class ReferenceDocument {
   }
 }
 
-export function createReferenceToolkit(coreToolkit) {
+export function createReferenceToolkit(agentToolkit) {
   return {
-    tools: streamingTools([...coreToolkit.tools, footnoteTool, citationTool, referenceTool, bibliographyTool, streamTextTool]),
-    systemPrompt: `${coreToolkit.systemPrompt}\n\n${footnoteInstructions}\n\n${citationInstructions}\n\n${referenceAnchorInstructions}\n\n${referenceInstructions}\n\n${bibliographyInstructions}\n\n${streamingInstructions}`,
+    tools: streamingTools([...agentToolkit.tools, streamTextTool]),
+    systemPrompt: `${agentToolkit.systemPrompt}\n\n${referenceInsertionInstructions}\n\n${streamingInstructions}`,
   };
 }
 

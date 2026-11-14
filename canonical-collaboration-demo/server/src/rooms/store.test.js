@@ -136,3 +136,17 @@ test('expiry unloads inactive rooms without deleting persisted collaboration sta
 });
 
 test.after(async () => { await fs.rm(directory, { recursive: true, force: true }); });
+
+test('document change subscribers are scoped to a room document and removed on unsubscribe', async () => {
+  const { store } = fixture();
+  const room = await store.initializeRoom('reference-events');
+  const events = [];
+  const unsubscribe = store.subscribeDocumentChanges('reference-events', event => events.push(event));
+  store.notifyDocumentChanged('another-document');
+  assert.equal(events.length, 0);
+  store.notifyDocumentChanged(room.document.id);
+  assert.deepEqual(events, [{ document_id: room.document.id, generation: 1 }]);
+  unsubscribe();
+  store.notifyDocumentChanged(room.document.id);
+  assert.equal(events.length, 1);
+});

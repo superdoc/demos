@@ -85,3 +85,177 @@ test('SDK import makes references reusable, preserves their tags on export, and 
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+async function referenceHarness(t, zip) {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'native-reference-test-'));
+  const service = new DocumentService();
+  t.after(async () => { await service.close(); await fs.rm(directory, { recursive: true, force: true }); });
+  const input = path.join(directory, 'input.docx');
+  if (zip) await fs.writeFile(input, await zip.generateAsync({ type: 'nodebuffer' }));
+  else await fs.copyFile(new URL('../assets/blank.docx', import.meta.url), input);
+  await service.initialize();
+  const document = await service.open({ id: 'original', filename: 'input.docx', path: input });
+  const api = (operationId, args = {}) => document.dispatch('superdoc_api_call', { operationId, args });
+  const reopen = async (id, file) => service.open({ id, filename: path.basename(file), path: file });
+  return { directory, service, document, api, reopen };
+}
+
+async function addNativeCitation(document, sourceId) {
+  const api = (operationId, args = {}) => document.dispatch('superdoc_api_call', { operationId, args });
+  await api('doc.create.paragraph', { text: 'An unchanged control passage.', at: { kind: 'documentEnd' } });
+  const blocks = await api('doc.blocks.list', { includeText: true, limit: 100 });
+  const block = blocks.blocks.find(item => item.text === 'An unchanged control passage.');
+  const result = await api('doc.citations.insert', { sourceIds: [sourceId], at: { kind: 'text', segments: [{ blockId: block.nodeId, range: { start: 28, end: 28 } }] } });
+  assert.equal(result.success, true);
+  return api('doc.citations.list');
+}
+
+test('app source creation feeds native insertion and survives exports, formatting, and reloads', { timeout: 60_000 }, async t => {
+  const { document, api, directory, reopen } = await referenceHarness(t);
+  const catalog = await document.citationSources();
+  const created = await document.manageReferences({ action: 'create', type: 'book', fields: { title: 'A synthetic book', year: '2026', corporateAuthor: 'Synthetic Organization' }, expectedRevision: catalog.evaluatedRevision });
+  const id = created.source.sourceId;
+  assert.equal((await api('doc.citations.sources.list')).items[0].sourceId, id);
+  assert.equal((await addNativeCitation(document, id)).total, 1);
+  await assert.rejects(document.manageReferences({ action: 'delete', sourceId: id, expectedRevision: (await document.citationSources()).evaluatedRevision }), /still cited/);
+  await document.setBibliographyStyle('Chicago', (await document.citationSources()).evaluatedRevision);
+  const exported = path.join(directory, 'export.docx');
+  await document.save(exported);
+  const imported = await readCitationImport(await fs.readFile(exported));
+  assert.match(imported.records[0].xml, /Corporate>Synthetic Organization/);
+  const reloaded = await reopen('reloaded', exported);
+  assert.deepEqual((await reloaded.citationSources()).items.map(item => item.sourceId), [id]);
+  const citations = await reloaded.dispatch('superdoc_api_call', { operationId: 'doc.citations.list', args: {} });
+  assert.deepEqual(citations.items[0].sourceIds, [id]);
+  const secondExport = path.join(directory, 'second-export.docx');
+  await reloaded.save(secondExport);
+  const again = await reopen('again', secondExport);
+  assert.deepEqual((await again.citationSources()).items.map(item => item.sourceId), [id]);
+});
+
+test('native-created sources appear in the app; native updates and deletions remain authoritative', { timeout: 60_000 }, async t => {
+  const { document, api, directory, reopen } = await referenceHarness(t);
+  const created = await api('doc.citations.sources.insert', { type: 'report', fields: { title: 'Native report', year: '2026' } });
+  const id = created.source.sourceId;
+  const target = { kind: 'entity', entityType: 'citationSource', sourceId: id };
+  assert.equal((await document.citationSources()).items[0].sourceId, id);
+  await api('doc.citations.sources.update', { target, patch: { title: 'Updated native report' } });
+  assert.equal((await document.citationSources()).items[0].fields.title, 'Updated native report');
+  await document.manageReferences({ action: 'update', sourceId: id, fields: { year: '2027' }, expectedRevision: (await document.citationSources()).evaluatedRevision });
+  assert.equal((await api('doc.citations.sources.list')).items[0].fields.year, '2027');
+  const exported = path.join(directory, 'native-export.docx');
+  await document.save(exported);
+  const reloaded = await reopen('reloaded', exported);
+  const sources = await reloaded.citationSources();
+  assert.equal(sources.items.length, 1);
+  assert.equal(sources.items[0].sourceId, id);
+  assert.equal(sources.items[0].fields.title, 'Updated native report');
+  await reloaded.manageReferences({ action: 'delete', sourceId: id, expectedRevision: sources.evaluatedRevision });
+  assert.equal((await reloaded.citationSources()).items.length, 0);
+  const empty = path.join(directory, 'empty.docx');
+  await reloaded.save(empty);
+  assert.equal((await readCitationImport(await fs.readFile(empty))).records.length, 0);
+  await api('doc.citations.sources.remove', { target });
+  assert.equal((await document.citationSources()).items.length, 0);
+  await document.save(path.join(directory, 'native-deleted.docx'));
+  assert.equal((await readCitationImport(await fs.readFile(path.join(directory, 'native-deleted.docx')))).records.length, 0);
+});
+
+test('legacy Word tags, existing citations and opaque metadata reconcile without duplicate native sources', { timeout: 60_000 }, async t => {
+  const zip = await fixture();
+  zip.file('customXml/item42.xml', `<Sources xmlns="${bibliographyNS}" StyleName="APA">${source.replace('<SourceType>Book</SourceType>', '<SourceType>BookSection</SourceType>')}</Sources>`);
+  const xml = await zip.file('word/document.xml').async('string');
+  zip.file('word/document.xml', xml.replace(/<w:body>[\s\S]*<\/w:body>/, '<w:body><w:p><w:r><w:t>Control text. </w:t></w:r><w:fldSimple w:instr="CITATION History"><w:r><w:t>(Example Museum, 2020)</w:t></w:r></w:fldSimple></w:p></w:body>'));
+  const { document, api, directory, reopen } = await referenceHarness(t, zip);
+  const catalog = await document.citationSources();
+  assert.equal(catalog.items.length, 1);
+  const id = catalog.items[0].sourceId;
+  assert.notEqual(id, 'History');
+  assert.equal((await api('doc.citations.sources.list')).items[0].sourceId, id);
+  const citations = await api('doc.citations.list');
+  assert.deepEqual(citations.items[0].sourceIds, [id]);
+  assert.equal(citations.items[0].displayText, '(Example Museum, 2020)');
+  assert.equal((await addNativeCitation(document, id)).total, 2);
+  const exported = path.join(directory, 'legacy-export.docx');
+  await document.save(exported);
+  const imported = await readCitationImport(await fs.readFile(exported));
+  assert.equal(imported.records.length, 1);
+  assert.equal(imported.records[0].tag, 'History');
+  assert.match(imported.records[0].xml, /SourceType>BookSection/);
+  assert.match(imported.records[0].xml, /Preserve this original field/);
+  assert.equal(imported.aliases.History, id);
+  for (let turn = 0, file = exported; turn < 2; turn++) {
+    const reloaded = await reopen('reload-' + turn, file);
+    assert.deepEqual((await reloaded.citationSources()).items.map(item => item.sourceId), [id]);
+    const marks = await reloaded.dispatch('superdoc_api_call', { operationId: 'doc.citations.list', args: {} });
+    assert.equal(marks.total, 2);
+    assert.ok(marks.items.every(item => item.sourceIds[0] === id));
+    file = path.join(directory, `reload-${turn}.docx`);
+    await reloaded.save(file);
+    assert.match((await readCitationImport(await fs.readFile(file))).records[0].xml, /Preserve this original field/);
+  }
+});
+
+test('duplicate source metadata retains distinct identities through the persisted Word/native mapping', { timeout: 60_000 }, async t => {
+  const zip = await fixture();
+  zip.file('customXml/item42.xml', `<Sources xmlns="${bibliographyNS}" StyleName="APA">${source}${source.replace('<Tag>History</Tag>', '<Tag>AnotherTag</Tag>').replace('Preserve this original field', 'A different opaque field')}</Sources>`);
+  const { document, directory, reopen } = await referenceHarness(t, zip);
+  const ids = (await document.citationSources()).items.map(item => item.sourceId);
+  assert.equal(new Set(ids).size, 2);
+  const exported = path.join(directory, 'duplicates.docx');
+  await document.save(exported);
+  const before = await readCitationImport(await fs.readFile(exported));
+  const reloaded = await reopen('duplicates', exported);
+  assert.deepEqual((await reloaded.citationSources()).items.map(item => item.sourceId), ids);
+  const output = path.join(directory, 'duplicates-again.docx');
+  await reloaded.save(output);
+  const after = await readCitationImport(await fs.readFile(output));
+  assert.deepEqual(after.aliases, before.aliases);
+  assert.match(after.records.find(item => item.tag === 'History').xml, /Preserve this original field/);
+  assert.match(after.records.find(item => item.tag === 'AnotherTag').xml, /A different opaque field/);
+});
+
+test('legacy source reconciliation also survives raw SDK persistence used by autosave', { timeout: 60_000 }, async t => {
+  const { SuperDocClient } = await import('@superdoc/sdk');
+  const { document, directory, reopen } = await referenceHarness(t, await fixture());
+  const id = (await document.citationSources()).items[0].sourceId;
+  const exported = path.join(directory, 'export.docx');
+  await document.save(exported);
+  const client = new SuperDocClient({ runtime: 'v2' });
+  await client.connect();
+  let handle;
+  const persisted = path.join(directory, 'raw-autosave.docx');
+  try {
+    handle = await client.open({ doc: exported });
+    await handle.save({ out: persisted, force: true });
+  } finally {
+    await handle?.close({ discard: true });
+    await client.dispose();
+  }
+  const reloaded = await reopen('autosaved', persisted);
+  assert.deepEqual((await reloaded.citationSources()).items.map(item => item.sourceId), [id]);
+  const final = path.join(directory, 'final.docx');
+  await reloaded.save(final);
+  const imported = await readCitationImport(await fs.readFile(final));
+  assert.equal(imported.records[0].tag, 'History');
+  assert.match(imported.records[0].xml, /Preserve this original field/);
+});
+
+test('source remapping spans complex field runs and leaves citation switches and locators unchanged', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'citation-instruction-test-'));
+  try {
+    const zip = await fixture();
+    const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    zip.file('word/document.xml', `<w:document xmlns:w="${w}"><w:body><w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> CITATION </w:instrText></w:r><w:r><w:instrText>History \\m "second source" \\p 42 \\l 1033</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Original display</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:body></w:document>`);
+    const file = path.join(directory, 'input.docx');
+    await fs.writeFile(file, await zip.generateAsync({ type: 'nodebuffer' }));
+    await preserveCitationImport(file, await readCitationImport(await fs.readFile(file)), new Map([
+      ['History', 'native-first'], ['second source', 'native-second'], ['42', 'wrong-locator'], ['1033', 'wrong-locale'],
+    ]));
+    const result = await JSZip.loadAsync(await fs.readFile(file));
+    const xml = await result.file('word/document.xml').async('string');
+    assert.match(xml, /CITATION native-first \\m "native-second" \\p 42 \\l 1033/);
+    assert.match(xml, /Original display/);
+    assert.doesNotMatch(xml, /wrong-locator|wrong-locale/);
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});

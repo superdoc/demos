@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createDocumentAgent } from './agent.js';
-import { citationTool, citationInput } from './reference-integration/tools/citation-tool.js';
-import { footnoteTool } from './reference-integration/tools/footnote-tool.js';
-import { createRunProgress } from './reference-integration/agent/agent-run-progress.js';
+import { createReferenceToolkit } from './reference-integration/reference-document.js';
+import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
 
 function harness(responses) {
   const requests = [];
@@ -12,16 +11,16 @@ function harness(responses) {
   const catalog = () => ({ items: sources, evaluatedRevision: '1', bibliographyStyle: 'APA' });
   const document = {
     async waitForReferences() {}, async citationSources() { return catalog(); },
-    async dispatch(tool, args) {
-      dispatches.push({ tool, args });
-      if (tool === 'superdoc_references') {
-        const source = { sourceId: args.fields.title, fields: args.fields };
+    async dispatch(tool, args, options) {
+      dispatches.push({ tool, args, options });
+      if (tool === 'superdoc_api_call' && args.operationId === 'doc.citations.sources.insert') {
+        const source = { sourceId: args.args.fields.title, fields: args.args.fields };
         sources.push(source);
         return { success: true, source, references: sources };
       }
-      if (tool === citationTool.function.name) {
-        const { anchor } = citationInput(args);
-        return { success: true, resolvedAnchor: { ...anchor, verified: true } };
+      if (tool === 'superdoc_api_call') {
+        if (!args.args.at) return { success: false, failure: { message: 'Citation target is required.' } };
+        return { success: true };
       }
       return { revision: '1', blocks: [] };
     },
@@ -38,7 +37,9 @@ function harness(responses) {
       yield { choices: [{ delta: {}, finish_reason: message.tool_calls?.length ? 'tool_calls' : 'stop' }] };
     })();
   } } } };
-  const agent = createDocumentAgent({ getToolkit: () => ({ systemPrompt: 'Use the supplied tools.', tools: [citationTool, footnoteTool] }) }, { client });
+  const agent = createDocumentAgent({ getToolkit: () => createReferenceToolkit({ systemPrompt: 'Use the supplied SDK tools.',
+    tools: ['superdoc_inspect', 'superdoc_perform_action', 'superdoc_api_search', 'superdoc_api_call']
+      .map((name) => ({ type: 'function', function: { name } })) }) }, { client });
   return { agent, document, requests, dispatches };
 }
 let id = 0;
@@ -85,8 +86,11 @@ test('a later prompt without a selection has no current target and retains earli
 const call = (tool, args, content = null) => ({ role: 'assistant', content, tool_calls: [
   { id: `call-${++id}`, type: 'function', function: { name: tool, arguments: JSON.stringify(args) } },
 ] });
-const createSource = (title) => call('superdoc_references', { action: 'create', type: 'report', fields: { title }, expectedRevision: '1' });
-const citation = (sourceId, anchor, expectedRevision = '1', content) => call('superdoc_insert_citation', { sourceId, anchor, expectedRevision }, content);
+const createSource = title => call('superdoc_api_call', { operationId: 'doc.citations.sources.insert', args: { type: 'report', fields: { title } } });
+const citation = (sourceId, at, expectedRevision = '1', content) => call('superdoc_api_call', {
+  operationId: 'doc.citations.insert', args: { sourceIds: [sourceId], at, expectedRevision },
+}, content);
+const citationTarget = { kind: 'text', segments: [{ blockId: 'overview-last', range: { start: 20, end: 20 } }] };
 
 test('Reviewing saves comments directly while keeping document edits tracked', async () => {
   const actions = ['add_comments', 'comment_paragraphs', 'reply_to_comment', 'resolve_comments'];
@@ -101,37 +105,37 @@ test('Reviewing saves comments directly while keeping document edits tracked', a
   ]);
 });
 
-test('repeated invalid anchors stop across inspections and report only successful mutations', async () => {
+test('repeated failed SDK calls stop across inspections and report only successful receipts', async () => {
   const h = harness([
     createSource('First report'), createSource('Second report'),
-    citation('First report', { kind: 'sectionEnd', sectionHeading: 'Overview' }),
-    citation('Second report', { kind: 'sectionEnd' }, '2', 'Everything is done.'),
+    citation('First report', citationTarget),
+    citation('Second report', undefined, '2', 'Everything is done.'),
     call('superdoc_inspect', {}),
-    citation('Second report', { kind: 'sectionEnd' }, '3'),
+    citation('Second report', undefined, '3'),
   ]);
   const history = [];
-  const answer = await h.agent.run(h.document, 'Save sources and insert both citations.', history, true, new AbortController().signal);
+  const answer = await h.agent.run(h.document, 'Save sources and insert both citations.', history, false, new AbortController().signal);
   assert.equal(h.requests.length, 6);
   assert.match(answer, /same tool error occurred twice/);
   assert.match(answer, /Saved reference "First report"/);
   assert.match(answer, /Saved reference "Second report"/);
-  assert.match(answer, /Inserted citation for "First report" at the end of "Overview" \(placement verified\)/);
-  assert.match(answer, /Last failed operation: Insert citation for "Second report"/);
-  assert.match(answer, /anchor.sectionHeading: Required non-empty string/);
-  assert.doesNotMatch(answer, /Everything is done|Inserted citation for "Second report"/);
+  assert.match(answer, /superdoc_api_call: 1/);
+  assert.match(answer, /Last failed operation: doc.citations.insert/);
+  assert.match(answer, /Citation target is required/);
+  assert.doesNotMatch(answer, /Everything is done|placement verified/);
   assert.equal(history[1].content, answer);
   const error = JSON.parse(h.requests[4].messages.at(-1).content);
-  assert.equal(error.code, 'INVALID_REFERENCE_ANCHOR');
-  assert.equal(error.recovery.inspectRequired, false);
+  assert.equal(error.failure.message, 'Citation target is required.');
+  assert.equal(h.dispatches[2].options, undefined);
 });
 
-test('a corrected anchor retry succeeds and keeps normal completion behavior', async () => {
+test('a corrected SDK target retry succeeds and keeps normal completion behavior', async () => {
   const h = harness([
-    citation('existing', { kind: 'sectionEnd' }),
-    citation('existing', { kind: 'sectionEnd', sectionHeading: 'Overview' }),
+    citation('existing'),
+    citation('existing', citationTarget),
     { role: 'assistant', content: 'Inserted at the verified section ending.' },
   ]);
-  const answer = await h.agent.run(h.document, 'Insert citation.', [], true, new AbortController().signal);
+  const answer = await h.agent.run(h.document, 'Insert citation.', [], false, new AbortController().signal);
   assert.equal(answer, 'Inserted at the verified section ending.');
   assert.equal(h.dispatches.length, 2);
 });
@@ -155,7 +159,7 @@ test('distinct failing targets get separate retries; inspections do not erase re
 });
 
 test('non-object arguments become recoverable tool errors without crashing the run', async () => {
-  const invalid = call('superdoc_insert_citation', {});
+  const invalid = call('superdoc_api_call', {});
   invalid.tool_calls[0].function.arguments = 'null';
   const h = harness([invalid, { role: 'assistant', content: 'Could not insert.' }]);
   await h.agent.run(h.document, 'Insert citation.', [], true, new AbortController().signal);
@@ -172,4 +176,11 @@ test('equivalent structured validation failures match despite property and issue
     result: { ok: false, code: 'INVALID_INPUT', error: 'extra; offset', issues } }).repeatedFailure, false);
   assert.equal(p.record({ tool: 'insert', args: { anchor: { extra: true, offset: 1 }, sourceId: 'first' },
     result: { ok: false, code: 'INVALID_INPUT', error: 'offset; extra', issues: issues.toReversed() } }).repeatedFailure, true);
+});
+
+
+test('Full API receipts report incomplete and nested failed batches', () => {
+  assert.equal(toolFailed({ completed: 1, total: 2, receipts: [{ ok: true }] }), true);
+  assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: false } }] }), true);
+  assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: true } }] }), false);
 });

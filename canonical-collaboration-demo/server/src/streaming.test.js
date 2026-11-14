@@ -163,3 +163,20 @@ test('new paragraphs beside existing text stream into a newly created block', as
     assert.equal(current, 'New paragraph');
   }
 });
+
+test('Full API calls preserve streaming and trusted tracked mode, including batches', async () => {
+  const dispatched = [];
+  const document = { async waitForReferences() {}, async citationSources() { return { items: [] }; },
+    async dispatch(tool, args, options) { dispatched.push({ tool, args, options }); return { success: true }; } };
+  const adapter = await createReferenceAgentAdapter({ document, toolkit: { tools: [], systemPrompt: '' }, prompt: 'Format the table.', changeMode: 'tracked' });
+  const rejected = await adapter.execute('superdoc_api_call', { calls: [
+    { operationId: 'doc.info', args: {} }, { operationId: 'doc.create.paragraph', args: { text: 'Bypass' } },
+  ] });
+  assert.equal(rejected.failed, true);
+  assert.equal(dispatched.length, 0);
+  const accepted = await adapter.execute('superdoc_api_call', { operationId: 'doc.tables.list', args: {} });
+  assert.equal(accepted.failed, false);
+  assert.deepEqual(dispatched[0].options, { enforceChangeMode: 'tracked' });
+  await adapter.execute('superdoc_api_search', { query: 'tables' });
+  assert.equal(dispatched[1].tool, 'superdoc_api_search');
+});

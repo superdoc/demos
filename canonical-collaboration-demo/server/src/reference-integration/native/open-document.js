@@ -7,5 +7,12 @@ export async function openReferenceDocument({ client, toolkit, id, filename, pat
     { doc: path, collaboration },
     { timeoutMs: 150_000, ...(collaborationAuth ? { collaborationAuth } : {}) },
   );
-  return new ReferenceDocument({ id, filename, path, handle, toolkit, importedCitations, onClose, logEvent });
+  const document = new ReferenceDocument({ id, filename, path, handle, toolkit, importedCitations, onClose, logEvent });
+  try {
+    await document.citationSources();
+    return document;
+  } catch (error) {
+    await handle.close({ discard: true }).catch(() => {});
+    throw error;
+  }
 }

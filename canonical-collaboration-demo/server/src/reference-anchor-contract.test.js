@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { referenceAnchorSchema, validateReferenceAnchor } from './reference-integration/tools/reference-anchor-contract.js';
-import { citationTool, citationInput } from './reference-integration/tools/citation-tool.js';
-import { footnoteTool, footnoteInput } from './reference-integration/tools/footnote-tool.js';
 import { toolErrorResult } from './reference-integration/agent/tool-errors.js';
 
 test('strict schemas require the fields for each anchor kind and prohibit unrelated fields', () => {
-  assert.equal(citationTool.function.strict, true);
-  assert.equal(footnoteTool.function.strict, true);
   const shapes = referenceAnchorSchema.anyOf;
   for (const shape of shapes) {
     assert.equal(shape.additionalProperties, false);
@@ -37,9 +33,8 @@ test('malformed objects, unknown kinds and empty scope strings fail at the corre
   }
 });
 
-test('nullable strict scopes normalize once at the tool boundary for both insertion tools', () => {
+test('nullable scopes normalize for the snapshot anchor resolver', () => {
   const anchor = { kind: 'afterText', text: 'quoted words', sectionHeading: null, blockId: null };
-  assert.deepEqual(citationInput({ anchor, sourceId: 'saved', expectedRevision: '1' }).anchor, { kind: 'afterText', text: 'quoted words' });
-  assert.deepEqual(footnoteInput({ anchor, content: 'Note.', expectedRevision: '1' }).anchor, { kind: 'afterText', text: 'quoted words' });
+  assert.deepEqual(validateReferenceAnchor(anchor), { kind: 'afterText', text: 'quoted words' });
   assert.equal(anchor.sectionHeading, null);
 });

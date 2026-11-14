@@ -1,3 +1,4 @@
+import { createReferenceRefresh } from './reference-integration/native/reference-refresh';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SuperDoc } from 'superdoc';
 import { api } from './api';
@@ -63,6 +64,12 @@ export default function App() {
   const [footnotesHighlighted, setFootnotesHighlighted] = useState(false);
   const [metadataHighlighted, setMetadataHighlighted] = useState(false);
   const refreshReferences = useCallback(() => setReferenceRefresh((current) => current + 1), []);
+  useEffect(() => {
+    if (!room) return;
+    const scheduler = createReferenceRefresh(refreshReferences);
+    const unsubscribe = api.subscribeDocumentChanges(room.room_id, scheduler.invalidate);
+    return () => { unsubscribe(); scheduler.dispose(); };
+  }, [room?.room_id, room?.document_id, room?.generation, refreshReferences]);
   const onBibliographyDeletionBusy = useCallback((pending: boolean) => {
     setBibliographyDeletionBusy(pending);
     setReferenceBusy(pending);

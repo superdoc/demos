@@ -39,11 +39,29 @@ export class RoomStore {
   #collaboration;
   #documents;
   #createServiceToken;
+  #documentChanges = new Map();
 
   constructor(collaboration, documents, { createServiceToken }) {
     this.#collaboration = collaboration;
     this.#documents = documents;
     this.#createServiceToken = createServiceToken;
+  }
+
+  subscribeDocumentChanges(roomId, listener) {
+    const room = this.require(roomId);
+    const id = room.document.id;
+    const listeners = this.#documentChanges.get(id) ?? new Set();
+    this.#documentChanges.set(id, listeners);
+    const notify = () => listener({ document_id: id, generation: room.document.generation });
+    listeners.add(notify);
+    return () => {
+      listeners.delete(notify);
+      if (!listeners.size) this.#documentChanges.delete(id);
+    };
+  }
+
+  notifyDocumentChanged(documentId) {
+    for (const listener of this.#documentChanges.get(documentId) ?? []) listener();
   }
 
   async initialize() {

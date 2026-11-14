@@ -1,8 +1,7 @@
 export { ReferenceDocument, createReferenceToolkit, prepareReferenceDocument } from './reference-document.js';
-export { footnoteTool, footnoteInput, footnoteInstructions } from './tools/footnote-tool.js';
-export { citationTool, citationInput, citationInstructions, referenceLibraryContext } from './tools/citation-tool.js';
-export { referenceTool, referenceInput, referenceInstructions } from './tools/reference-tool.js';
-export { bibliographyTool, bibliographyInput, bibliographyInstructions, requestsBibliographyCreation } from './tools/bibliography-tool.js';
+export { referenceLibraryContext } from './agent/reference-context.js';
+export { referenceInput } from './native/reference-input.js';
+export { bibliographyInput } from './native/bibliography-input.js';
 export { createRunProgress, toolFailed } from './agent/agent-run-progress.js';
 export { createReferenceProgress } from './agent/reference-tool-progress.js';
 export { parseToolArguments, toolErrorResult } from './agent/tool-errors.js';

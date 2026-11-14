@@ -13,16 +13,20 @@ Start with [the integration guide](docs/customer-integration.md) and consult the
 1. Inspect the target app's SuperDoc versions, SDK document lifecycle, collaboration
    connection, agent tool registry/dispatch, host edit mode, and document authorization.
    Keep its agent framework, model provider, prompt UI, and document identity.
-2. Reuse `server/src/reference-integration/`. Its three functional parts must stay
-   connected: native SDK operations, custom tool contracts, and compatibility fixes.
+2. Use the native source catalog as the authoritative reference library. Reconcile
+   legacy Word sources and retain tag/opaque-XML preservation during import/export.
+   UI and agent source IDs must be native IDs. Register only the four Full-preset
+   functions plus `superdoc_stream_text`; reference/bibliography policy belongs
+   inside app dispatch, not in additional model tools. Reuse `server/src/reference-integration/`. Its three functional parts must stay
+   connected: native SDK operations, the streaming tool contract, and compatibility fixes.
    The native APIs alone do not reproduce this demo's behavior. Retain the supporting
    agent policy and CSL assets; do not reimplement snapshot edits in the target app.
 3. Wrap the app's SDK document with `ReferenceDocument`. For new document sessions,
-   `openReferenceDocument` accepts the app's existing SDK client/core toolkit and
+   `openReferenceDocument` accepts the app's existing SDK client/Full toolkit and
    collaboration configuration. See the guide for already-open handles. Use one
    wrapper per document, on disposable working files; it removes old working files
    during replacement/close. The host owns the SDK client and lifecycle.
-4. Register `createReferenceToolkit(coreToolkit)` with the existing agent. Before each
+4. Register `createReferenceToolkit(agentToolkit)` with the existing agent. Before each
    prompt, call `createReferenceAgentAdapter` with that toolkit, document, prompt, and
    trusted host change mode. Add its system instructions and fresh source context to
    the app's existing messages. Route SDK/reference calls through `adapter.execute`;
@@ -47,9 +51,11 @@ Start with [the integration guide](docs/customer-integration.md) and consult the
 - Keep `server/src/reference-integration/assets/csl/` and its attribution/license
   links alongside the renderer. Use the owning app's dependency manifests; the guide
   records the validated SDK/browser/dependency versions.
-- Agent insertion uses semantic anchors, never LLM-counted offsets. Preserve strict
-  schemas, exact source IDs, fresh revisions, host-enforced tracked/direct modes,
-  verification receipts, no-duplicate handling, and bounded retries. Metadata creation
+- Agent citation and footnote insertion uses the SDK Full toolkit and its targeting
+  contracts. Inspect targets and preserve exact source IDs, fresh revisions,
+  host-enforced tracked/direct modes, verification receipts, no-duplicate handling,
+  and bounded retries. SDK 2.29.0-next.14 citation insertion is direct-only; Reviewing mode
+  must reject it rather than silently applying a direct edit. Metadata creation
   is distinct from inserting a citation. Do not substitute imitation citations/notes.
 - Await reference work before replacing/closing a document. The revision check and
   snapshot replacement are not atomic compare-and-swap; the host must coordinate
