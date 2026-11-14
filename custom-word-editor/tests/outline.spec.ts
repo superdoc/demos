@@ -24,9 +24,13 @@ test('generated outlines exclude blank headings and page-break placeholders in b
   await expect(labels).toHaveText(headings);
   await page.getByRole('radio', { name: 'Custom', exact: true }).check();
   await expect(panel.getByRole('button', { name: 'Overview', exact: true })).toBeVisible();
-  await expect.poll(async () => (await labels.allTextContents()).map((text) => text.trim()))
-    .toEqual(expect.arrayContaining(headings));
-  const customLabels = (await labels.allTextContents()).map((text) => text.trim());
+  // Keep the snapshot that satisfies the wait: another outline refresh can
+  // clear the DOM between the poll and a second allTextContents() read.
+  let customLabels: string[] = [];
+  await expect.poll(async () => {
+    customLabels = (await labels.allTextContents()).map((text) => text.trim());
+    return customLabels;
+  }).toEqual(expect.arrayContaining(headings));
   expect(customLabels.every((text) => text.length > 0)).toBe(true);
   expect(customLabels).not.toContain('Untitled heading');
   expect(customLabels).not.toContain('[page break]');
