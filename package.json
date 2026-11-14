@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build-gallery.mjs",
-    "start": "node scripts/start-local.mjs"
+    "start": "node scripts/start-local.mjs",
+    "gallery": "node --env-file-if-exists=.env.local scripts/serve-gallery.mjs",
+    "agent": "node --env-file-if-exists=.env.local agent/server.mjs",
+    "test:agent": "node --test scripts/demo-agent.test.mjs"
   }
 }

@@ -2,9 +2,11 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
+import { createAgentService } from "../agent/service.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "dist-gallery");
 const port = Number(process.env.PORT || 4173);
+const agentAssets = new Set(['/agent/gallery.js', '/agent/project.js', '/agent/agent.css']);
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
@@ -19,8 +21,10 @@ const contentTypes = {
   ".webp": "image/webp",
 };
 
-createServer(async (request, response) => {
+const agent = await createAgentService();
+const server = createServer(async (request, response) => {
   try {
+    if (await agent.handle(request, response)) return;
     const requestUrl = new URL(request.url, "http://localhost");
     if (requestUrl.pathname === "/revisions" || requestUrl.pathname.startsWith("/revisions/")) {
       const destination = requestUrl.pathname.replace(/^\/revisions(?:\/|$)/, "/custom-word-editor/");
@@ -28,9 +32,11 @@ createServer(async (request, response) => {
       return;
     }
     const pathname = decodeURIComponent(requestUrl.pathname);
-    let filePath = path.resolve(root, `.${pathname}`);
+    // The project shell is read from source too; keep its scripts and styles in sync.
+    const assetRoot = agentAssets.has(pathname) ? path.resolve(root, '..', 'dist-landing') : root;
+    let filePath = path.resolve(assetRoot, `.${pathname}`);
 
-    if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+    if (filePath !== assetRoot && !filePath.startsWith(`${assetRoot}${path.sep}`)) {
       response.writeHead(403).end("Forbidden");
       return;
     }
@@ -77,3 +83,5 @@ createServer(async (request, response) => {
 }).listen(port, () => {
   console.log(`SuperDoc demo gallery: http://localhost:${port}`);
 });
+server.on('close', () => agent.close());
+for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close());

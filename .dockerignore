@@ -1,0 +1,11 @@
+.git
+.env*
+**/.env*
+.demo-agent
+**/node_modules
+**/dist
+dist-gallery
+worker-dist
+pages-worker-dist
+**/test-results
+**/playwright-report

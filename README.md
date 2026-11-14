@@ -62,6 +62,83 @@ bun run dev
 
 See each demo's directory for specific setup instructions.
 
+## Demo agent
+
+The prompt below **SuperDoc Demos** expands when focused. Describe a document
+workflow to search the visible entries in `demos.json` and their README context.
+If there is no close match, **Build this demo** opens a new tab with a temporary
+ID. It builds one small browser example using a real SuperDoc editor. The
+top-right **Download project** button saves a ZIP with runnable source, a sample
+DOCX, `README.md`, and `AGENTS.md` for continuing with a coding agent.
+
+The temporary project page includes **Continue building** for fixes and follow-up
+requests. Each update creates a new version from the existing source and keeps
+the previous preview available until the replacement is ready. See
+[`agent/README.md`](agent/README.md) for the complete architecture, API, generation
+contract, safeguards, testing, and instructions for rebuilding or modifying the
+demo agent.
+
+Copy `.env.example` to `.env.local` and set `OPENAI_API_KEY` there. The key is read
+only by the server. After building the gallery, run `npm run gallery` (or use
+`npm start` for the full local gallery and collaboration service). The gallery
+is available at `http://localhost:4173`. Node.js 22.12+ is required.
+
+Defaults are deliberately small:
+
+| Limit | Default |
+| --- | --- |
+| Model / reasoning | `gpt-5-mini` / `medium` |
+| Request length | 1,200 characters |
+| AI calls | One search; one generation per explicit build or follow-up submission; no automatic retries or tool loop |
+| Search / build output | 1,400 / 12,000 tokens, including reasoning |
+| Generated code | 64 KiB of JavaScript + CSS; fixed scaffold and guidance added by the server |
+| Daily token allowance | 150,000 conservatively reserved tokens across all visitors, including input and reasoning |
+| Per-IP hourly limits | 20 searches, 3 generations shared by initial builds and follow-ups |
+| Capacity | 2 simultaneous builds, 20 temporary projects |
+| Lifetime | One hour per generated version, with no refresh extension or visible countdown |
+
+The daily allowance reserves maximum output plus input UTF-8 bytes and overhead
+before contacting OpenAI. Reservations include failed calls and persist across
+restarts; the allowance resets at midnight UTC. Set `DEMO_AGENT_DAILY_TOKENS` or
+`DEMO_AGENT_MODEL` on the server to change those settings. Reasoning stays medium.
+The browser cannot override the model, budget, or project size.
+
+Projects are persisted in the ignored `.demo-agent/` directory. Every request
+checks expiry; the timer deletes expired files within 15 seconds, and startup
+also culls expired projects. A valid project survives a restart with its original
+expiry. Interrupted builds become failed projects. Preview JavaScript runs in an
+iframe with an opaque origin and a restrictive CSP; it cannot access the gallery
+or call the agent API. Generated code is syntax checked, but is an AI-generated
+starting point and may need adjustments. Backend and additional AI functionality
+are left as guidance instead of using more tokens or running generated server code.
+
+### Hosting the agent alongside the existing Cloudflare Pages gallery
+
+The release bundle includes the `/agent/` browser assets and extends the existing
+Pages Worker with `/agent/api/*` and `/agent/projects/*` proxies. Deploy the Node
+service separately (for example, Railway) using `agent/Dockerfile` with the repo
+root as build context, or run `npm run agent`. Run **one replica** with a persistent
+disk mounted at `DEMO_AGENT_DATA_DIR`; the spending ledger and project store are
+owned by that process.
+
+Set these server environment variables:
+
+- `OPENAI_API_KEY`: server-only OpenAI key.
+- `DEMO_AGENT_ORIGINS`: comma-separated gallery origins, e.g. `https://demos.superdoc.dev`.
+- `DEMO_AGENT_PROXY_TOKEN`: a random shared secret authenticating the Pages proxy.
+- `DEMO_AGENT_DATA_DIR`: persistent directory, e.g. `/data/demo-agent`.
+
+Set **Pages runtime** `DEMO_AGENT_BACKEND_URL` to the service's HTTPS origin and
+`DEMO_AGENT_PROXY_TOKEN` to the same shared secret. The OpenAI key stays on the
+Node service. Staging origins must be explicitly added to `DEMO_AGENT_ORIGINS`.
+Until those runtime settings exist, the deployed gallery returns a clear
+configuration message for agent requests. No infrastructure is provisioned by
+the build, and no secrets are included in the release bundle.
+
+Run the integration checks with `npm run test:agent`. They cover catalog matching,
+single-use offers, medium reasoning, token reservations, sandbox headers, ZIP
+downloads, request validation, persistence, and server-enforced expiry.
+
 ## Build this commands
 
 Inline Revisions, Template Builder, and Agentic Collaboration have **Build this**

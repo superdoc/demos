@@ -64,7 +64,7 @@ test('release assembly preserves gallery assets and scopes Worker invocation to 
   assert.equal(await readFile(path.join(output, 'version-history/index.html'), 'utf8'), '<main>Version history</main>');
   assert.equal(await readFile(path.join(output, 'version-history/assets/app.js'), 'utf8'), 'application');
   assert.deepEqual(JSON.parse(await readFile(path.join(output, '_routes.json'), 'utf8')), {
-    version: 1, include: ['/version-history/api/*', '/version-history/collaboration'], exclude: [],
+    version: 1, include: ['/version-history/api/*', '/version-history/collaboration', '/agent/api/*', '/agent/projects/*'], exclude: [],
   });
   const source = await readFile(path.join(output, '_worker.js'), 'utf8');
   const worker = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
