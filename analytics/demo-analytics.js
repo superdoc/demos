@@ -5,7 +5,7 @@
   const path = w.location.pathname.replace(/\/*$/, '/'), example = routes[path];
   const actions = new Set(['exposed','option_exposed','selected','load_started','ready','load_failed','explored','edit_observed','review_action','field_edited','ai_started','ai_succeeded','ai_failed','export_requested','export_completed','export_failed','task_started','task_succeeded','task_failed','source_clicked','docs_clicked','build_opened','build_copied','citation_opened']);
   const capabilities = new Set(['none','document','review','fields','ai','collaboration','version_history','answer']);
-  const seen = new Set(); let loaded = false, granted = false, exposureTimer; let origin='builtin_example';
+  const seen = new Set(); let loaded = false, granted = false, exposureTimer; let origin='builtin_example'; let reobserve=()=>{};
   const privateSignal = () => w.navigator.globalPrivacyControl === true || w.superdocAnalyticsOptOut === true || [w.navigator.doNotTrack,w.doNotTrack].some(v=>['1','yes'].includes(String(v).toLowerCase()));
   const publicSurface = () => w.location.hostname === 'demos.superdoc.dev' && w.location.pathname.replace(/\/*$/, '/')===path && example && !w.location.hash && [...new URLSearchParams(w.location.search)].every(([k,v])=>k==='demo_entry'&&['homepage','gallery'].includes(v));
   const preference = () => {try{const c=JSON.parse(w.localStorage.getItem(KEY)),age=Date.now()-c.savedAt;return c.version===1&&age>=0&&age<180*86400000&&typeof c.analytics==='boolean'?c:null;}catch{return null;}};
@@ -22,7 +22,7 @@
     w.gtag('consent','default',{analytics_storage:'granted',ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied'});w.gtag('js',new Date());
     w.gtag('config',ID,{send_page_view:false,allow_google_signals:false,allow_ad_personalization_signals:false,page_location:'https://demos.superdoc.dev'+path,page_referrer:'',page_title:'SuperDoc / '+example});
     const s=d.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+ID;d.head.append(s);
-    emit('load_started'); if(d.visibilityState==='visible')exposureTimer=setTimeout(()=>{if(d.visibilityState==='visible')emit('exposed');},1000);
+    emit('load_started'); reobserve(); if(d.visibilityState==='visible')exposureTimer=setTimeout(()=>{if(d.visibilityState==='visible')emit('exposed');},1000);
   }
   // A single per-origin settings surface; never inherit another person's consent.
   function settings(force=false){
@@ -47,7 +47,7 @@
     d.addEventListener('visibilitychange',()=>{clearTimeout(exposureTimer);if(d.visibilityState==='visible')exposureTimer=setTimeout(()=>emit('exposed'),1000);});
     d.addEventListener('change',e=>{if(e.isTrusted&&e.target?.type==='file')origin='visitor_file';});
     d.addEventListener('input',e=>{if(e.isTrusted&&e.target.closest?.('[contenteditable="true"],[data-editor-host="v2"][role="textbox"]'))emit('edit_observed','document');});
-    if(example==='gallery'&&w.IntersectionObserver){const timers=new Map();const observer=new IntersectionObserver(entries=>{for(const item of entries){clearTimeout(timers.get(item.target));if(item.isIntersecting&&item.intersectionRatio>=.5)timers.set(item.target,setTimeout(()=>{if(d.visibilityState==='visible'){const a=item.target.querySelector('a[href]');try{emit('option_exposed','none',routes[new URL(a.href).pathname.replace(/\/*$/, '/')]);}catch{}}},1000));}},{threshold:[0,.5]});d.querySelectorAll('.demo-card').forEach(el=>observer.observe(el));d.addEventListener('visibilitychange',()=>{if(d.visibilityState!=='visible')for(const t of timers.values())clearTimeout(t);});}
+    if(example==='gallery'&&w.IntersectionObserver){const timers=new Map();const observer=new IntersectionObserver(entries=>{for(const item of entries){clearTimeout(timers.get(item.target));if(item.isIntersecting&&item.intersectionRatio>=.5)timers.set(item.target,setTimeout(()=>{if(d.visibilityState==='visible'){const a=item.target.querySelector('a[href]');try{emit('option_exposed','none',routes[new URL(a.href).pathname.replace(/\/*$/, '/')]);}catch{}}},1000));}},{threshold:[0,.5]});reobserve=()=>{observer.disconnect();d.querySelectorAll('.demo-card').forEach(el=>observer.observe(el));};reobserve();d.addEventListener('visibilitychange',()=>{if(d.visibilityState!=='visible'){for(const t of timers.values())clearTimeout(t);}else reobserve();});}
   }
   w.addEventListener('superdoc:demo',e=>{try{emit(e.detail?.action,e.detail?.capability,e.detail?.example||example);}catch{}});
   w.addEventListener('storage',e=>{if(e.key===KEY||e.key===null)apply(preference());});
