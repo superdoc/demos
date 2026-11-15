@@ -199,6 +199,10 @@ Each message includes the SuperDoc version, failed stages when applicable, a
 workflow-log link, and all demo titles and production links from `demos.json`.
 Adding a demo to that catalog automatically includes it in future notifications.
 Notifications are sent for merged PR deployments and stable release runs.
+Post-merge releases use `pull_request_target` with `types: [closed]` and a merged-only
+job guard, so fork PR merges retain repository deployment settings and secrets.
+Only the merged base-repository commit is checked out; unmerged fork code is never
+run in this privileged release workflow.
 Routine checks with no release, PR updates, and manual dry runs or simulations
 stay silent.
 
