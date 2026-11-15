@@ -57,6 +57,7 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
   }, [onConnectedUsersChange]);
   const handleConnectionChange = useCallback<NonNullable<SuperDocEditorProps['onCollaborationConnectionChange']>>(({ state }) => {
     synced.current = state === 'synced';
+    if (synced.current) demoMetric('task_succeeded', 'collaboration');
     onConnectedUsersChange(synced.current ? presenceCount.current : null);
   }, [onConnectedUsersChange]);
 
