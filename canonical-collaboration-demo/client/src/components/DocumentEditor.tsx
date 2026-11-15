@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SuperDocEditor, type SuperDocEditorProps } from '@superdoc/react';
 import type { SuperDoc } from 'superdoc';
@@ -123,7 +124,7 @@ export const DocumentEditor = memo(function DocumentEditor({ room, mode, onActiv
           instance.current = superdoc;
           mountedEditor.current = true;
           setEditorReady(true);
-          onReady(superdoc);
+          onReady(superdoc); demoMetric('ready', 'collaboration');
         }}
         onException={(event) => {
           console.error('SuperDoc error', event);

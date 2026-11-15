@@ -1,3 +1,13 @@
+const demoMetric = (action: string, capability = "document") => {
+	try {
+		window.dispatchEvent(
+			new CustomEvent("superdoc:demo", { detail: { action, capability } }),
+		);
+	} catch {
+		/* Analytics must not affect the demo. */
+	}
+};
+
 import { useEffect, useRef, useState } from "react";
 import { type Citation, queryDocuments } from "../lib/api";
 import { ChatMessage } from "./ChatMessage";
@@ -56,7 +66,9 @@ export function ChatPanel({ onCitationClick, disabled }: Props) {
 		setLoading(true);
 
 		try {
+			demoMetric("ai_started", "answer");
 			const result = await queryDocuments(q);
+			demoMetric("ai_succeeded", "answer");
 			setMessages((m) =>
 				m.map((msg) =>
 					msg.id === loadingMsg.id
@@ -70,6 +82,7 @@ export function ChatPanel({ onCitationClick, disabled }: Props) {
 				),
 			);
 		} catch (err) {
+			demoMetric("ai_failed", "answer");
 			setMessages((m) =>
 				m.map((msg) =>
 					msg.id === loadingMsg.id
