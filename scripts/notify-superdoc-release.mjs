@@ -5,7 +5,7 @@ const stages = { check: "Release detection", update: "Update SuperDoc", deploy: 
 const label = (value) => String(value).replace(/&/g, "&amp;").replace(/[<>|*`\r\n]/g, " ").replace(/\s+/g, " ").trim();
 
 export function shouldNotifyTrigger({ env, event = {} }) {
-  if (env.GITHUB_EVENT_NAME === "pull_request") {
+  if (["pull_request", "pull_request_target"].includes(env.GITHUB_EVENT_NAME)) {
     return event.action === "closed" && event.pull_request?.merged === true;
   }
   if (env.GITHUB_EVENT_NAME === "schedule") return true;
