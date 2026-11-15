@@ -1,27 +1,32 @@
 /* Public, consented demo measurements. No document or session data is read. */
 (() => {
-  const w = window, d = document, KEY = 'superdoc_cookie_preferences', ID = 'G-E4T80WRJGS';
+  const w = window, d = document, KEY = 'superdoc_cookie_preferences';
   const routes = {'/':'gallery','/custom-word-editor/':'custom-word-editor','/collab/':'agentic-collaboration','/builder/':'template-builder-api-v2','/docrag/':'docrag','/version-history/':'version-history'};
   const path = w.location.pathname.replace(/\/*$/, '/'), example = routes[path];
   const actions = new Set(['exposed','option_exposed','selected','load_started','ready','load_failed','explored','edit_observed','review_action','field_edited','ai_started','ai_succeeded','ai_failed','export_requested','export_completed','export_failed','task_started','task_succeeded','task_failed','source_clicked','docs_clicked','build_opened','build_copied','citation_opened']);
   const capabilities = new Set(['none','document','review','fields','ai','collaboration','version_history','answer']);
-  const seen = new Set(); let loaded = false, granted = false, exposureTimer; let origin='builtin_example'; let reobserve=()=>{};
+  const FRAME_ORIGIN='https://www.superdoc.dev';
+  const seen = new Set(); let loaded = false, granted = false, exposureTimer, frame=null, frameReady=false, initialized=false, blocked=false; const pending=[]; let origin='builtin_example'; let reobserve=()=>{};
   const privateSignal = () => w.navigator.globalPrivacyControl === true || w.superdocAnalyticsOptOut === true || [w.navigator.doNotTrack,w.doNotTrack].some(v=>['1','yes'].includes(String(v).toLowerCase()));
-  const publicSurface = () => w.location.hostname === 'demos.superdoc.dev' && w.location.pathname.replace(/\/*$/, '/')===path && example && !w.location.hash && [...new URLSearchParams(w.location.search)].every(([k,v])=>k==='demo_entry'&&['homepage','gallery'].includes(v));
+  const cleanUrl=url=>!url.hash&&[...new URLSearchParams(url.search)].every(([k,v])=>k==='demo_entry'&&['homepage','gallery'].includes(v));
+  const bootAllowed=w.location.hostname==='demos.superdoc.dev'&&!!example&&cleanUrl(w.location);
+  const initialEntry=new URLSearchParams(w.location.search).get('demo_entry');
+  const publicSurface=()=>bootAllowed&&!blocked&&w.location.pathname.replace(/\/*$/, '/')===path&&!w.location.hash;
+  function post(type,payload){frame?.contentWindow?.postMessage({channel:'superdoc-demo-analytics-v1',type,...(payload?{payload}:{})},FRAME_ORIGIN);}
+  function stop(){granted=false;clearTimeout(exposureTimer);pending.length=0;post('disable');frame?.remove();frame=null;frameReady=false;loaded=false;}
   const preference = () => {try{const c=JSON.parse(w.localStorage.getItem(KEY)),age=Date.now()-c.savedAt;return c.version===1&&age>=0&&age<180*86400000&&typeof c.analytics==='boolean'?c:null;}catch{return null;}};
   function emit(action, capability='none', target=example) {
     if (!granted || privateSignal() || !publicSurface() || !actions.has(action) || !capabilities.has(capability) || !Object.values(routes).includes(target)) return false;
     const key=[target,action,capability].join(':'); if(seen.has(key))return false;
-    w.gtag('event','superdoc_demo_event',{send_to:ID,event_version:'demo-gallery-v1',source_project:'demos',page_id:example==='gallery'?'demo_gallery':'demo_app',example_id:target,document_origin:origin,entry:new URLSearchParams(w.location.search).get('demo_entry')==='homepage'?'homepage':new URLSearchParams(w.location.search).get('demo_entry')==='gallery'?'selection':'direct_link',action,capability,format:action.startsWith('export_')?'docx':'none',page_location:'https://demos.superdoc.dev'+path,page_title:'SuperDoc / '+example,page_referrer:''});
+    const payload={page:example,example_id:target,document_origin:origin,entry:initialEntry==='homepage'?'homepage':initialEntry==='gallery'?'selection':'direct_link',action,capability};
+    if(frameReady)post('event',payload);else if(pending.length<100)pending.push(payload);else return false;
     seen.add(key);return true;
   }
   function apply(c) {
     granted=!!c?.analytics&&!privateSignal()&&!!publicSurface();
-    if(!granted){if(loaded){w.gtag?.('consent','update',{analytics_storage:'denied'});w.location.reload();}return;}
-    if(loaded)return;loaded=true;w.dataLayer=w.dataLayer||[];w.gtag=function(){w.dataLayer.push(arguments);};
-    w.gtag('consent','default',{analytics_storage:'granted',ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied'});w.gtag('js',new Date());
-    w.gtag('config',ID,{send_page_view:false,allow_google_signals:false,allow_ad_personalization_signals:false,page_location:'https://demos.superdoc.dev'+path,page_referrer:'',page_title:'SuperDoc / '+example});
-    const s=d.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id='+ID;d.head.append(s);
+    if(!granted){stop();return;}
+    if(loaded)return;loaded=true;
+    frame=d.createElement('iframe');frame.hidden=true;frame.title='Optional demo analytics';frame.referrerPolicy='no-referrer';frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.src=FRAME_ORIGIN+'/demo-analytics-frame.html';d.body.append(frame);
     emit('load_started'); reobserve(); if(d.visibilityState==='visible')exposureTimer=setTimeout(()=>{if(d.visibilityState==='visible')emit('exposed');},1000);
   }
   // A single per-origin settings surface; never inherit another person's consent.
@@ -37,7 +42,7 @@
   }
   function start(){
     if(!publicSurface())return;
-    apply(preference());settings();
+    initialized=true;apply(preference());settings();
     const b=d.createElement('button');b.textContent='Privacy settings';b.style.cssText='position:fixed;left:8px;bottom:8px;z-index:9998;font:12px system-ui;padding:5px';b.onclick=()=>settings(true);d.body.append(b);
     d.addEventListener('click',e=>{
       if(!e.isTrusted)return;const a=e.target.closest?.('a');
@@ -49,6 +54,21 @@
     d.addEventListener('input',e=>{if(e.isTrusted&&e.target.closest?.('[contenteditable="true"],[data-editor-host="v2"][role="textbox"]'))emit('edit_observed','document');});
     if(example==='gallery'&&w.IntersectionObserver){const timers=new Map();const observer=new IntersectionObserver(entries=>{for(const item of entries){clearTimeout(timers.get(item.target));if(item.isIntersecting&&item.intersectionRatio>=.5)timers.set(item.target,setTimeout(()=>{if(d.visibilityState==='visible'){const a=item.target.querySelector('a[href]');try{emit('option_exposed','none',routes[new URL(a.href).pathname.replace(/\/*$/, '/')]);}catch{}}},1000));}},{threshold:[0,.5]});reobserve=()=>{observer.disconnect();d.querySelectorAll('.demo-card').forEach(el=>observer.observe(el));};reobserve();d.addEventListener('visibilitychange',()=>{if(d.visibilityState!=='visible'){for(const t of timers.values())clearTimeout(t);}else reobserve();});}
   }
+  // Generated demo-room setup happens before start. Incoming private links
+  // never opt in. Later private navigation stops measurements without changing
+  // application navigation or sending the new URL to the vendor frame.
+  for(const method of ['pushState','replaceState']){
+    const original=w.history?.[method]?.bind(w.history);if(!original)continue;
+    w.history[method]=function(state,title,url){
+      if(initialized&&url){const next=new URL(url,w.location.href);if(next.origin!==w.location.origin||next.pathname.replace(/\/*$/, '/')!==path||!cleanUrl(next)){blocked=true;stop();}}
+      return original(state,title,url);
+    };
+  }
+  w.addEventListener('hashchange',()=>{if(w.location.hash){blocked=true;stop();}});
+  w.addEventListener('message',event=>{
+    if(event.origin!==FRAME_ORIGIN||event.source!==frame?.contentWindow||event.data?.channel!=='superdoc-demo-analytics-v1'||event.data.type!=='ready'||!granted)return;
+    frameReady=true;post('enable');for(const payload of pending.splice(0))post('event',payload);
+  });
   w.addEventListener('superdoc:demo',e=>{try{emit(e.detail?.action,e.detail?.capability,e.detail?.example||example);}catch{}});
   w.addEventListener('storage',e=>{if(e.key===KEY||e.key===null)apply(preference());});
   w.addEventListener('pageshow',e=>{if(e.persisted)apply(preference());});
