@@ -10,6 +10,67 @@ Readiness comes from the editor callback. Review, fields, agent jobs, Q&A and sa
 
 Release order: deploy homepage PR235 and verify its inert frame route first, then merge this gallery PR through the trusted maintainer workflow. The new transport has no historical baseline.
 
+## Verify events after deployment
+
+Permanent console logs are not needed. Check each boundary separately: a browser
+custom event, an outgoing Google request, then a received event in GA4.
+
+1. Open `https://demos.superdoc.dev/` without a query or fragment. Open DevTools,
+   select **Network**, enable **Preserve log**, and reload. Confirm
+   `/demo-analytics.js` returns JavaScript rather than the gallery HTML fallback.
+2. Allow optional analytics through the gallery consent control. Wait for the
+   `www.superdoc.dev/demo-analytics-frame.html` frame and Google tag to load.
+   Declined consent, DNT/GPC, opt-out, private links and blocked Google requests
+   prevent collection; do not bypass those controls to make a check pass.
+3. Filter Network by `collect` (all request types). Page activation should produce
+   `superdoc_demo_event` with `load_started` and, after about one visible second,
+   `exposed`. Click a demo card or source/docs link to check an actual user action.
+4. Inspect the Google collection request's query parameters and body. Expected
+   fields include `tid=G-E4T80WRJGS`, `en=superdoc_demo_event`,
+   `ep.action`, `ep.example_id`, and the canonical `dl` page location. Requests can
+   be batched. A successful response proves transport, not final report ingestion.
+5. In the existing GA4 property's **Realtime** report, look for
+   `superdoc_demo_event` under **Event count by event name**. Confirm the action
+   and demo parameters where available. Growth uses completed days and a refreshed
+   source observation, so it is not the immediate smoke-test surface.
+
+For an optional synthetic smoke test, run this once in the gallery page's console
+after consent and frame initialization:
+
+```js
+window.dispatchEvent(new CustomEvent('superdoc:demo', {
+  detail: { action: 'ai_started', capability: 'ai' }
+}));
+```
+
+On the gallery homepage the resulting event has `example_id=gallery`,
+`page_id=demo_gallery` and `page_location=https://demos.superdoc.dev/`. This records
+real production activity if transport is enabled; prefer a real click for routine
+checks. Repeating the same demo/action/capability on one page instance is
+deduplicated. Reload before another smoke test. `dispatchEvent` returning `true`
+does not prove that analytics accepted or sent the event.
+
+For temporary console inspection without changing production code, add a listener
+that prints only the public categories:
+
+```js
+const logDemoEvent = ({ detail }) => console.log('superdoc:demo', {
+  action: detail?.action,
+  capability: detail?.capability,
+  example: detail?.example ?? '(inferred from route)'
+});
+window.addEventListener('superdoc:demo', logDemoEvent);
+// When finished:
+// window.removeEventListener('superdoc:demo', logDemoEvent);
+```
+
+That listener confirms the local dispatch only; automatically observed clicks
+and exposures call the adapter directly and do not dispatch `superdoc:demo`.
+Use Network and GA4 Realtime to verify those. Unknown actions and extra properties
+are discarded. Adding `debug_mode` to `detail` does not enable GA4 DebugView.
+For automated QA, use `node --test scripts/demo-analytics.test.mjs`: its transport
+is mocked and does not send synthetic activity to production.
+
 ## Every future published demo and example
 
 Josh's November 15 direction applies to every future demo and example, including public customer follow-ups and launches outside this gallery. Before readiness, record the stable resource ID, canonical public destination, developer task, meaningful action and expected result, native social/video metrics where relevant, reporting coverage and collection start date. Reuse the existing consented GA4 transport, Growth Analytics and weekly metrics publisher.
