@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Optional analytics. */ } };
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { SuperDoc } from 'superdoc';
@@ -63,7 +64,7 @@ export function SuperDocEditor({
         contentControls: true,
       },
       onReady: ({ superdoc: readySuperDoc }) => {
-        ready = true;
+        ready = true; demoMetric('ready');
         setError('');
         setSuperDoc(readySuperDoc);
       },
@@ -71,7 +72,7 @@ export function SuperDocEditor({
         // Protected edits are expected rejections, not document-open failures.
         if ('code' in exception && exception.code === 'edit-rejected') return;
         console.error(exception.error);
-        if (!ready) setError('The review document could not be opened.');
+        if (!ready) { demoMetric('load_failed'); setError('The review document could not be opened.'); }
       },
     });
 

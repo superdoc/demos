@@ -123,6 +123,7 @@
         try {
           await navigator.clipboard.writeText(dialog.querySelector('code').textContent);
           copy.textContent = 'Copied';
+          window.dispatchEvent(new CustomEvent('superdoc:demo', {detail:{action:'build_copied',capability:'none',example:dialog.id.replace(/^build-/, '')}}));
           status.textContent = 'Commands copied to clipboard.';
         } catch {
           status.textContent = 'Could not access the clipboard. Select the commands above and copy them.';

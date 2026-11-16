@@ -1,3 +1,4 @@
+import { installDemoAnalytics } from './install-demo-analytics.mjs';
 import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { renderGallery } from "./render-gallery.mjs";
@@ -36,3 +37,5 @@ await collabAssets(output);
 // Attach the version-history API and WebSocket proxy to the static release.
 await assembleVersionHistory({ output, backendUrl: process.env.VERSION_HISTORY_BACKEND_URL });
 console.log(`Assembled ${manifest.length} demos from demos.json`);
+
+await installDemoAnalytics(output, manifest.map(d=>d.liveDemoUri.replace(/^\/+|\/+$/g,'')));

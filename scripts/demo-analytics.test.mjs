@@ -1,0 +1,34 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFile} from 'node:fs/promises';
+const code=await readFile(new URL('../analytics/demo-analytics.js',import.meta.url),'utf8');
+function fixture({pathname='/custom-word-editor/',consent=true,host='demos.superdoc.dev',search='',hash='',dnt='0',gpc=false}={}){
+ const listeners={},events=[],scripts=[],nodes=[],storage=new Map();let reloads=0;
+ if(consent!==null)storage.set('superdoc_cookie_preferences',JSON.stringify({version:1,savedAt:Date.now(),analytics:consent,identification:false}));
+ const el=(tag)=>({style:{},contentWindow:{postMessage(message){if(message.type==='event')events.push(['event','superdoc_demo_event',message.payload]);}},setAttribute(){},append(...v){nodes.push(...v);for(const n of v)if(n.src?.endsWith('/demo-analytics-frame.html')){scripts.push(n);queueMicrotask(()=>listeners.message?.({origin:'https://www.superdoc.dev',source:n.contentWindow,data:{channel:'superdoc-demo-analytics-v1',type:'ready'}}));}},remove(){}});
+ const document={readyState:'complete',visibilityState:'visible',head:{append:s=>scripts.push(s)},body:el(),createElement:el,getElementById:()=>null,addEventListener:(k,f)=>{listeners['d:'+k]=f;},querySelectorAll:()=>[]};
+ const window={document,location:{hostname:host,pathname,search,hash,origin:'https://'+host,href:'https://'+host+pathname+search+hash,reload:()=>reloads++},navigator:{doNotTrack:dnt,globalPrivacyControl:gpc},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v)},addEventListener:(k,f)=>{listeners[k]=f;}};
+ vm.runInNewContext(code,{window,document,URL,URLSearchParams,Date,Set,Map,setTimeout,clearTimeout});
+ if(scripts[0])listeners.message?.({origin:'https://www.superdoc.dev',source:scripts[0].contentWindow,data:{channel:'superdoc-demo-analytics-v1',type:'ready'}});
+ return {window,scripts,nodes,events:()=>events,emit:(detail)=>listeners['superdoc:demo']?.({detail}),withdraw:()=>{storage.set('superdoc_cookie_preferences',JSON.stringify({version:1,savedAt:Date.now(),analytics:false}));listeners.storage({key:'superdoc_cookie_preferences'});return reloads;}};
+}
+test('production events are bounded and deduplicated, without private caller properties',()=>{const f=fixture();f.emit({action:'task_succeeded',capability:'review',prompt:'secret',room:'secret'});f.emit({action:'task_succeeded',capability:'review'});f.emit({action:'arbitrary',capability:'review'});assert.equal(f.scripts.length,1);assert.equal(f.events().filter(x=>x[2].action==='task_succeeded').length,1);assert.ok(!JSON.stringify(f.events()).includes('secret'));assert.equal(f.events()[0][2].page,'custom-word-editor');assert.equal(f.window.gtag,undefined);});
+for(const opts of [{consent:false},{consent:null},{dnt:'1'},{gpc:true},{host:'preview.pages.dev'},{search:'?room=private'},{hash:'#token'},{search:'?demo_entry=private'}])test('no provider or events for '+JSON.stringify(opts),()=>{const f=fixture(opts);f.emit({action:'task_succeeded',capability:'document'});assert.equal(f.scripts.length,0);assert.equal(f.events().length,0);});
+test('consent withdrawal stops custom events and removes the isolated transport',()=>{const f=fixture();assert.equal(f.withdraw(),0);const n=f.events().length;f.emit({action:'task_succeeded',capability:'document'});assert.equal(f.events().length,n);});
+test('task failures and successful operations remain distinct',()=>{const f=fixture();f.emit({action:'task_failed',capability:'review'});f.emit({action:'task_succeeded',capability:'review'});assert.equal(f.events().filter(x=>x[2].action.startsWith('task_')).length,2);});
+
+// A manifest addition must exercise the real adapter, not silently install an inert script.
+const manifest=JSON.parse(await readFile(new URL('../demos.json',import.meta.url),'utf8'));
+for(const demo of manifest){
+ test(`published manifest demo ${demo.id} has consented measurement coverage`,()=>{
+  const f=fixture({pathname:demo.liveDemoUri});
+  assert.equal(f.scripts.length,1,`${demo.id}: register its public route before release`);
+  const start=f.events().find(e=>e[2].action==='load_started');
+  assert.equal(start?.[2].example_id,demo.id,`${demo.id}: stable identity must match the published manifest`);
+  f.emit({action:'ready',capability:'document'});
+  assert.ok(f.events().some(e=>e[2].action==='ready'&&e[2].example_id===demo.id));
+  const declined=fixture({pathname:demo.liveDemoUri,consent:false});declined.emit({action:'ready',capability:'document'});
+  assert.equal(declined.scripts.length,0);assert.equal(declined.events().length,0);
+ });
+}
+test('unregistered future routes cannot silently acquire a vendor transport',()=>{
+ const f=fixture({pathname:'/future-unregistered-example/'});assert.equal(f.scripts.length,0);assert.equal(f.events().length,0);
+});

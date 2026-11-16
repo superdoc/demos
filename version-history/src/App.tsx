@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
 import { useEffect, useRef, useState } from 'react';
 import { DocumentEditor } from './DocumentEditor';
 import { BuildThis } from './BuildThis';
@@ -43,8 +44,8 @@ function Workspace({ session }: { session: RoomSession }) {
     setOpenError('');
     if (!version) { setSelected(null); return; }
     setOpening(true);
-    try { setSelected(await history.open(version)); }
-    catch { setOpenError('This saved version could not be downloaded. Please try again.'); }
+    try { setSelected(await history.open(version)); demoMetric('explored', 'version_history'); }
+    catch { demoMetric('task_failed', 'version_history'); setOpenError('This saved version could not be downloaded. Please try again.'); }
     finally { setOpening(false); }
   };
 
