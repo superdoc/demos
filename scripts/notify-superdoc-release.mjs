@@ -8,6 +8,10 @@ export function shouldNotifyTrigger({ env, event = {} }) {
   if (["pull_request", "pull_request_target"].includes(env.GITHUB_EVENT_NAME)) {
     return event.action === "closed" && event.pull_request?.merged === true;
   }
+  if (env.GITHUB_EVENT_NAME === "push") {
+    const defaultBranch = event.repository?.default_branch;
+    return Boolean(defaultBranch) && env.GITHUB_REF === `refs/heads/${defaultBranch}` && event.deleted !== true;
+  }
   if (env.GITHUB_EVENT_NAME === "schedule") return true;
   if (env.GITHUB_EVENT_NAME === "workflow_dispatch") {
     const inputs = event.inputs || {};
@@ -42,7 +46,8 @@ export function describeTrigger({ env, event = {} }) {
     const commit = event.after || env.GITHUB_SHA;
     const source = /^[a-f0-9]{40,64}$/i.test(commit || "")
       ? ` — <${repositoryUrl}/commit/${commit}|${commit.slice(0, 7)}>` : "";
-    return `Branch testing after push or merge — ${label(env.GITHUB_REF_NAME || "unknown")}${source}`;
+    const kind = shouldNotifyTrigger({ env, event }) ? "Production source deployment — push to" : "Branch testing after push or merge —";
+    return `${kind} ${label(env.GITHUB_REF_NAME || "unknown")}${source}`;
   }
   return `${label(env.GITHUB_EVENT_NAME || "Unknown trigger")} on ${label(env.GITHUB_REF_NAME || "unknown")}`;
 }
@@ -116,7 +121,7 @@ export async function sendNotification({ botToken, channelId, message, fetchImpl
 export async function notifyRelease({ env = process.env, root = process.cwd(), fetchImpl = fetch } = {}) {
   const event = env.GITHUB_EVENT_PATH ? JSON.parse(await readFile(env.GITHUB_EVENT_PATH, "utf8")) : {};
   if (!shouldNotifyTrigger({ env, event })) {
-    console.log("Notifications are limited to PR merges and stable releases.");
+    console.log("Notifications are limited to production deployments and stable release runs.");
     return;
   }
   const needs = JSON.parse(env.RELEASE_RESULTS);
