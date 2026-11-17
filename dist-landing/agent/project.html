@@ -7,14 +7,7 @@
     <div class="project-actions"><a id="project-download" class="project-download" aria-disabled="true" download>↓ Download project</a></div>
   </header>
   <section class="project-description" hidden><h1 id="project-title"></h1><p id="project-summary"></p></section>
-  <section class="project-refine" aria-labelledby="refine-label" hidden>
-    <form id="project-refine-form">
-      <div class="project-refine-heading"><label id="refine-label" for="project-prompt">Continue building</label><span>Something not right? Tell the agent what to fix or change.</span></div>
-      <div class="project-refine-entry"><textarea id="project-prompt" rows="2" maxlength="1200" required disabled placeholder="The button doesn’t work. Fix it and add a reset option…"></textarea><button id="project-update" type="submit" disabled>Update demo <span aria-hidden="true">↑</span></button></div>
-      <p id="project-refine-status" class="project-refine-status" role="status" aria-live="polite">You can refine this demo once the first build finishes.</p>
-    </form>
-  </section>
-  <section id="project-message" class="project-message" role="status" aria-live="polite"><h2>Turning your idea into a working example…</h2><p>This usually takes a minute or two. You can leave this tab open while the agent works.</p></section>
+  <section id="project-message" class="project-message" role="status" aria-live="polite"><h2>Turning your idea into a working example…</h2><p>This usually takes a minute or two. You can leave this tab open while the agent works.</p><p id="project-progress" class="project-progress" aria-atomic="true"><span class="moe-speaker">Moe</span> <span id="project-progress-text">Preparing your demo…</span></p></section>
   <iframe id="project-preview" class="project-preview" title="Generated SuperDoc demo" sandbox="allow-scripts" referrerpolicy="no-referrer" hidden></iframe>
   <details id="project-guidance" class="project-guidance" hidden><summary>Agent guidance &amp; next steps</summary><pre id="project-notes"></pre></details>
 </body></html>

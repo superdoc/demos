@@ -11,6 +11,14 @@ offers to generate a small runnable browser demo if the catalog has no close
 match. Visitors can request follow-up fixes or changes on the generated demo's
 page and download the current source as a ZIP.
 
+SuperDoc is always the product context, even for a short request such as
+"ASCII animations": that means animating ASCII text inside the SuperDoc
+document, not building a separate animation beside an unused editor. Moe
+clarifies only missing behavior, never whether to use SuperDoc. Requests to
+remove SuperDoc or build an independent app do not receive a standalone build
+offer. Keep this rule in search, generation, revisions, and downloaded guidance
+through the shared `agent/scope.mjs` instructions.
+
 This is a constrained example builder. It generates JavaScript, CSS, and useful
 handoff guidance around a host-owned real SuperDoc editor. It does not execute
 generated server code, install arbitrary dependencies, run generated tool calls,
@@ -23,13 +31,15 @@ All paths below are relative to the repository root.
 | File | Responsibility |
 | --- | --- |
 | `agent/service.mjs` | Catalog context, OpenAI requests and schemas, token ledger, build/revision lifecycle, project storage, limits, HTTP routes, expiry, CSP |
+| `agent/progress.mjs` | Provider stream parsing, generated-text callbacks and host-owned build stages |
 | `agent/project.mjs` | Pinned SuperDoc version, generated-source validation, sample DOCX, preview/standalone HTML scaffold, ZIP file inventory and agent handoff text |
+| `agent/scope.mjs` | Mandatory SuperDoc-only scope shared by search, generation, revisions and downloaded agent guidance |
 | `agent/zip.mjs` | ZIP generation used for the DOCX and downloadable project |
 | `agent/server.mjs` | Standalone Node HTTP entry point and public UI/branding assets |
 | `agent/Dockerfile` | Standalone service image, built with the repository root as context |
 | `dist-landing/agent/gallery.js` | Gallery search form, catalog results, explicit build offer and new-tab flow |
-| `dist-landing/agent/project.html` | Trusted temporary-project shell, branding, title/summary, follow-up form, preview iframe and guidance |
-| `dist-landing/agent/project.js` | Status polling, version switching, follow-up submission, downloads, expiry presentation and recovery |
+| `dist-landing/agent/project.html` | Trusted temporary-project shell, branding, title/summary, build progress, preview iframe and guidance |
+| `dist-landing/agent/project.js` | Status/progress polling, downloads, expiry presentation and recovery |
 | `dist-landing/agent/agent.css` | Gallery search styles and temporary-project shell styles |
 | `dist-landing/superdoc-logo.png` | Shared gallery logo; reused at the far left of the project header |
 | `demos.json` | Existing-demo search catalog; entries marked `hidden` are excluded |
@@ -46,27 +56,35 @@ editing only their copies does not change the next release.
 
 ## Request and generation flow
 
-1. The gallery sends `POST /agent/api/search` with `{ "prompt": "..." }`.
-2. The service supplies visible catalog entries and bounded README context to
-   one OpenAI Responses API request. It filters returned IDs against the real
-   catalog, deduplicates results, and returns at most three matches.
-3. When there are no matches, the service issues a random, session-bound,
+1. The gallery sends `POST /agent/api/search` with `{ "prompt": "...", "history": [...] }`.
+   History stays in browser memory and contains at most four user/assistant
+   messages, each limited to 600 characters. Other roles are rejected.
+   Short confirmations and refinements use that context. Successful replies
+   clear the input for the next message; failed sends retain its draft.
+2. One low-reasoning Responses API call produces a public acknowledgement,
+   a conversational answer, a build-readiness decision and catalog matches.
+   The acknowledgement streams to the page before the final reply; raw model
+   reasoning and partial JSON never reach the visitor. Returned demo IDs are
+   filtered against the real catalog and deduplicated (at most three matches).
+3. Only when there are no matches and Moe has enough detail for a feasible
+   editor example does the service issue a random, session-bound,
    single-use build offer valid for ten minutes. Search never starts a build.
 4. The visitor explicitly clicks **Build this demo**. The browser opens a blank
    tab during the click, removes its opener, and posts the offer to
    `/agent/api/projects`. The service consumes the offer and reserves a build
    slot synchronously before persistence or generation can yield.
-5. The new tab loads `/agent/projects/:id/` and polls its status every two
-   seconds while it is building. The service makes one generation request.
+5. The new tab loads `/agent/projects/:id/` and polls its status once per
+   second while it is building. The service makes one streamed generation request.
 6. Valid output becomes a ready project and starts that version's one-hour
    lifetime. The trusted shell loads the sandboxed preview and enables source
-   download and the follow-up form. Failed output becomes a failed project with
+   download. Failed output becomes a failed project with
    a public error. There is no automatic retry or model-driven tool loop.
 
 ## Follow-up requests and recovery
 
-The project page's **Continue building** form sends a bounded prompt to
-`POST /agent/api/projects/:id/revisions`.
+The preview page has no follow-up prompt form. The existing API endpoint
+`POST /agent/api/projects/:id/revisions` still accepts bounded revision requests
+from API clients.
 
 The server reads the existing project from its own storage. The browser cannot
 submit replacement source, select a model, or change generation settings. The
@@ -76,12 +94,9 @@ and any previous build failure. Failed initial generations can be retried with
 a corrective prompt even though they have no runnable source.
 
 Every follow-up creates a new project ID. It never mutates the original
-project, its source, or its expiration. The page leaves the current iframe and
-download available while polling the new version. On success it switches the
-preview, download, title, summary and browser URL together. On failure it keeps
-the previous version and the entered prompt, shows the error, and allows another
-explicit request within the same limits. A page refresh during a follow-up
-returns to the previous URL; it does not initiate another generation.
+project, its source, or its expiration. API clients can poll the new ID and keep
+the previous preview and download until the new version is ready. A failed
+revision leaves the previous project available within its original lifetime.
 
 Initial builds and revisions share the per-IP generation rate limit, concurrent
 slots, active-project cap, and daily token ledger. Each successful new version
@@ -96,6 +111,15 @@ storage or add private user uploads without designing access control first.
 
 ## Browser UI contract
 
+- The prompt says "Describe a demo to find or build it." Keep the keyboard hint
+  without an extra find/build tagline. The blue Moe speaker label has no colon
+  in replies, acknowledgements, errors, or build progress.
+- Each message has its own card below the prompt, newest first, in normal page
+  flow so it pushes the gallery down. Visitor messages use a green **You**
+  prefix; Moe messages use a blue **Moe** prefix, without colons. Keep the full
+  page-session log, including public acknowledgement/status cards, after the
+  final reply arrives. Private model reasoning is never displayed or retained.
+  Only the newest build offer stays actionable after a follow-up.
 - The far-left header link uses the shared SuperDoc logo and blue brand text.
   The temporary ID badge and primary download button use `#1355ff`.
 - No countdown appears. Expiration is still enforced by the server and an
@@ -103,9 +127,13 @@ storage or add private user uploads without designing access control first.
 - Title and description appear once in the trusted outer shell. The iframe
   starts with the demo's controls/status/editor, without repeated headings.
   Downloaded standalone HTML retains its own title and introduction.
-- The follow-up form is available after either a successful or failed build.
-  While a request is pending, it prevents duplicate submissions and announces
-  progress through an accessible status region.
+- A single accessible progress line sits below the loading description and
+  updates as provider events arrive: planning, interactions, styling, and setup
+  guidance. Code validation and preview preparation run before publication.
+  These are host-owned messages; private reasoning and partial code stay off
+  the page. No extra model calls or simulated percentage estimates are used.
+- The preview page has no follow-up prompt box. Download the project to keep
+  working with your own coding agent.
 - Refining regenerates the example's code and starts a fresh editor/sample
   document. It does not preserve unsaved document edits inside the old iframe.
 - The trusted shell uses `textContent` for generated titles, descriptions,
@@ -113,9 +141,16 @@ storage or add private user uploads without designing access control first.
 
 ## Model contract and SuperDoc integration
 
-The default model is `gpt-5-mini`, with `reasoning.effort = medium` and
-`store = false`. `completion()` in `service.mjs` owns the Responses API envelope
-and strict JSON schemas. Search returns `{ message, matches: [{ id, reason }] }`.
+The default model is `gpt-5-mini`, with low reasoning for catalog search, high
+reasoning for code generation, and `store = false`. This reserves the small
+search output allowance for matching results rather than extensive reasoning.
+`completion()` in `service.mjs` owns the Responses API envelope
+and strict JSON schemas. The gallery model returns
+`{ acknowledgement, message, canBuild, matches: [{ id, reason }] }`. Questions,
+greetings, unclear goals and unrelated requests have `canBuild: false`, so
+empty matches alone never force a build offer. Acknowledgements are public
+intent statements, not chain-of-thought. Both acknowledgement and reply share
+the existing 1,400-token allowance and one model request.
 Generation returns nonempty strings for `title`, `summary`, `javascript`, `css`
 and `guidance`.
 
@@ -163,10 +198,10 @@ generator instructions.
 | Method and path | Input / response |
 | --- | --- |
 | `GET /agent/api/health` | Configuration boolean and public limits; no credentials |
-| `POST /agent/api/search` | `{ prompt }` → message, real matches and optional offer |
+| `POST /agent/api/search` | `{ prompt, history? }` → message, real matches and optional offer; optional NDJSON acknowledgement + result stream |
 | `POST /agent/api/projects` | `{ offer }` → HTTP 202 with ID and project URL |
 | `POST /agent/api/projects/:id/revisions` | `{ prompt }` → HTTP 202 with a new version's ID and URL |
-| `GET /agent/api/projects/:id` | Public state, title, summary, guidance, expiry and error |
+| `GET /agent/api/projects/:id` | Public state, current build progress, title, summary, guidance, expiry and error |
 | `GET /agent/projects/:id/` | Trusted preview shell |
 | `GET /agent/projects/:id/preview` | Sandboxed generated demo HTML; ready projects only |
 | `GET /agent/projects/:id/download` | Source ZIP; ready projects only |
@@ -177,6 +212,14 @@ POSTs require JSON and a valid Origin. Invalid/expired offers and unfinished
 projects return 409. Missing/expired projects return 410. Limits return 429;
 missing provider configuration returns 503. Generation failures are persisted
 and reported through project state; an accepted HTTP 202 does not imply success.
+
+Gallery requests set `Accept: application/x-ndjson`. The stream contains an
+`acknowledgement` event (`message`), then a `result` event (`data`: the usual JSON
+response), or an `error` event (`data.error`). Failures after streaming headers
+arrive through that error event. Clients without this Accept header still get
+the original JSON response and HTTP error status. No extra AI call is made for
+the acknowledgement. Build offers include the validated recent conversation
+so an answer to a clarification reaches generation with its original context.
 
 ## Limits and spending
 
@@ -189,7 +232,7 @@ and reported through project state; an accepted HTTP 202 does not imply success.
 | Search / generation output | 1,400 / 12,000 tokens, including reasoning |
 | JavaScript + CSS | 65,536 bytes combined |
 | Title / summary / guidance | 100 / 1,000 / 6,000 characters |
-| Daily reserved tokens | 150,000 across all visitors and actions |
+| Daily token allowance | 150,000 across all visitors and actions; settled against actual usage |
 | Per-IP hourly allowance | 20 searches; 3 total builds/revisions |
 | Concurrent generations | 2 |
 | Stored temporary projects | 20 |
@@ -201,10 +244,18 @@ and reported through project state; an accepted HTTP 202 does not imply success.
 Before every provider call, the service reserves its maximum output plus UTF-8
 input bytes and 1,024 overhead tokens. The byte count is deliberately
 conservative. Revision input includes existing code and can reserve substantially
-more than an initial build. Failed calls keep their reservation. Reservations
-are serialized and persisted to `budget.json`, surviving restarts and resetting
-at midnight UTC. Do not silently refund failures, add retries, or increase limits
-without reviewing the spend implications.
+more than an initial build. After a terminal provider response, reported actual
+input plus output tokens (including reasoning) replace the reservation; unused
+allowance is released. This also applies to incomplete responses with confirmed
+usage. Timeouts, interrupted streams, and other calls without usage keep the
+full reservation, as do older ledger entries without usage records.
+
+Reservations and settlements share one serialized queue and persist in
+`budget.json`, surviving restarts and resetting at midnight UTC. A request
+finishing after rollover cannot reduce the new day's ledger. `reserved` is the
+total charged allowance (actual usage plus outstanding/unknown holds), and
+`actualTokens` records confirmed usage since this accounting update. Do not erase
+historical reservations or increase limits without reviewing spend implications.
 
 ## Storage and trust boundaries
 
@@ -263,7 +314,7 @@ restart; do not erase `.demo-agent/` to reload code.
 | Setting | Purpose |
 | --- | --- |
 | `OPENAI_API_KEY` | Server-only provider credential |
-| `DEMO_AGENT_MODEL` | Advanced model override; reasoning remains medium |
+| `DEMO_AGENT_MODEL` | Advanced model override; search uses low reasoning, generation uses high |
 | `DEMO_AGENT_DAILY_TOKENS` | Positive integer daily reservation ceiling |
 | `DEMO_AGENT_DATA_DIR` | Persistent project/budget directory |
 | `DEMO_AGENT_ORIGINS` | Comma-separated allowed gallery origins |

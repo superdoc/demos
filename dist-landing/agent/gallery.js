@@ -3,6 +3,7 @@ const input = document.querySelector('#agent-prompt');
 const result = document.querySelector('#agent-result');
 const submit = form.querySelector('button');
 let offer = null;
+let conversation = [];
 
 function paragraph(text, className) {
   const element = document.createElement('p');
@@ -10,20 +11,55 @@ function paragraph(text, className) {
   if (className) element.className = className;
   return element;
 }
-async function post(url, body) {
-  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function chatMessage(name, text, className) {
+  const element = paragraph('', className);
+  const speaker = document.createElement('span');
+  speaker.className = name === 'You' ? 'you-speaker' : 'moe-speaker';
+  speaker.textContent = name;
+  element.append(speaker, document.createTextNode(` ${text}`));
+  return element;
+}
+function moeMessage(text, className) {
+  return chatMessage('Moe', text, className);
+}
+function addMessage(name, text) {
+  const card = document.createElement('div');
+  card.className = 'agent-message';
+  card.append(chatMessage(name, text));
+  result.prepend(card);
+  return card;
+}
+async function post(url, body, onAcknowledgement) {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(onAcknowledgement ? { Accept: 'application/x-ndjson' } : {}) }, body: JSON.stringify(body) });
+  if (response.ok && response.headers.get('content-type')?.includes('application/x-ndjson')) {
+    let buffer = '', result;
+    for await (const text of response.body.pipeThrough(new TextDecoderStream())) {
+      buffer += text;
+      let end;
+      while ((end = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, end).trim();
+        buffer = buffer.slice(end + 1);
+        if (!line) continue;
+        const event = JSON.parse(line);
+        if (event.type === 'acknowledgement') onAcknowledgement?.(event.message);
+        if (event.type === 'error') throw new Error(event.data.error || 'The agent is unavailable. Please try again.');
+        if (event.type === 'result') result = event.data;
+      }
+    }
+    if (!result) throw new Error('The connection ended before Moe finished replying. Please try again.');
+    return result;
+  }
   const data = await response.json().catch(() => ({ error: 'The agent is unavailable. Please try again.' }));
   if (!response.ok) throw new Error(data.error || 'The request could not be completed.');
   return data;
 }
 function showError(error) {
-  result.dataset.error = '';
-  result.replaceChildren(paragraph(error.message));
+  addMessage('Moe', error.message).dataset.error = '';
 }
 input.addEventListener('input', () => {
   form.toggleAttribute('data-expanded', Boolean(input.value));
   offer = null;
-  result.querySelector('.agent-build')?.remove();
+  result.querySelector('button.agent-build')?.remove();
 });
 input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); form.requestSubmit(); }
@@ -34,14 +70,25 @@ form.addEventListener('submit', async (event) => {
   const prompt = input.value.trim();
   if (!prompt || submit.disabled) return;
   offer = null;
-  delete result.dataset.error;
+  result.querySelector('button.agent-build')?.remove();
   submit.disabled = true;
   input.readOnly = true;
   result.setAttribute('aria-busy', 'true');
-  result.replaceChildren(paragraph('Finding the right demo for you…'));
+  addMessage('You', prompt);
+  const pending = addMessage('Moe', 'Thinking...');
+  pending.classList.add('agent-status');
+  let acknowledged = false;
+  let replied = false;
   try {
-    const data = await post('/agent/api/search', { prompt });
-    result.replaceChildren(paragraph(data.message));
+    const data = await post('/agent/api/search', { prompt, history: conversation }, (message) => {
+      pending.replaceChildren(moeMessage(message));
+      acknowledged = true;
+    });
+    const answer = addMessage('Moe', data.message);
+    conversation = [...conversation, { role: 'user', content: prompt.slice(0, 600) }, { role: 'assistant', content: data.message.slice(0, 600) }].slice(-4);
+    input.value = '';
+    form.removeAttribute('data-expanded');
+    replied = true;
     for (const match of data.matches) {
       const link = document.createElement('a');
       link.className = 'agent-match';
@@ -49,7 +96,7 @@ form.addEventListener('submit', async (event) => {
       const title = document.createElement('strong');
       title.textContent = `${match.title} ↗`;
       link.append(title, document.createTextNode(match.reason));
-      result.append(link);
+      answer.append(link);
     }
     offer = data.offer;
     if (offer) {
@@ -68,11 +115,17 @@ form.addEventListener('submit', async (event) => {
           build.remove();
           const link = document.createElement('a');
           link.href = project.url; link.target = '_blank'; link.rel = 'noopener'; link.className = 'agent-build'; link.textContent = 'Open your demo ↗';
-          result.append(link, paragraph('Your demo is building. Its one-hour lifetime starts when it is ready.', 'agent-limits'));
+          addMessage('Moe', 'Your demo is building. Its one-hour lifetime starts when it is ready.').append(link);
         } catch (error) { preview?.close(); showError(error); }
       });
-      result.append(build, paragraph('One focused feature · 64 KB code limit · One-hour preview · Downloadable source + agent guidance', 'agent-limits'));
+      answer.append(build, paragraph('One focused feature · 64 KB code limit · One-hour preview · Downloadable source + agent guidance', 'agent-limits'));
     }
   } catch (error) { showError(error); }
-  finally { submit.disabled = false; input.readOnly = false; result.setAttribute('aria-busy', 'false'); }
+  finally {
+    submit.disabled = false;
+    input.readOnly = false;
+    result.setAttribute('aria-busy', 'false');
+    if (!acknowledged) pending.replaceChildren(moeMessage(replied ? 'Finished preparing the reply.' : 'The request could not be completed.'));
+    if (replied && (document.activeElement === submit || document.activeElement === input)) input.focus();
+  }
 });

@@ -7,9 +7,10 @@ import test from 'node:test';
 import { createAgentService, LIMITS } from '../agent/service.mjs';
 import { validateProject, projectFiles } from '../agent/project.mjs';
 import { createDemoAgentProxy } from './demo-agent-proxy.mjs';
+import { readGenerationResponse } from '../agent/progress.mjs';
 
 const generated = { title: 'Review controls', summary: 'Edit and review a real document.', javascript: 'export async function setupDemo({ status }) { status.textContent = "Ready to review"; }', css: '#demo-output { color: blue; }', guidance: 'Try the controls. Next, add a DOCX upload and verify with your own document.' };
-const noMatch = { message: 'No exact match. I can build a focused demo.', matches: [] };
+const noMatch = { acknowledgement: 'I’ll check for a review workflow you can start from.', message: 'I can put together review controls for your document.', canBuild: true, matches: [] };
 const catalog = [{ id: 'review', title: 'Review', description: 'Track changes', liveDemoUri: '/review/', sourceUri: 'https://github.com/superdoc/demos' }];
 
 async function fixture(t, options = {}) {
@@ -50,15 +51,68 @@ async function fixture(t, options = {}) {
 }
 
 test('search returns only real catalog matches and never starts a build for a match', async (t) => {
-  const f = await fixture(t, { answer: () => ({ message: 'Try review', matches: [{ id: 'review', reason: 'Tracks changes' }, { id: 'made-up', reason: 'bad' }, { id: 'review', reason: 'duplicate' }] }) });
+  const f = await fixture(t, { answer: () => ({ acknowledgement: 'I’ll check the review examples.', message: 'Try review', canBuild: false, matches: [{ id: 'review', reason: 'Tracks changes' }, { id: 'made-up', reason: 'bad' }, { id: 'review', reason: 'duplicate' }] }) });
   const result = await f.search();
   assert.equal(result.matches.length, 1);
   assert.equal(result.matches[0].liveDemoUri, '/review/');
   assert.equal(result.offer, null);
   assert.equal(f.calls.length, 1);
-  assert.deepEqual(f.calls[0].reasoning, { effort: 'medium' });
+  assert.deepEqual(f.calls[0].reasoning, { effort: 'low' });
   assert.equal(f.calls[0].max_output_tokens, LIMITS.searchTokens);
   assert.equal(f.calls[0].store, false);
+});
+
+test('Moe streams a public acknowledgement before the final reply using one low-reasoning call', { timeout: 3000 }, async (t) => {
+  let controller, call, calls = 0;
+  const stream = new ReadableStream({ start(value) { controller = value; } });
+  const reply = { acknowledgement: 'Let me check what you mean by ASCII animation.', message: 'What would you like the animation to do?', canBuild: false, matches: [] };
+  const f = await fixture(t, { fetchOpenAI: async (_url, request) => {
+    calls++; call = JSON.parse(request.body);
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+  } });
+  const emit = (event) => controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+  try {
+    const response = await f.request('/agent/api/search', { prompt: 'ASCII animations' }, { Accept: 'application/x-ndjson' });
+    assert.match(response.headers.get('content-type'), /application\/x-ndjson/);
+    const reader = response.body.getReader();
+    const text = JSON.stringify(reply);
+    const split = text.indexOf(',"message"');
+    emit({ type: 'response.reasoning_text.delta', delta: 'private reasoning must not reach the visitor' });
+    emit({ type: 'response.output_text.delta', delta: text.slice(0, split) });
+    const first = new TextDecoder().decode((await reader.read()).value).trim();
+    assert.deepEqual(JSON.parse(first), { type: 'acknowledgement', message: reply.acknowledgement });
+    assert.equal(call.reasoning.effort, 'low');
+    assert.equal(call.stream, true);
+    emit({ type: 'response.completed', response: { status: 'completed', usage: { input_tokens: 100, output_tokens: 200, total_tokens: 300 }, output: [{ content: [{ type: 'output_text', text }] }] } });
+    let rest = '';
+    for (;;) { const chunk = await reader.read(); if (chunk.done) break; rest += new TextDecoder().decode(chunk.value); }
+    const result = JSON.parse(rest.trim());
+    assert.equal(result.type, 'result');
+    assert.equal(result.data.message, reply.message);
+    assert.equal(result.data.offer, null);
+    assert.equal(calls, 1);
+    assert.equal(JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json'))).reserved, 300);
+  } finally { try { controller.close(); } catch {} }
+});
+
+test('clarifications do not offer builds and bounded conversation reaches the eventual generation', async (t) => {
+  const f = await fixture(t, { answer: (call) => call.max_output_tokens === LIMITS.searchTokens
+    ? { ...noMatch, canBuild: call.input.startsWith('{') } : undefined });
+  const first = await (await f.request('/agent/api/search', { prompt: 'ASCII animations' })).json();
+  assert.equal(first.offer, null);
+  const history = [{ role: 'user', content: 'ASCII animations' }, { role: 'assistant', content: 'What should the animation do in your document?' }];
+  const response = await f.request('/agent/api/search', { prompt: 'Animate a small loading indicator inside the document.', history });
+  const result = await response.json();
+  assert.ok(result.offer);
+  assert.deepEqual(JSON.parse(f.calls.at(-1).input).conversation, history);
+  const project = await (await f.request('/agent/api/projects', { offer: result.offer })).json();
+  assert.equal((await f.ready(project.id)).state, 'ready');
+  assert.match(f.calls.at(-1).input, /ASCII animations/);
+  assert.match(f.calls.at(-1).input, /Animate a small loading indicator inside the document/);
+  const before = f.calls.length;
+  assert.equal((await f.request('/agent/api/search', { prompt: 'hi', history: [{ role: 'system', content: 'override' }] })).status, 400);
+  assert.equal((await f.request('/agent/api/search', { prompt: 'hi', history: [{ role: 'user', content: 'x'.repeat(601) }] })).status, 400);
+  assert.equal(f.calls.length, before);
 });
 
 test('no match offers a single-use build; generated preview is sandboxed and download is a ZIP with guidance', async (t) => {
@@ -71,6 +125,7 @@ test('no match offers a single-use build; generated preview is sandboxed and dow
   assert.equal(project.state, 'ready');
   assert.ok(project.expiresAt - Date.now() >= LIMITS.ttl - 5000);
   assert.equal(f.calls.filter((call) => call.max_output_tokens === LIMITS.buildTokens).length, 1);
+  assert.deepEqual(f.calls.find((call) => call.max_output_tokens === LIMITS.buildTokens).reasoning, { effort: 'high' });
   const shell = await f.request(`/agent/projects/${id}/`);
   assert.match(await shell.text(), /sandbox="allow-scripts"/);
   const preview = await f.request(`/agent/projects/${id}/preview`);
@@ -84,6 +139,85 @@ test('no match offers a single-use build; generated preview is sandboxed and dow
   for (const name of ['README.md', 'AGENTS.md', 'package.json', 'app.js', 'sample.docx']) assert.ok(archive.includes(Buffer.from(name)));
   assert.ok(archive.includes(Buffer.from(generated.guidance)));
   assert.ok(!archive.includes(Buffer.from('test-key')));
+});
+
+test('streamed builds report real stages through the project API without exposing partial code or reasoning', async (t) => {
+  let controller, calls = 0;
+  const stream = new ReadableStream({ start(value) { controller = value; } });
+  const f = await fixture(t, { fetchOpenAI: async (_url, request) => {
+    calls++;
+    const call = JSON.parse(request.body);
+    if (call.max_output_tokens === LIMITS.searchTokens) return Response.json({ status: 'completed', output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }] });
+    assert.equal(call.stream, true);
+    return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } });
+  } });
+  t.after(() => { try { controller.close(); } catch {} });
+  const { id } = await f.build();
+  async function expectProgress(expected) {
+    for (let i = 0; i < 50; i++) {
+      const project = await (await f.request(`/agent/api/projects/${id}`)).json();
+      assert.equal(project.javascript, undefined);
+      assert.ok(!JSON.stringify(project).includes('private reasoning'));
+      if (project.progress === expected) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.fail(`Missing progress: ${expected}`);
+  }
+  function emit(event) {
+    const bytes = new TextEncoder().encode(`event: ${event.type}\r\ndata: ${JSON.stringify(event)}\r\n\r\n`);
+    // Split event names, JSON, CRLF, and UTF-8 sequences across transport chunks.
+    for (let i = 0; i < bytes.length; i += 3) controller.enqueue(bytes.slice(i, i + 3));
+  }
+  emit({ type: 'response.created' });
+  emit({ type: 'response.reasoning_text.delta', delta: 'private reasoning' });
+  await expectProgress('Planning your demo…');
+  const text = JSON.stringify(generated);
+  const boundaries = ['javascript', 'css', 'guidance'].map((key) => text.indexOf(`"${key}"`));
+  const parts = [text.slice(0, boundaries[0]), text.slice(boundaries[0], boundaries[1]), text.slice(boundaries[1], boundaries[2]), text.slice(boundaries[2])];
+  const stages = ['Outlining your demo…', 'Writing your demo’s interactions…', 'Styling your demo…', 'Adding setup instructions and agent guidance…'];
+  for (let i = 0; i < parts.length; i++) {
+    emit({ type: 'response.output_text.delta', delta: parts[i] });
+    await expectProgress(stages[i]);
+  }
+  emit({ type: 'response.completed', response: { status: 'completed', output: [{ content: [{ type: 'output_text', text }] }] } });
+  assert.equal((await f.ready(id)).state, 'ready');
+  assert.equal(calls, 2);
+});
+
+test('an interrupted generation stream cannot publish its partial output', async () => {
+  const response = new Response('data: {"type":"response.output_text.delta","delta":"partial"}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+  await assert.rejects(readGenerationResponse(response, () => {}), /ended before completion/);
+});
+
+test('search and build token exhaustion produce distinct errors without automatic retries', async (t) => {
+  const warnings = [];
+  t.mock.method(console, 'warn', (...args) => warnings.push(args.join(' ')));
+  for (const stage of ['search', 'build']) {
+    let calls = 0;
+    const f = await fixture(t, { fetchOpenAI: async (_url, request) => {
+      calls++;
+      const call = JSON.parse(request.body);
+      if (stage === 'build' && call.max_output_tokens === LIMITS.searchTokens) {
+        return Response.json({ status: 'completed', output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }] });
+      }
+      return Response.json({ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' },
+        usage: { output_tokens: call.max_output_tokens, output_tokens_details: { reasoning_tokens: call.max_output_tokens } } });
+    } });
+    if (stage === 'search') {
+      const response = await f.request('/agent/api/search', { prompt: 'Find a demo' });
+      assert.equal(response.status, 422);
+      assert.match((await response.json()).error, /search token limit/);
+      assert.equal(calls, 1);
+    } else {
+      const { id } = await f.build();
+      const project = await f.ready(id);
+      assert.equal(project.state, 'failed');
+      assert.match(project.error, /build token limit/);
+      assert.equal(calls, 2);
+    }
+  }
+  assert.ok(warnings.some((line) => line.includes('"stage":"search"') && line.includes('"reason":"max_output_tokens"')));
+  assert.ok(warnings.some((line) => line.includes('"stage":"build"') && line.includes('"reasoningTokens":12000')));
 });
 
 test('expiry blocks status, shell, preview, and download and culls the persisted project', async (t) => {
@@ -115,6 +249,69 @@ test('the daily allowance is reserved before API calls and applies across restar
   const f = await fixture(t, { dailyTokens: 1 });
   assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 429);
   assert.equal(f.calls.length, 0);
+});
+
+test('completed requests release unused reservations and persist actual input plus output usage', async (t) => {
+  const f = await fixture(t, { dailyTokens: 12000, fetchOpenAI: async () => Response.json({
+    status: 'completed', usage: { input_tokens: 180, output_tokens: 120, total_tokens: 300 },
+    output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }],
+  }) });
+  for (let i = 0; i < 3; i++) assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 200);
+  const budget = JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json')));
+  assert.equal(budget.reserved, 900);
+  assert.equal(budget.actualTokens, 900);
+  await f.restart();
+  assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 200);
+  assert.equal(JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json'))).reserved, 1200);
+});
+
+test('incomplete responses with confirmed usage charge actual tokens rather than the whole reservation', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const f = await fixture(t, { fetchOpenAI: async () => Response.json({
+    status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' },
+    usage: { input_tokens: 100, output_tokens: 1400, total_tokens: 1500, output_tokens_details: { reasoning_tokens: 1400 } },
+  }) });
+  assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 422);
+  const budget = JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json')));
+  assert.equal(budget.reserved, 1500);
+  assert.equal(budget.actualTokens, 1500);
+});
+
+test('in-flight requests still hold their allowance until confirmed usage arrives', async (t) => {
+  const gate = Promise.withResolvers();
+  let calls = 0;
+  const completed = () => Response.json({ status: 'completed', usage: { input_tokens: 180, output_tokens: 120, total_tokens: 300 },
+    output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }] });
+  const f = await fixture(t, { dailyTokens: 12000, fetchOpenAI: async () => ++calls === 1 ? gate.promise : completed() });
+  const first = f.request('/agent/api/search', { prompt: 'review' });
+  try {
+    for (let i = 0; !calls && i < 100; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(calls, 1);
+    assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 429);
+    assert.equal(calls, 1);
+  } finally { gate.resolve(completed()); }
+  assert.equal((await first).status, 200);
+  assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 200);
+  assert.equal(JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json'))).reserved, 600);
+});
+
+test('settling yesterday’s request does not reduce today’s ledger', async (t) => {
+  const gate = Promise.withResolvers();
+  let calls = 0;
+  const completed = () => Response.json({ status: 'completed', usage: { input_tokens: 180, output_tokens: 120, total_tokens: 300 },
+    output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }] });
+  const f = await fixture(t, { fetchOpenAI: async () => ++calls === 1 ? gate.promise : completed() });
+  const yesterday = f.request('/agent/api/search', { prompt: 'review' });
+  try {
+    for (let i = 0; !calls && i < 100; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(calls, 1);
+    f.advance(24 * LIMITS.ttl);
+    assert.equal((await f.request('/agent/api/search', { prompt: 'review' })).status, 200);
+  } finally { gate.resolve(completed()); }
+  assert.equal((await yesterday).status, 200);
+  const budget = JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json')));
+  assert.equal(budget.reserved, 300);
+  assert.equal(budget.actualTokens, 300);
 });
 
 test('the server enforces concurrent build capacity without starting a third AI call', async (t) => {
@@ -192,7 +389,7 @@ test('follow-up requests build a new version from existing source and preserve t
   assert.equal(input.existingDemo.javascript, generated.javascript);
   assert.equal(input.originalRequest, 'Build a document review flow');
   assert.deepEqual(input.followUpRequests, ['Fix the review button and add reset.']);
-  assert.deepEqual(f.calls.at(-1).reasoning, { effort: 'medium' });
+  assert.deepEqual(f.calls.at(-1).reasoning, { effort: 'high' });
   const after = await (await f.request(`/agent/api/projects/${original.id}`)).json();
   assert.equal(after.title, before.title);
   assert.equal(after.expiresAt, before.expiresAt);
@@ -244,13 +441,13 @@ test('follow-ups enforce origin, prompt bounds, expiry, and the existing build r
   assert.equal((await expiring.request(`/agent/api/projects/${original.id}/revisions`, { prompt: 'change' })).status, 410);
 });
 
-test('project shell contains a branded follow-up form without a timer and preview does not repeat its heading', async (t) => {
+test('project shell contains a progress line without a follow-up form or timer and preview does not repeat its heading', async (t) => {
   const f = await fixture(t);
   const { id } = await f.build(); await f.ready(id);
   const shell = await (await f.request(`/agent/projects/${id}/`)).text();
   assert.match(shell, /class="project-brand"[^>]*><img src="\/superdoc-logo.png"/);
-  assert.match(shell, /id="project-refine-form"/);
-  assert.match(shell, /id="project-prompt"[^>]*maxlength="1200"/);
+  assert.match(shell, /id="project-progress"/);
+  assert.doesNotMatch(shell, /project-refine|project-prompt|Continue building|Something not right/);
   assert.doesNotMatch(shell, /project-expiry|Expires in/);
   const preview = await (await f.request(`/agent/projects/${id}/preview`)).text();
   assert.doesNotMatch(preview, /id="demo-heading"|id="demo-intro"/);

@@ -1,5 +1,6 @@
 import { zip } from './zip.mjs';
 import { Script } from 'node:vm';
+import { SUPERDOC_SCOPE } from './scope.mjs';
 
 export const SUPERDOC_VERSION = '2.31.0';
 export const MAX_CODE_BYTES = 64 * 1024;
@@ -57,8 +58,8 @@ export function projectFiles(project) {
     'index.html': projectHtml(project), 'app.js': project.javascript, 'app.css': project.css,
     'base.css': baseCss, 'sample.docx': sampleDocument(),
     'package.json': JSON.stringify({ name: 'superdoc-agent-demo', version: '0.0.0', private: true, type: 'module', scripts: { dev: 'vite --host 127.0.0.1', build: 'vite build' }, devDependencies: { vite: '6.4.5' } }, null, 2),
-    'README.md': `# ${project.title}\n\n${project.summary}\n\n## Run locally\n\nRequires Node.js 22.12+ and internet access for the pinned SuperDoc CDN assets.\n\n\`\`\`sh\nnpm install\nnpm run dev\n\`\`\`\n\nOpen the URL Vite prints. Run \`npm run build\` to build.\n\n## Your request\n\n${requestContext}\n\n## Agent guidance\n\n${project.guidance}\n\nThis is an AI-generated starting point. The preview expires one hour after creation; the download is yours to keep. No API keys are needed to run this project.\n`,
-    'AGENTS.md': `# Continue this SuperDoc demo\n\nRead README.md and app.js first. Run npm install and npm run dev. Use browser checks to confirm each requested behavior.\n\nThe host creates SuperDoc ${SUPERDOC_VERSION}, then calls the named export setupDemo({ superdoc, controls, output, status, readText }) in app.js when ready. Read document text with await readText(). Browser Document API calls are asynchronous. Use superdoc.activeEditor.doc; do not use legacy TipTap editor.state, commands, or on(). Customize app.js and app.css. Use documented public APIs; inspect https://docs.superdoc.dev before extending features. Keep the pinned CDN version unless deliberately upgrading. Never add API keys to browser code.\n\nOriginal request:\n${requestContext}\n\nImplementation notes, limitations, and suggested next steps:\n${project.guidance}\n`,
+    'README.md': `# ${project.title}\n\n${project.summary}\n\n## Run locally\n\nRequires Node.js 22.12+ and internet access for the pinned SuperDoc CDN assets.\n\n\`\`\`sh\nnpm install\nnpm run dev\n\`\`\`\n\nOpen the URL Vite prints. Run \`npm run build\` to build.\n\n## SuperDoc scope\n\n${SUPERDOC_SCOPE}\n\n## Your request\n\n${requestContext}\n\n## Agent guidance\n\n${project.guidance}\n\nThis is an AI-generated starting point. The preview expires one hour after creation; the download is yours to keep. No API keys are needed to run this project.\n`,
+    'AGENTS.md': `# Continue this SuperDoc demo\n\nRead README.md and app.js first. Run npm install and npm run dev. Use browser checks to confirm each requested behavior.\n\n${SUPERDOC_SCOPE}\n\nThe host creates SuperDoc ${SUPERDOC_VERSION}, then calls the named export setupDemo({ superdoc, controls, output, status, readText }) in app.js when ready. Read document text with await readText(). Browser Document API calls are asynchronous. Use superdoc.activeEditor.doc; do not use legacy TipTap editor.state, commands, or on(). Customize app.js and app.css. Use documented public APIs; inspect https://docs.superdoc.dev before extending features. Keep the pinned CDN version unless deliberately upgrading. Never add API keys to browser code.\n\nOriginal request:\n${requestContext}\n\nImplementation notes, limitations, and suggested next steps:\n${project.guidance}\n`,
     '.gitignore': 'node_modules/\ndist/\n.env*\n',
   };
 }

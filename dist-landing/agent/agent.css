@@ -12,11 +12,15 @@
 .agent-hint { display: none; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; padding: 0 18px 13px; color: #858494; font-size: 11px; line-height: 1.5; }
 .agent-form:focus-within .agent-hint, .agent-form[data-expanded] .agent-hint { display: flex; }
 .agent-hint span:first-child { color: #696182; }
-.agent-result { margin-top: 12px; padding: 18px; border: 1px solid #dedde9; border-radius: 14px; color: #444153; background: #fffffff0; font-size: 13px; line-height: 1.6; }
+.agent-result { margin-top: 12px; color: #444153; font-size: 13px; line-height: 1.6; }
+.agent-message { margin-bottom: 12px; padding: 18px; border: 1px solid #dedde9; border-radius: 14px; background: #fffffff0; }
+.agent-status { color: #797286; background: #ffffffb3; }
 .agent-result:empty { display: none; }
 .agent-result p { margin: 0 0 12px; }
 .agent-result p:last-child { margin-bottom: 0; }
-.agent-result[data-error] { border-color: #e7bebe; color: #9b3636; }
+.agent-message[data-error] { border-color: #e7bebe; }
+.moe-speaker { color: #1355ff; font-weight: 600; }
+.you-speaker { color: #18734d; font-weight: 600; }
 .agent-match { display: block; margin-top: 8px; padding: 12px 14px; border-radius: 9px; color: #454155; background: #f6f5fc; text-decoration: none; }
 .agent-match:hover { background: #efecfc; }
 .agent-match strong { display: block; color: #5145c5; }
@@ -37,6 +41,7 @@
 .project-message { display: grid; place-content: center; min-height: 50vh; padding: 24px; text-align: center; color: #797286; }
 .project-message h2 { color: #393145; font-size: 20px; }
 .project-message p { max-width: 560px; }
+.project-message .project-progress { justify-self: center; max-width: min(560px, calc(100vw - 48px)); margin: 12px 0 0; min-height: 20px; overflow: hidden; color: #797286; font-size: 13px; line-height: 20px; white-space: nowrap; text-overflow: ellipsis; }
 .project-guidance { padding: 20px 24px; border-top: 1px solid #e5e3ee; background: white; }
 .project-guidance summary { cursor: pointer; color: #1355ff; font-weight: 600; }
 .project-guidance pre { max-width: 960px; white-space: pre-wrap; font: inherit; color: #797286; }
@@ -49,25 +54,9 @@
 .project-id { padding: 4px 8px; border: 1px solid #dbe5ff; border-radius: 6px; color: #1355ff; background: #f7f9ff; font: 12px ui-monospace, monospace; }
 .project-download { background: #1355ff; }
 .project-download:hover { background: #0845de; }
-.project-refine { padding: 0 24px 20px; }
-.project-refine form { max-width: 960px; padding: 16px; border: 1px solid #dce3ef; border-radius: 12px; background: white; }
-.project-refine-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
-.project-refine-heading label { font-weight: 650; color: #1355ff; }
-.project-refine-heading span { color: #6b7280; font-size: 12px; }
-.project-refine-entry { display: flex; gap: 12px; align-items: flex-end; }
-.project-refine textarea { display: block; width: 100%; min-width: 0; min-height: 66px; max-height: 200px; resize: vertical; padding: 10px 12px; border: 1px solid #dce3ef; border-radius: 8px; font: inherit; color: #252335; background: #fafbff; }
-.project-refine textarea:focus { outline: 2px solid #1355ff40; border-color: #1355ff; }
-.project-refine button { flex: none; padding: 11px 16px; border: 0; border-radius: 8px; color: white; background: #1355ff; font: inherit; font-weight: 600; cursor: pointer; }
-.project-refine button:hover { background: #0845de; }
-.project-refine button:disabled, .project-refine textarea:disabled { opacity: .55; cursor: wait; }
-.project-refine-status { margin: 8px 0 0; color: #6b7280; font-size: 12px; }
-.project-refine-status[data-error] { color: #a12626; }
-.project-page a:focus-visible, .project-refine button:focus-visible { outline: 3px solid #1355ff80; outline-offset: 3px; }
+.project-page a:focus-visible { outline: 3px solid #1355ff80; outline-offset: 3px; }
 .project-message a { color: #1355ff; }
 @media (max-width: 640px) {
   .project-topbar { flex-wrap: wrap; gap: 12px; }
-  .project-refine { padding: 0 14px 16px; }
-  .project-refine-entry { flex-direction: column; align-items: stretch; }
-  .project-refine button { align-self: flex-end; }
   .project-brand { font-size: 13px; }
 }

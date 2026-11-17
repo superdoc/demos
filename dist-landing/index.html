@@ -103,15 +103,15 @@
       <img src="/superdoc-logo.png" alt="">
       <div class="site-title"><h1>SuperDoc Demos</h1><p class="site-subheading">Open source demos</p><p class="site-version">SuperDoc v2.31.0 (latest)</p></div>
     </a>
-    <section class="agent" aria-label="Demo agent">
+    <section class="agent" aria-label="Moe demo agent">
       <form class="agent-form" id="agent-form">
         <div class="agent-entry">
-          <textarea id="agent-prompt" aria-label="Describe the demo you need" aria-describedby="agent-hint" placeholder="What are you building? Find a demo, or let’s make one…" rows="1" maxlength="1200" required></textarea>
+          <textarea id="agent-prompt" aria-label="Describe the demo you need" aria-describedby="agent-hint" placeholder="Describe a demo to find or build it." rows="1" maxlength="1200" required></textarea>
           <button class="agent-submit" type="submit" aria-label="Find a demo" title="Find a demo">↑</button>
         </div>
-        <div class="agent-hint" id="agent-hint"><span>Find an existing demo. Build one if it’s missing.</span><span>Enter to send · Shift + Enter for a new line</span></div>
+        <div class="agent-hint" id="agent-hint"><span>Enter to send · Shift + Enter for a new line</span></div>
       </form>
-      <div id="agent-result" class="agent-result" role="status" aria-live="polite"></div>
+      <div id="agent-result" class="agent-result" role="log" aria-live="polite" aria-relevant="additions text"></div>
     </section>
     <div class="demo-stage">
       <!-- DEMO_CARDS:START -->

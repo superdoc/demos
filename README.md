@@ -64,16 +64,24 @@ See each demo's directory for specific setup instructions.
 
 ## Demo agent
 
-The prompt below **SuperDoc Demos** expands when focused. Describe a document
-workflow to search the visible entries in `demos.json` and their README context.
-If there is no close match, **Build this demo** opens a new tab with a temporary
+The prompt below **SuperDoc Demos** expands when focused. Moe replies naturally,
+remembers a few recent messages, and searches the visible entries in `demos.json`
+when you need a demo. The placeholder reads "Describe a demo to find or build it."
+Every request assumes the SuperDoc editor: "ASCII animations" means animation
+inside its document, not a separate app. If a new editor example is feasible and clear enough,
+**Build this demo** opens a new tab with a temporary
 ID. It builds one small browser example using a real SuperDoc editor. The
 top-right **Download project** button saves a ZIP with runnable source, a sample
 DOCX, `README.md`, and `AGENTS.md` for continuing with a coding agent.
 
-The temporary project page includes **Continue building** for fixes and follow-up
-requests. Each update creates a new version from the existing source and keeps
-the previous preview available until the replacement is ready. See
+Every message appears in its own card, newest first below the prompt, pushing
+the gallery down. Your messages use a green **You** label; responses use a blue
+**Moe** label. Public thinking/status messages stay in the full page-session log.
+Reply with "yes" or a refinement to continue from Moe's last proposal.
+
+The temporary project page shows a single progress line while Moe plans,
+writes, and styles the example. Download the source to continue with your own
+coding agent; there is no follow-up prompt box on the preview page. See
 [`agent/README.md`](agent/README.md) for the complete architecture, API, generation
 contract, safeguards, testing, and instructions for rebuilding or modifying the
 demo agent.
@@ -87,20 +95,24 @@ Defaults are deliberately small:
 
 | Limit | Default |
 | --- | --- |
-| Model / reasoning | `gpt-5-mini` / `medium` |
+| Model / reasoning | `gpt-5-mini` / `low` for search, `high` for builds |
 | Request length | 1,200 characters |
-| AI calls | One search; one generation per explicit build or follow-up submission; no automatic retries or tool loop |
+| AI calls | One low-reasoning call per gallery message, streaming acknowledgement + reply; one generation per explicit build; no automatic retries or tool loop |
 | Search / build output | 1,400 / 12,000 tokens, including reasoning |
 | Generated code | 64 KiB of JavaScript + CSS; fixed scaffold and guidance added by the server |
-| Daily token allowance | 150,000 conservatively reserved tokens across all visitors, including input and reasoning |
+| Daily token allowance | 150,000 tokens across all visitors; unused request reservations are released after confirmed usage |
 | Per-IP hourly limits | 20 searches, 3 generations shared by initial builds and follow-ups |
 | Capacity | 2 simultaneous builds, 20 temporary projects |
 | Lifetime | One hour per generated version, with no refresh extension or visible countdown |
 
 The daily allowance reserves maximum output plus input UTF-8 bytes and overhead
-before contacting OpenAI. Reservations include failed calls and persist across
-restarts; the allowance resets at midnight UTC. Set `DEMO_AGENT_DAILY_TOKENS` or
-`DEMO_AGENT_MODEL` on the server to change those settings. Reasoning stays medium.
+before contacting OpenAI. After the provider reports usage, it charges actual
+input and output tokens (including reasoning) and releases the unused allowance.
+Calls without confirmed usage keep their full reservation. The ledger persists
+across restarts and resets at midnight UTC. Existing older reservations without
+usage records remain charged. Set `DEMO_AGENT_DAILY_TOKENS` or
+`DEMO_AGENT_MODEL` on the server to change those settings. Search uses low
+reasoning; code generation uses high reasoning.
 The browser cannot override the model, budget, or project size.
 
 Projects are persisted in the ignored `.demo-agent/` directory. Every request
@@ -136,7 +148,7 @@ configuration message for agent requests. No infrastructure is provisioned by
 the build, and no secrets are included in the release bundle.
 
 Run the integration checks with `npm run test:agent`. They cover catalog matching,
-single-use offers, medium reasoning, token reservations, sandbox headers, ZIP
+single-use offers, high reasoning, token reservations, sandbox headers, ZIP
 downloads, request validation, persistence, and server-enforced expiry.
 
 ## Build this commands
