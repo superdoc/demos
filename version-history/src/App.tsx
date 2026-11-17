@@ -54,7 +54,6 @@ function Workspace({ session }: { session: RoomSession }) {
       <header className="topbar">
         <h1>{selected ? timestamp(selected.createdAt) : <>Current version <span className="room-name">· {session.roomId}</span></>}</h1>
         <a className="primary-button more-demos-button" href={galleryUrl}>More demos</a>
-        {selected && <button className="primary-button" disabled={saving} onClick={() => void selectVersion(null)}>Back to current version</button>}
         <BuildThis />
         <span className="toolbar-status" role="status">{selected ? 'You’re viewing an earlier version' : saveLabels[history.status]}</span>
         <span className="connection-status" role="status">{connected ? 'Connected' : 'Reconnecting…'}</span>
@@ -87,12 +86,12 @@ function Workspace({ session }: { session: RoomSession }) {
       <nav className="version-list" aria-label="Document versions">
         <div className={`current-version-card ${!selected ? 'selected' : ''}`}>
           <button className="version-card current-card" aria-current={!selected ? 'true' : undefined} disabled={saving || opening} onClick={() => void selectVersion(null)}>
-            <span className="version-title">Current version <span className="live-label">Live</span></span>
+            <span className="version-title">{selected ? 'Back to current version' : 'Current version'} <span className="live-label">Live</span></span>
             <span className="version-subtitle">Continue editing</span>
             <span className="version-author"><i />{session.user.name}</span>
           </button>
-          <button className="save-version-button" disabled={!history.canSave || history.status === 'loading' || saving || !connected || selected !== null}
-            onClick={() => void history.save().catch(() => {})}>{saving ? 'Saving version…' : 'Save version'}</button>
+          {!selected && <button className="save-version-button" disabled={!history.canSave || history.status === 'loading' || saving || !connected}
+            onClick={() => void history.save().catch(() => {})}>{saving ? 'Saving version…' : 'Save version'}</button>}
         </div>
         {history.versions.length > 0 && <h3>Today</h3>}
         {history.versions.map((version) => <button

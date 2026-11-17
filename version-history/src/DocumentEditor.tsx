@@ -54,7 +54,7 @@ export function DocumentEditor({ document, readOnly = false, toolbarContainer, o
         },
       } : document,
       documentMode: readOnly ? 'viewing' : 'editing',
-      viewing: { trackedChanges: 'final' },
+      viewing: { trackedChanges: 'markup' },
       role: readOnly ? 'viewer' : 'editor',
       allowSelectionInViewMode: true,
       user: session?.user ?? { id: 'preview', name: 'You', email: 'you@example.com' },

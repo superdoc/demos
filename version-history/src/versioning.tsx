@@ -77,7 +77,7 @@ export function Changelog({ changes, ready, active, onSelect }: ChangelogProps) 
     try {
       await onSelect(change);
     } catch {
-      setNavigationError('This edit has no remaining text location in this version.');
+      setNavigationError('Could not navigate to this edit.');
     } finally {
       setNavigating(false);
     }
@@ -106,7 +106,7 @@ export function Changelog({ changes, ready, active, onSelect }: ChangelogProps) 
             <button
               className={`change-card ${active === change.id ? 'selected' : ''}`}
               aria-current={active === change.id ? 'true' : undefined}
-              disabled={!ready || navigating}
+              disabled={!ready || navigating || !change.targets.length}
               onClick={() => void showChange(change)}
             >
               <span className="change-card-heading">
@@ -120,7 +120,7 @@ export function Changelog({ changes, ready, active, onSelect }: ChangelogProps) 
               <time dateTime={change.record.at.declared || change.record.at.observed}>
                 {changeDate(change)}
               </time>
-              {!change.targets.length && <span className="change-location-note">No remaining text range</span>}
+              {!change.targets.length && <span className="change-location-note">{change.change.kind === 'split' ? 'Paragraph split; no text to highlight' : 'No text to highlight in this version'}</span>}
               {change.contextOnly && <span className="change-location-note">Affected paragraph</span>}
             </button>
           </li>
@@ -281,6 +281,8 @@ export async function resolveSnapshotChanges(
   const blockText = new Map<string, string | null>();
 
   for (const change of changes) {
+    // Splits change a boundary and deleted text has no surviving range.
+    if (change.change.kind === 'split' || (change.change.kind === 'text' && !change.change.inserted)) continue;
     for (const location of change.locations) {
       const key = locationKey(location);
       if (!blockText.has(key)) {
@@ -325,6 +327,7 @@ async function readBlockText(api: SnapshotApi, location: Location): Promise<stri
 }
 
 function paragraphGroupKey({ id, record, change }: Change): string {
+  if (change.kind === 'split') return id;
   if (!('blockId' in change)) return id;
 
   // Names can collide. Use actor IDs and the complete contributor set.

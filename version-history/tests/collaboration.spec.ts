@@ -20,7 +20,7 @@ test('collaborators retain original edit authors and share immutable history thr
     expect(insertedText(next.records)).toBe('Later shared edit. ');
     await expect(versionButton(bob, 2)).toBeVisible({ timeout: 8000 });
     await expect(preview(bob)).not.toContainText('Later shared edit.');
-    await bob.getByRole('button', { name: 'Back to current version', exact: true }).click();
+    await bob.getByRole('button', { name: /Back to current version/ }).click();
     await expect(live(bob)).toContainText('Later shared edit.');
     await bob.reload(); await expect(versionButton(bob, 2)).toBeVisible();
     await openVersion(bob, 1);
