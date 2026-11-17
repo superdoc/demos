@@ -1,4 +1,4 @@
-/* Public, consented demo measurements. No document or session data is read. */
+/* Bounded public demo measurements. No document or session data is read. */
 (() => {
   const w = window, d = document, KEY = 'superdoc_cookie_preferences';
   const routes = {'/':'gallery','/custom-word-editor/':'custom-word-editor','/collab/':'agentic-collaboration','/builder/':'template-builder-api-v2','/docrag/':'docrag','/version-history/':'version-history'};
@@ -14,7 +14,7 @@
   const publicSurface=()=>bootAllowed&&!blocked&&w.location.pathname.replace(/\/*$/, '/')===path&&!w.location.hash;
   function post(type,payload){frame?.contentWindow?.postMessage({channel:'superdoc-demo-analytics-v1',type,...(payload?{payload}:{})},FRAME_ORIGIN);}
   function stop(){granted=false;clearTimeout(exposureTimer);pending.length=0;post('disable');frame?.remove();frame=null;frameReady=false;loaded=false;}
-  const preference = () => {try{const c=JSON.parse(w.localStorage.getItem(KEY)),age=Date.now()-c.savedAt;return c.version===1&&age>=0&&age<180*86400000&&typeof c.analytics==='boolean'?c:null;}catch{return null;}};
+  const preference = () => {try{const c=JSON.parse(w.localStorage.getItem(KEY)),age=Date.now()-c.savedAt;return c?.version===1&&typeof c.analytics==='boolean'&&(c.analytics===false||(age>=0&&age<180*86400000))?c:null;}catch{return null;}};
   function emit(action, capability='none', target=example) {
     if (!granted || privateSignal() || !publicSurface() || !actions.has(action) || !capabilities.has(capability) || !Object.values(routes).includes(target)) return false;
     const key=[target,action,capability].join(':'); if(seen.has(key))return false;
@@ -23,7 +23,7 @@
     seen.add(key);return true;
   }
   function apply(c) {
-    granted=!!c?.analytics&&!privateSignal()&&!!publicSurface();
+    granted=c?.analytics!==false&&!privateSignal()&&!!publicSurface();
     if(!granted){stop();return;}
     if(loaded)return;loaded=true;
     frame=d.createElement('iframe');frame.hidden=true;frame.title='Optional demo analytics';frame.referrerPolicy='no-referrer';frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.src=FRAME_ORIGIN+'/demo-analytics-frame.html';d.body.append(frame);
@@ -43,7 +43,7 @@
     if(example==='gallery'&&w.IntersectionObserver){const timers=new Map();const observer=new IntersectionObserver(entries=>{for(const item of entries){clearTimeout(timers.get(item.target));if(item.isIntersecting&&item.intersectionRatio>=.5)timers.set(item.target,setTimeout(()=>{if(d.visibilityState==='visible'){const a=item.target.querySelector('a[href]');try{emit('option_exposed','none',routes[new URL(a.href).pathname.replace(/\/*$/, '/')]);}catch{}}},1000));}},{threshold:[0,.5]});reobserve=()=>{observer.disconnect();d.querySelectorAll('.demo-card').forEach(el=>observer.observe(el));};reobserve();d.addEventListener('visibilitychange',()=>{if(d.visibilityState!=='visible'){for(const t of timers.values())clearTimeout(t);}else reobserve();});}
   }
   // Generated demo-room setup happens before start. Incoming private links
-  // never opt in. Later private navigation stops measurements without changing
+  // never enable measurement. Later private navigation stops measurements without changing
   // application navigation or sending the new URL to the vendor frame.
   for(const method of ['pushState','replaceState']){
     const original=w.history?.[method]?.bind(w.history);if(!original)continue;
