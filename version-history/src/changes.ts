@@ -46,6 +46,7 @@ export function changeText({ change, summary }: Change): string {
   if (change.kind === 'format') return Object.entries(change.attributes).map(([key, value]) => `${key}: ${JSON.stringify(value)}`).join(', ');
   if (change.kind === 'paragraph') return Object.keys(change.properties).join(', ') || 'Paragraph properties';
   if (change.kind === 'sidecar') return `${change.affects}: ${change.ids.join(', ')}`;
+  if (change.kind === 'split') return 'Paragraph split';
   return 'Document structure';
 }
 

@@ -25,13 +25,15 @@ test('historical checkpoints are immutable and read only while the live document
   await edit(page, 'First version. '); await save(page);
   await edit(page, 'Unsaved live text. ');
   await openVersion(page, 1);
+  await expect(saveButton(page)).toHaveCount(0);
   await expect(preview(page)).toContainText('First version.');
   await expect(preview(page)).not.toContainText('Unsaved live text.');
   await expect(live(page)).toBeHidden();
   await preview(page).locator('.superdoc-text-run').first().click();
   await page.keyboard.type('MUST NOT WRITE');
   await expect(preview(page)).not.toContainText('MUST NOT WRITE');
-  await page.getByRole('button', { name: 'Back to current version', exact: true }).click();
+  await page.getByRole('button', { name: /Back to current version/ }).click();
+  await expect(saveButton(page)).toBeVisible();
   await expect(live(page)).toContainText('Unsaved live text.');
   await live(page).locator('.superdoc-text-run').first().click();
   await page.keyboard.press('ControlOrMeta+z');
@@ -66,6 +68,72 @@ test('real suggestions remain pending across saves while the changelog uses inde
   expect(strFromU8(unzipSync(second.docx)['word/document.xml'])).toMatch(/<w:ins\b/);
   await openVersion(page, 1);
   await expect(preview(page)).toContainText('A genuine suggestion.');
+  await expect(preview(page).locator('.track-insert-dec').first()).toBeVisible();
+});
+
+test('suggested replacement shows both deletion and insertion in a saved version', async ({ page }) => {
+  await openRoom(page, 'Alice');
+  await edit(page, 'Remove me. ');
+  await page.locator('#current-document-toolbar [data-item="btn-documentMode"]').click();
+  await page.getByText('Suggesting', { exact: true }).click();
+  await live(page).locator('.superdoc-text-run').first().click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  await page.keyboard.down('Shift');
+  for (let index = 0; index < 'Remove me.'.length; index++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('Shift');
+  await page.keyboard.type('Replacement');
+  const result = await save(page);
+  expect(strFromU8(unzipSync(result.docx)['word/document.xml'])).toMatch(/<w:del\b/);
+  expect(strFromU8(unzipSync(result.docx)['word/document.xml'])).toMatch(/<w:ins\b/);
+  await openVersion(page, 1);
+  await expect(preview(page)).toContainText('Remove me.');
+  await expect(preview(page)).toContainText('Replacement');
+  await expect(preview(page).locator('.track-delete-dec').first()).toBeVisible();
+  await expect(preview(page).locator('.track-insert-dec').first()).toBeVisible();
+});
+
+test('paragraph splits and removed text are explained without misleading navigation', async ({ page }) => {
+  await openRoom(page);
+  await edit(page, 'Disposable text');
+  await save(page);
+  await live(page).locator('.superdoc-text-run').first().click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  await page.keyboard.down('Shift');
+  for (let index = 0; index < 'Disposable text'.length; index++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('Shift');
+  await page.keyboard.press('Backspace');
+  await save(page);
+  await openVersion(page, 2);
+  const removed = page.locator('.change-card').filter({ hasText: 'Disposable text' });
+  await expect(removed).toBeDisabled();
+  await expect(removed).toContainText('No text to highlight in this version');
+  await page.getByRole('button', { name: 'Back to current version' }).click();
+  await live(page).locator('.superdoc-text-run').first().click();
+  await page.keyboard.press('ControlOrMeta+Home');
+  for (let index = 0; index < 5; index++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  const splitResult = await save(page);
+  expect(splitResult.records.some((record) => record.changes.some((change) => change.kind === 'split'))).toBe(true);
+  await openVersion(page, 3);
+  const split = page.locator('.change-card').filter({ hasText: 'Split paragraph' });
+  await expect(split).toBeDisabled();
+  await expect(split).toContainText('Paragraph split; no text to highlight');
+});
+
+test('history offers a visible return control and scroll cue when versions overflow', async ({ page }) => {
+  await openRoom(page);
+  for (let index = 0; index < 5; index++) await save(page);
+  await openVersion(page, 1);
+  const current = page.getByRole('button', { name: /Back to current version/ });
+  await expect(current).toBeVisible();
+  await expect(current).toHaveCSS('border-top-width', '1px');
+  const list = page.getByRole('navigation', { name: 'Document versions' });
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect(list).toHaveCSS('background-image', /linear-gradient/);
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await current.click();
+  await expect(live(page)).toBeVisible();
 });
 
 test('normal-mode deletion and formatting are attributed without creating Word revisions', async ({ page }) => {
