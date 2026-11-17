@@ -122,7 +122,13 @@ test('paragraph splits and removed text are explained without misleading navigat
 
 test('history offers a visible return control and scroll cue when versions overflow', async ({ page }) => {
   await openRoom(page);
-  for (let index = 0; index < 5; index++) await save(page);
+  const container = page.locator('.version-list-container');
+  await save(page);
+  await expect(container).not.toHaveClass(/has-multiple-versions/);
+  await save(page);
+  await expect(container).toHaveClass(/has-multiple-versions/);
+  expect(await container.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('""');
+  for (let index = 0; index < 3; index++) await save(page);
   await openVersion(page, 1);
   const current = page.getByRole('button', { name: /Back to current version/ });
   await expect(current).toBeVisible();
@@ -132,6 +138,7 @@ test('history offers a visible return control and scroll cue when versions overf
   await expect(list).toHaveCSS('background-image', /linear-gradient/);
   await list.evaluate((el) => { el.scrollTop = el.scrollHeight; });
   expect(await list.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  expect(await container.evaluate((el) => getComputedStyle(el, '::after').content)).toBe('""');
   await current.click();
   await expect(live(page)).toBeVisible();
 });

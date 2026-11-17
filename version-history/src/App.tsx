@@ -83,6 +83,7 @@ function Workspace({ session }: { session: RoomSession }) {
 
     <aside className={`history-panel ${selected ? 'with-changes' : ''}`} aria-label="Version history">
       <h2>Version history</h2>
+      <div className={`version-list-container ${history.versions.length > 1 ? 'has-multiple-versions' : ''}`}>
       <nav className="version-list" aria-label="Document versions">
         <div className={`current-version-card ${!selected ? 'selected' : ''}`}>
           <button className="version-card current-card" aria-current={!selected ? 'true' : undefined} disabled={saving || opening} onClick={() => void selectVersion(null)}>
@@ -108,6 +109,7 @@ function Workspace({ session }: { session: RoomSession }) {
         </button>)}
         {history.versions.length === 0 && <p className="empty-history">No saved versions yet. Choose Save version to keep a snapshot.</p>}
       </nav>
+      </div>
       {opening && <p className="changes-message" role="status">Downloading version…</p>}
       {openError && <p className="changes-message error" role="alert">{openError}</p>}
       {history.listError && <div className="changes-message error" role="alert">{history.listError} <button onClick={() => void history.refresh()}>Refresh versions</button></div>}
