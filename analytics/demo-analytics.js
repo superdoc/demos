@@ -29,21 +29,9 @@
     frame=d.createElement('iframe');frame.hidden=true;frame.title='Optional demo analytics';frame.referrerPolicy='no-referrer';frame.setAttribute('sandbox','allow-scripts allow-same-origin');frame.src=FRAME_ORIGIN+'/demo-analytics-frame.html';d.body.append(frame);
     emit('load_started'); reobserve(); if(d.visibilityState==='visible')exposureTimer=setTimeout(()=>{if(d.visibilityState==='visible')emit('exposed');},1000);
   }
-  // A single per-origin settings surface; never inherit another person's consent.
-  function settings(force=false){
-    if(!publicSurface())return;
-    if(!force&&preference())return;
-    if(d.getElementById('superdoc-demo-consent'))return;
-    const panel=d.createElement('section');panel.id='superdoc-demo-consent';panel.setAttribute('aria-label','Optional demo analytics');
-    panel.style.cssText='position:fixed;bottom:12px;right:12px;max-width:min(360px,calc(100vw - 24px));padding:16px;background:white;color:#242424;border:1px solid #ccc;border-radius:12px;z-index:99999;font:14px/1.5 system-ui;box-shadow:0 4px 24px #0002';
-    const text=d.createElement('p');text.textContent='Help us improve these demos with optional usage analytics. Document contents, prompts and filenames are excluded.';panel.append(text);
-    for(const [label,value] of [['Allow analytics',true],['Decline',false]]){const b=d.createElement('button');b.textContent=label;b.style.cssText='padding:8px;margin:4px';b.onclick=()=>{const choice={version:1,savedAt:Date.now(),analytics:value&&!privateSignal(),identification:false};try{w.localStorage.setItem(KEY,JSON.stringify(choice));}catch{}panel.remove();apply(choice);};panel.append(b);}
-    const privacy=d.createElement('a');privacy.href='https://superdocportal.dev/privacy';privacy.textContent='Privacy policy';panel.append(privacy);d.body.append(panel);
-  }
   function start(){
     if(!publicSurface())return;
-    initialized=true;apply(preference());settings();
-    const b=d.createElement('button');b.textContent='Privacy settings';b.style.cssText='position:fixed;left:8px;bottom:8px;z-index:9998;font:12px system-ui;padding:5px';b.onclick=()=>settings(true);d.body.append(b);
+    initialized=true;apply(preference());
     d.addEventListener('click',e=>{
       if(!e.isTrusted)return;const a=e.target.closest?.('a');
       if(a){try{const url=new URL(a.href,w.location.href),target=routes[url.pathname.replace(/\/*$/, '/')];if(url.origin===w.location.origin&&target&&target!=='gallery'){emit('selected','none',target);if(!url.search&&!url.hash){url.searchParams.set('demo_entry','gallery');a.href=url.href;}}else if(url.hostname==='github.com'||url.hostname==='docs.superdoc.dev'){const card=a.closest('.demo-card'),live=card?.querySelector('.card-main-link');let id=example;try{if(live)id=routes[new URL(live.href).pathname.replace(/\/*$/, '/')];}catch{}emit(url.hostname==='github.com'?'source_clicked':'docs_clicked','none',id);}}catch{}}
