@@ -62,6 +62,22 @@ test('search returns only real catalog matches and never starts a build for a ma
   assert.equal(f.calls[0].store, false);
 });
 
+test('related demo suggestions do not suppress a requested build offer', async (t) => {
+  const f = await fixture(t, { answer: (call) => call.max_output_tokens === LIMITS.searchTokens ? {
+    ...noMatch, message: 'I can build the combined commenting workflow. Review is a useful starting point.',
+    matches: [{ id: 'review', reason: 'Demonstrates part of the requested review workflow.' }],
+  } : undefined });
+  const response = await f.request('/agent/api/search', { prompt: 'Build a new demo with internal and external document comments.' });
+  const result = await response.json();
+  assert.equal(result.matches.length, 1);
+  assert.equal(result.matches[0].id, 'review');
+  assert.ok(result.offer);
+  assert.equal(f.calls.length, 1); // Offering a build must not start generation.
+  const build = await f.request('/agent/api/projects', { offer: result.offer });
+  assert.equal(build.status, 202);
+  assert.equal((await f.ready((await build.json()).id)).state, 'ready');
+});
+
 test('Moe streams a public acknowledgement before the final reply using one low-reasoning call', { timeout: 3000 }, async (t) => {
   let controller, call, calls = 0;
   const stream = new ReadableStream({ start(value) { controller = value; } });

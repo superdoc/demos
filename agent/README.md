@@ -66,9 +66,11 @@ editing only their copies does not change the next release.
    The acknowledgement streams to the page before the final reply; raw model
    reasoning and partial JSON never reach the visitor. Returned demo IDs are
    filtered against the real catalog and deduplicated (at most three matches).
-3. Only when there are no matches and Moe has enough detail for a feasible
-   editor example does the service issue a random, session-bound,
+3. When Moe has enough detail for a feasible editor example and a new build is
+   requested or needed, the service issues a random, session-bound,
    single-use build offer valid for ten minutes. Search never starts a build.
+   Related catalog suggestions can appear alongside that offer. Finding an
+   existing demo does not override an explicit request for a new example.
 4. The visitor explicitly clicks **Build this demo**. The browser opens a blank
    tab during the click, removes its opener, and posts the offer to
    `/agent/api/projects`. The service consumes the offer and reserves a build
@@ -148,9 +150,11 @@ search output allowance for matching results rather than extensive reasoning.
 and strict JSON schemas. The gallery model returns
 `{ acknowledgement, message, canBuild, matches: [{ id, reason }] }`. Questions,
 greetings, unclear goals and unrelated requests have `canBuild: false`, so
-empty matches alone never force a build offer. Acknowledgements are public
-intent statements, not chain-of-thought. Both acknowledgement and reply share
-the existing 1,400-token allowance and one model request.
+empty matches alone never force a build offer. `canBuild` is independent of
+`matches`: a feasible requested build gets its CTA even alongside related or
+exact catalog matches. Acknowledgements are public intent statements, not
+chain-of-thought. Both acknowledgement and reply share the existing 1,400-token
+allowance and one model request.
 Generation returns nonempty strings for `title`, `summary`, `javascript`, `css`
 and `guidance`.
 
