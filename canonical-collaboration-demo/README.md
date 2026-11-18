@@ -4,7 +4,7 @@ A small reference application showing a browser user and a server-side Node agen
 
 ## Agent cursor presence
 
-The demo follows the published Next channel: `@superdoc/sdk` 2.29.0-next.14, `superdoc` 2.32.0-next.14, and `@superdoc/react` 2.27.0-next.14. Its `superdocVersionException` in `demos.json` declares `channel: "next"`, so the updater advances all three packages from npm's `next` tags and keeps the manifest's exact editor pin in sync. Other demos continue following stable or their existing fixed exceptions. Run the normal `make dev` command; no Orbit checkout or local package build is required.
+The demo follows the published stable releases: `@superdoc/sdk` 2.30.0, `superdoc` 2.33.0, and `@superdoc/react` 2.28.0. The shared updater advances all three packages from npm's `latest` tags. Run the normal `make dev` command; no Orbit checkout or local package build is required.
 
 With both `COLLABORATION_AGENT=on` and `COLLABORATION_AGENT_PRESENCE=on`, the backend SDK session publishes a purple **Agent** cursor through native collaboration presence. The SDK moves it after successful edits, including each incremental text update while the model streams. Every browser in the room sees the cursor. The backend identity stays connected while the room is open; the toolbar's connected-user count continues to count browser users. Closing or deleting the room removes the agent's presence. With `COLLABORATION_AGENT=off`, the backend does not publish agent presence.
 
