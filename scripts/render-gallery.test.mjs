@@ -71,3 +71,15 @@ test('removing the gallery exception restores strict version equality', async (t
   await writeFile(path.join(root, 'demos.json'), JSON.stringify(demos));
   await assert.rejects(renderGallery({ root, mode: 'production', output: 'index.html' }), /different SuperDoc versions/);
 });
+
+test('production gallery preserves a single canonical and matching Open Graph destination', async t => {
+  const { root } = await fixture(t);
+  await writeFile(path.join(root, 'dist-landing/index.html'), await readFile(new URL('../dist-landing/index.html', import.meta.url), 'utf8'));
+  await renderGallery({root, mode:'production', output:'index.html'});
+  const html=await readFile(path.join(root,'index.html'),'utf8');
+  const canonicals=[...html.matchAll(/<link\s+rel="canonical"\s+href="([^"]+)"/g)];
+  assert.equal(canonicals.length,1);assert.equal(canonicals[0][1],'https://demos.superdoc.dev/');
+  assert.match(html,/<meta property="og:url" content="https:\/\/demos\.superdoc\.dev\/"/);
+  assert.match(html,/<meta name="description" content="Explore working SuperDoc demos/);
+  assert.equal((html.match(/<h1\b/g)||[]).length,1);
+});
