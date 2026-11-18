@@ -223,10 +223,10 @@ UTF-16 offsets. Agent insertion follows the SDK Full toolkit targeting contract.
 
 ## Versions, assets, and verification
 
-The demo follows the published Next channel for agent presence. Current pinned packages: server `@superdoc/sdk` 2.29.0-next.14; browser `superdoc` 2.32.0-next.14, React 19;
+The demo follows stable releases. Current pinned packages: server `@superdoc/sdk` 2.30.0; browser `superdoc` 2.33.0, React 19;
 JSZip 3.10.1; citeproc 2.4.63; `@xmldom/xmldom` 0.9.12. Server modules are ESM and
 require Node 22+; direct TypeScript tests use Node 24. The demo mounts its editor with
-`@superdoc/react` 2.27.0-next.14; browser adapters require only the SuperDoc instance. Keep
+`@superdoc/react` 2.28.0; browser adapters require only the SuperDoc instance. Keep
 `server/src/reference-integration/assets/csl/` and its attribution/license links with
 the renderer. The [inventory](reference-integration.md) records each fix's reason and
 removal condition. Revalidate fixes individually when changing SuperDoc versions.
