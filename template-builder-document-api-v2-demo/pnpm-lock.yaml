@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       superdoc:
-        specifier: 2.32.0
-        version: 2.32.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32)
+        specifier: 2.33.0
+        version: 2.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32)
       vue:
         specifier: ^3.4.0
         version: 3.5.32(typescript@5.9.3)
@@ -413,8 +413,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@superdoc/docx-engine@0.31.0':
-    resolution: {integrity: sha512-9qiTCRWEiYByKEAg8WcdYKpZd0CAnn1TsnfgJRGDil5G6AQKF+r1+N9tjv06zqCSMfL867ELWrhAeSkPiVexNA==}
+  '@superdoc/docx-engine@0.32.0':
+    resolution: {integrity: sha512-RWfQM2twE1BPGb/W7an9sq9hFqzirD9lmPUDa+G0TEvC0JxcBKvIgs2NHmo71Plm8rXxoeIKIYQ+n8bJQgVd1w==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -651,8 +651,8 @@ packages:
     resolution: {integrity: sha512-1POYv7uv2gXoyGFpBCmpDVSNV74IfsWlDW216UPjbWufNf+bSU6GdbDsxdcxtfwb4xlI3yxzOTKClUosxARYrQ==}
     engines: {node: '>=0.10.0'}
 
-  superdoc@2.32.0:
-    resolution: {integrity: sha512-W5gxEezi2iP5hUI4GqMVuSwQscVjcuPqPOgODdCoc7icnd1N6EU0jlDhTe9aBqZB/spmNG7YYr7E7wdrUlYA/w==}
+  superdoc@2.33.0:
+    resolution: {integrity: sha512-7sjd8xVBdMLjZl5DCsfZdoaj9KSssXBwGDjKO/Mtk8YGGfsBePMqjbzw63NFkvQ2IQw8Gs46Nja9w0OIYm3jzg==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -1020,7 +1020,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@superdoc/docx-engine@0.31.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
+  '@superdoc/docx-engine@0.32.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       vue: 3.5.32(typescript@5.9.3)
       xml-js: 1.6.11
@@ -1293,10 +1293,10 @@ snapshots:
 
   speakingurl@14.0.1: {}
 
-  superdoc@2.32.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32):
+  superdoc@2.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32):
     dependencies:
       '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@superdoc/docx-engine': 0.31.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
+      '@superdoc/docx-engine': 0.32.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
       '@types/ws': 8.18.2
       eventemitter3: 5.0.4
       konva: 10.9.1
