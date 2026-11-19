@@ -108,4 +108,7 @@ test('production gallery identifies its actual website and publisher in server H
   assert.equal(schema['@graph'].length, 2);
   assert.equal(websites[0].potentialAction, undefined);
   assert.equal(websites[0].aggregateRating, undefined);
+  assert.equal(websites[0].review, undefined);
+  assert.equal(websites[0].datePublished, undefined);
+  assert.equal(websites[0].dateModified, undefined);
 });
