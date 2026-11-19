@@ -217,8 +217,13 @@ export class FieldController {
       if (!replaced.success) return null;
       at = { ...replaceTarget, start: replaceTarget.start, end: replaceTarget.start };
     }
-    const metadata = { ...input.metadata };
-    const tag = input.tag?.trim() || JSON.stringify(metadata);
+    const metadata: Record<string, unknown> = {
+      ...input.metadata,
+      ...(input.tag?.trim() ? this.parseMetadata(input.tag) : {}),
+      group: crypto.randomUUID(),
+    };
+    delete metadata.fieldId;
+    const tag = JSON.stringify(metadata);
     const common = {
       controlType: 'richText' as const,
       alias: input.alias,
@@ -239,59 +244,39 @@ export class FieldController {
             content: input.value || input.alias,
           });
     if (!result.success) return null;
-    let created = await doc.contentControls.get({ target: result.contentControl });
-    let field = this.parseControls([created])[0] || null;
+    const created = await doc.contentControls.get({ target: result.contentControl });
+    const field = this.parseControls([created])[0] || null;
     if (!field) return null;
 
-    if (field.metadata.group !== field.id) {
-      const groupedMetadata: Record<string, unknown> = { ...field.metadata, group: field.id };
-      delete groupedMetadata.fieldId;
-      const groupedTag = JSON.stringify(groupedMetadata);
-      const updated = await this.updateTagForField(field, groupedTag);
-      if (updated) {
-        created = await doc.contentControls.get({ target: result.contentControl });
-        field = {
-          ...(this.parseControls([created])[0] || field),
-          tag: groupedTag,
-          group: field.id,
-          metadata: groupedMetadata,
-        };
-      }
-    }
     this.pendingFields.set(field.id, field);
     this.upsertState(field);
     return field;
   }
 
-  async createFieldFromSelection(alias: string, at: SelectionTarget): Promise<TemplateField | null> {
+  async createFieldFromSelection(selectedText: string, at: SelectionTarget): Promise<TemplateField | null> {
     const doc = this.superdoc.activeEditor?.doc;
     if (!doc) return null;
-    const metadata: Record<string, unknown> = { group: 'field', category: 'field' };
+    const metadata: Record<string, unknown> = { group: crypto.randomUUID(), category: 'field' };
     const result = await doc.create.contentControl({
       kind: 'inline',
-      controlType: 'richText',
+      controlType: 'text',
       at,
-      alias,
+      alias: selectedText.trim(),
+      content: selectedText,
       tag: JSON.stringify(metadata),
       lockMode: 'unlocked',
     });
-    if (!result.success) return null;
+    if (!result.success) {
+      const message = result.failure.code === 'CAPABILITY_UNAVAILABLE' && result.failure.message.startsWith('Select one complete simple pending insertion')
+        ? 'Select one complete tracked change'
+        : result.failure.message;
+      throw new Error(message);
+    }
 
-    let created = await doc.contentControls.get({ target: result.contentControl });
-    let field = this.parseControls([created])[0] || null;
+    const created = await doc.contentControls.get({ target: result.contentControl });
+    const field = this.parseControls([created])[0] || null;
     if (!field) return null;
 
-    const groupedMetadata = { ...metadata, group: field.id };
-    const groupedTag = JSON.stringify(groupedMetadata);
-    if (await this.updateTagForField(field, groupedTag)) {
-      created = await doc.contentControls.get({ target: result.contentControl });
-      field = {
-        ...(this.parseControls([created])[0] || field),
-        tag: groupedTag,
-        group: field.id,
-        metadata: groupedMetadata,
-      };
-    }
     this.pendingFields.set(field.id, field);
     this.upsertState(field);
     return field;
