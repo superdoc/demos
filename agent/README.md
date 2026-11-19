@@ -8,15 +8,14 @@ the feature. The repository root README describes the broader demo gallery.
 
 The agent helps a gallery visitor find a relevant existing SuperDoc demo, then
 offers to generate a small runnable browser demo if the catalog has no close
-match. Visitors can request follow-up fixes or changes on the generated demo's
-page and download the current source as a ZIP.
+match. Visitors can download the generated source as a ZIP and continue locally.
 
 SuperDoc is always the product context, even for a short request such as
 "ASCII animations": that means animating ASCII text inside the SuperDoc
 document, not building a separate animation beside an unused editor. Moe
 clarifies only missing behavior, never whether to use SuperDoc. Requests to
 remove SuperDoc or build an independent app do not receive a standalone build
-offer. Keep this rule in search, generation, revisions, and downloaded guidance
+offer. Keep this rule in search, generation and downloaded guidance
 through the shared `agent/scope.mjs` instructions.
 
 This is a constrained example builder. It generates JavaScript, CSS, and useful
@@ -30,10 +29,10 @@ All paths below are relative to the repository root.
 
 | File | Responsibility |
 | --- | --- |
-| `agent/service.mjs` | Catalog context, OpenAI requests and schemas, token ledger, build/revision lifecycle, project storage, limits, HTTP routes, expiry, CSP |
+| `agent/service.mjs` | Catalog context, OpenAI requests and schemas, token ledger, build lifecycle, project storage, limits, HTTP routes, expiry, CSP |
 | `agent/progress.mjs` | Provider stream parsing, generated-text callbacks and host-owned build stages |
 | `agent/project.mjs` | Pinned SuperDoc version, generated-source validation, sample DOCX, preview/standalone HTML scaffold, ZIP file inventory and agent handoff text |
-| `agent/scope.mjs` | Mandatory SuperDoc-only scope shared by search, generation, revisions and downloaded agent guidance |
+| `agent/scope.mjs` | Mandatory SuperDoc-only scope shared by search, generation and downloaded agent guidance |
 | `agent/zip.mjs` | ZIP generation used for the DOCX and downloadable project |
 | `agent/server.mjs` | Standalone Node HTTP entry point and public UI/branding assets |
 | `agent/Dockerfile` | Standalone service image, built with the repository root as context |
@@ -47,8 +46,8 @@ All paths below are relative to the repository root.
 | `scripts/demo-agent-proxy.mjs` | Cloudflare Pages forwarding of API/project routes to the standalone service |
 | `scripts/build-gallery.mjs` | Builds the local gallery and copies browser assets into ignored `dist-gallery/` |
 | `scripts/assemble-release.mjs` | Copies `dist-landing/` assets into the production release |
-| `scripts/version-history-release.mjs` | Integrates agent forwarding with the existing Pages Worker |
-| `scripts/demo-agent.test.mjs` | Offline HTTP, generation, revision, persistence, expiry, budget and proxy integration checks |
+| `scripts/version-history-release.mjs` | Independent Version History forwarding; gallery composition lives in assemble-release.mjs |
+| `scripts/demo-agent.test.mjs` | Offline HTTP, generation, persistence, expiry, budget and proxy integration checks |
 
 `dist-landing/agent/` is source despite its directory name. Edit it directly.
 `dist-gallery/` and `dist/` are build output. Copy/rebuild them from source;
@@ -56,7 +55,9 @@ editing only their copies does not change the next release.
 
 ## Request and generation flow
 
-1. The gallery sends `POST /agent/api/search` with `{ "prompt": "...", "history": [...] }`.
+1. The prompt starts hidden. A successful `GET /agent/api/health` with
+   `configured: true` reveals it. Unconfigured, unavailable or invalid health
+   responses leave the gallery usable without Moe. The gallery sends `POST /agent/api/search` with `{ "prompt": "...", "history": [...] }`.
    History stays in browser memory and contains at most four user/assistant
    messages, each limited to 600 characters. Other roles are rejected.
    Short confirmations and refinements use that context. Successful replies
@@ -82,34 +83,19 @@ editing only their copies does not change the next release.
    download. Failed output becomes a failed project with
    a public error. There is no automatic retry or model-driven tool loop.
 
-## Follow-up requests and recovery
+## Access and recovery
 
-The preview page has no follow-up prompt form. The existing API endpoint
-`POST /agent/api/projects/:id/revisions` still accepts bounded revision requests
-from API clients.
+Projects are bound to the creating browser's HttpOnly cookie. Status, shell,
+preview and download routes all check the persisted session hash, including
+after restart. Sharing a URL does not grant another browser access. The cookie
+lasts two hours and is refreshed on agent requests; the project still expires
+one hour after completion. Existing projects without a session hash cannot be
+opened after upgrading.
 
-The server reads the existing project from its own storage. The browser cannot
-submit replacement source, select a model, or change generation settings. The
-generation input contains the original request, up to six recent follow-up
-requests, the previous ready project's complete JavaScript/CSS and metadata,
-and any previous build failure. Failed initial generations can be retried with
-a corrective prompt even though they have no runnable source.
-
-Every follow-up creates a new project ID. It never mutates the original
-project, its source, or its expiration. API clients can poll the new ID and keep
-the previous preview and download until the new version is ready. A failed
-revision leaves the previous project available within its original lifetime.
-
-Initial builds and revisions share the per-IP generation rate limit, concurrent
-slots, active-project cap, and daily token ledger. Each successful new version
-gets its own one-hour lifetime; refreshing a version never extends it. Older
-versions count toward capacity until their original expiry.
-
-The generated-demo page is private by possession of its random 128-bit URL, not
-by an authenticated account. Anyone with that URL can view, download, or request
-a new revision. Revisions fork into new IDs rather than changing another
-visitor's existing project. Do not treat these URLs as confidential-document
-storage or add private user uploads without designing access control first.
+The preview has no follow-up form or revision API. Return to the gallery for a
+fresh offer and explicit build action, or download the source to continue
+locally. Failed builds free active-project capacity immediately; their error
+state is retained for five minutes and then culled.
 
 ## Browser UI contract
 
@@ -136,8 +122,6 @@ storage or add private user uploads without designing access control first.
   the page. No extra model calls or simulated percentage estimates are used.
 - The preview page has no follow-up prompt box. Download the project to keep
   working with your own coding agent.
-- Refining regenerates the example's code and starts a fresh editor/sample
-  document. It does not preserve unsaved document edits inside the old iframe.
 - The trusted shell uses `textContent` for generated titles, descriptions,
   guidance and errors. Generated content must not become shell HTML.
 
@@ -158,7 +142,9 @@ allowance and one model request.
 Generation returns nonempty strings for `title`, `summary`, `javascript`, `css`
 and `guidance`.
 
-`project.mjs` pins SuperDoc in `SUPERDOC_VERSION`. Both preview and standalone
+`agent/superdoc-version.json` pins SuperDoc, exported as `SUPERDOC_VERSION`.
+The file also pins SuperDoc's required DOCX Engine dependency. The stable dependency updater writes this file and includes it in automated
+release commits and source artifacts. Both preview and standalone
 output load that version's official jsDelivr JavaScript and CSS. The host owns
 the toolbar, editor, sample document, controls, output and status nodes. Model
 output exports one function:
@@ -189,11 +175,13 @@ Parsing is not a security audit, API validation, or browser behavior test.
 ## Download format
 
 `projectFiles()` produces `index.html`, `app.js`, `app.css`, `base.css`,
-`sample.docx`, `package.json`, `README.md`, `AGENTS.md` and `.gitignore`.
+`sample.docx`, `package.json`, `README.md`, `AGENTS.md`, `demo-context.json` and `.gitignore`.
 
-The download uses Vite for local development and builds. README/AGENTS include
-the original request, retained follow-up requests, version pin, entry-point
-contract, limitations and next steps. It needs no API key to run. When changing
+The download uses Vite for local development and builds. README/AGENTS are
+host-owned instructions with the version pin and entry-point contract. Visitor
+prompts are omitted entirely. Model-generated titles, summaries and guidance
+are reference data in `demo-context.json`, explicitly marked untrusted by
+AGENTS.md; they are never interpolated into agent instructions. It needs no API key to run. When changing
 the host contract, update both generated documents along with the scaffold and
 generator instructions.
 
@@ -204,8 +192,7 @@ generator instructions.
 | `GET /agent/api/health` | Configuration boolean and public limits; no credentials |
 | `POST /agent/api/search` | `{ prompt, history? }` → message, real matches and optional offer; optional NDJSON acknowledgement + result stream |
 | `POST /agent/api/projects` | `{ offer }` → HTTP 202 with ID and project URL |
-| `POST /agent/api/projects/:id/revisions` | `{ prompt }` → HTTP 202 with a new version's ID and URL |
-| `GET /agent/api/projects/:id` | Public state, current build progress, title, summary, guidance, expiry and error |
+| `GET /agent/api/projects/:id` | Session-bound state, current build progress, title, summary, guidance, expiry and error |
 | `GET /agent/projects/:id/` | Trusted preview shell |
 | `GET /agent/projects/:id/preview` | Sandboxed generated demo HTML; ready projects only |
 | `GET /agent/projects/:id/download` | Source ZIP; ready projects only |
@@ -214,7 +201,8 @@ generator instructions.
 
 POSTs require JSON and a valid Origin. Invalid/expired offers and unfinished
 projects return 409. Missing/expired projects return 410. Limits return 429;
-missing provider configuration returns 503. Generation failures are persisted
+missing provider configuration returns 503. Valid project IDs from another
+session return 404. Empty, null, array and scalar JSON bodies return 400. Generation failures are persisted
 and reported through project state; an accepted HTTP 202 does not imply success.
 
 Gallery requests set `Accept: application/x-ndjson`. The stream contains an
@@ -231,13 +219,15 @@ so an answer to a clarification reaches generation with its original context.
 
 | Limit | Default |
 | --- | --- |
-| User prompt | 1,200 characters; applies to search and follow-ups |
+| User prompt | 1,200 characters |
 | JSON request body | 8,192 bytes |
 | Search / generation output | 1,400 / 12,000 tokens, including reasoning |
 | JavaScript + CSS | 65,536 bytes combined |
 | Title / summary / guidance | 100 / 1,000 / 6,000 characters |
 | Daily token allowance | 150,000 across all visitors and actions; settled against actual usage |
-| Per-IP hourly allowance | 20 searches; 3 total builds/revisions |
+| Per-IP hourly allowance | 20 searches; 3 builds |
+| Per-IP daily token allowance | 50,000, persisted and settled against actual usage |
+| Failed project retention | Five minutes; failed projects do not occupy capacity |
 | Concurrent generations | 2 |
 | Stored temporary projects | 20 |
 | Outstanding build offers | 200 |
@@ -247,18 +237,23 @@ so an answer to a clarification reaches generation with its original context.
 
 Before every provider call, the service reserves its maximum output plus UTF-8
 input bytes and 1,024 overhead tokens. The byte count is deliberately
-conservative. Revision input includes existing code and can reserve substantially
-more than an initial build. After a terminal provider response, reported actual
+conservative. A separate per-network daily allowance prevents a single IP from
+consuming the shared allowance; both holds and actual usage count against it. After a terminal provider response, reported actual
 input plus output tokens (including reasoning) replace the reservation; unused
 allowance is released. This also applies to incomplete responses with confirmed
-usage. Timeouts, interrupted streams, and other calls without usage keep the
-full reservation, as do older ledger entries without usage records.
+usage. Rejected HTTP 4xx requests and explicit authentication/quota/rate-limit
+stream errors release their holds and return a public provider error. Provider
+failures log only stage/status/code, never raw payloads. Timeouts, interrupted
+streams and unknown failures retain the full hold, as do older ledger entries
+without usage records.
 
 Reservations and settlements share one serialized queue and persist in
 `budget.json`, surviving restarts and resetting at midnight UTC. A request
 finishing after rollover cannot reduce the new day's ledger. `reserved` is the
 total charged allowance (actual usage plus outstanding/unknown holds), and
-`actualTokens` records confirmed usage since this accounting update. Do not erase
+`actualTokens` records confirmed usage since this accounting update.
+`identities` stores daily charges by hashed IP, so changing cookies or restarting
+does not reset a network's allowance; raw addresses are not persisted. Do not erase
 historical reservations or increase limits without reviewing spend implications.
 
 ## Storage and trust boundaries
@@ -271,7 +266,8 @@ historical reservations or increase limits without reviewing spend implications.
   lock. Run one replica with a persistent disk. Multiple replicas require shared
   atomic persistence, admission, rate limits and budget ownership first.
 - A random HttpOnly, SameSite=Strict `demo_agent` cookie binds build offers to
-  the requesting browser session. It is Secure behind the authenticated proxy
+  the requesting browser session; persisted projects store its hash and enforce
+  it on every read and download. It is Secure behind the authenticated proxy
   or on an encrypted server connection.
 - Direct local requests use the socket IP for throttling. Production accepts
   the client-IP header only behind the configured proxy token. Never trust a
@@ -280,7 +276,9 @@ historical reservations or increase limits without reviewing spend implications.
   overwrites the forwarded token/client-IP headers and validates its backend
   origin. No provider credential reaches the client or generated download.
 - The iframe has `sandbox="allow-scripts"` without `allow-same-origin`. Its
-  response CSP permits the pinned SuperDoc CDN dependencies and data/blob
+  response CSP permits only the exact pinned SuperDoc and DOCX Engine scripts on jsDelivr
+  (alongside the inline host and generated data module). Other CDN asset access
+  is scoped to those pinned packages' dist-cdn directories. It permits data/blob
   assets, blocks arbitrary network destinations, frames, forms, and access to
   the gallery API. The shell has a separate self-only policy.
 - Generated code is untrusted. Never execute it in Node, remove iframe isolation,
@@ -309,8 +307,8 @@ npm run gallery
 The full gallery listens on port 4173. Building it also builds the standalone
 demos, so install their dependencies as described in the root README first.
 For UI-only edits with an existing local build, copy `dist-landing/agent/` into
-`dist-gallery/agent/` and refresh. `serve-gallery.mjs` reads project shell HTML
-from source, but serves JS/CSS from `dist-gallery/`. Server changes require a
+`dist-gallery/agent/` and refresh. `serve-gallery.mjs` serves trusted agent
+JS/CSS and the project shell from source to keep them in sync. Server changes require a
 restart; do not erase `.demo-agent/` to reload code.
 
 ### Environment settings
@@ -320,6 +318,7 @@ restart; do not erase `.demo-agent/` to reload code.
 | `OPENAI_API_KEY` | Server-only provider credential |
 | `DEMO_AGENT_MODEL` | Advanced model override; search uses low reasoning, generation uses high |
 | `DEMO_AGENT_DAILY_TOKENS` | Positive integer daily reservation ceiling |
+| `DEMO_AGENT_IP_DAILY_TOKENS` | Positive integer per-network daily ceiling, default 50,000 |
 | `DEMO_AGENT_DATA_DIR` | Persistent project/budget directory |
 | `DEMO_AGENT_ORIGINS` | Comma-separated allowed gallery origins |
 | `DEMO_AGENT_PROXY_TOKEN` | Secret shared by the Pages proxy and backend |
@@ -352,11 +351,10 @@ For browser QA:
 2. Verify the logo/blue header, download, one title/description and no countdown.
 3. Confirm the real editor loads and the generated controls work. Run the browser
    console/error checks; syntax validity alone does not prove SDK compatibility.
-4. Submit a follow-up. The previous preview remains usable while building.
-   Success changes the URL and ZIP together; refresh and verify that new version.
-5. Force a provider or validation failure with the injected test provider. The
-   previous preview/download and entered prompt remain available. Also test
-   repair after an initial failed build and blocked requests after expiry.
+4. Open a project URL in a separate browser context. Status, shell, preview
+   and download must all be denied; the original context must still work.
+5. Force provider/validation failures with the injected test provider; check
+   errors, budget settlement, immediate capacity release and five-minute cleanup.
 6. Check narrow/mobile widths, keyboard focus, labels and status announcements.
 7. Download the source, run `npm install`, `npm run dev`, and `npm run build` in
    a temporary directory when modifying the generated scaffold or package.
@@ -391,8 +389,8 @@ building locally does not provision infrastructure or publish anything.
    Keep the server, trusted shell and untrusted generated preview separate.
 3. Preserve explicit build consent, strict output schemas, pinned real SuperDoc,
    bounded requests/code, spend reservation, admission, expiry and sandboxing.
-4. Keep revisions tied to existing server-stored source and preserve previous
-   versions on failure. Update API, UI, downloads and this guide together.
+4. Keep project reads session-bound and downloaded agent instructions free of
+   visitor/model text. Update API, UI, downloads and this guide together.
 5. Verify new SuperDoc signatures against the pinned package before teaching
    them to the generator. Retain a synthetic regression for every API failure.
 6. Run offline integration tests and browser checks before claiming completion.

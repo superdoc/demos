@@ -102,6 +102,8 @@ form.addEventListener('submit', async (event) => {
     if (offer) {
       const build = document.createElement('button');
       build.type = 'button'; build.className = 'agent-build'; build.textContent = 'Build this demo ↗';
+      // Keep the focused prompt from collapsing and moving the button between pointerdown and click.
+      build.addEventListener('pointerdown', (event) => event.preventDefault());
       build.addEventListener('click', async () => {
         if (build.disabled || !offer) return;
         // Open on the click, before async work, to avoid popup blockers.
@@ -129,3 +131,9 @@ form.addEventListener('submit', async (event) => {
     if (replied && (document.activeElement === submit || document.activeElement === input)) input.focus();
   }
 });
+
+// Keep the gallery usable before the backend is provisioned or while it is unavailable.
+try {
+  const health = await fetch('/agent/api/health', { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+  if (health.ok && (await health.json()).configured === true) form.closest('.agent').hidden = false;
+} catch { /* Moe stays hidden until a later page load reports readiness. */ }

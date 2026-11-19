@@ -64,7 +64,8 @@ See each demo's directory for specific setup instructions.
 
 ## Demo agent
 
-The prompt below **SuperDoc Demos** expands when focused. Moe replies naturally,
+The prompt below **SuperDoc Demos** appears only after the backend health check
+reports it is configured, and expands when focused. Moe replies naturally,
 remembers a few recent messages, and searches the visible entries in `demos.json`
 when you need a demo. The placeholder reads "Describe a demo to find or build it."
 Every request assumes the SuperDoc editor: "ASCII animations" means animation
@@ -101,24 +102,30 @@ Defaults are deliberately small:
 | Search / build output | 1,400 / 12,000 tokens, including reasoning |
 | Generated code | 64 KiB of JavaScript + CSS; fixed scaffold and guidance added by the server |
 | Daily token allowance | 150,000 tokens across all visitors; unused request reservations are released after confirmed usage |
-| Per-IP hourly limits | 20 searches, 3 generations shared by initial builds and follow-ups |
+| Per-IP hourly limits | 20 searches, 3 builds |
+| Per-IP daily token allowance | 50,000; persists across hourly resets and restarts |
 | Capacity | 2 simultaneous builds, 20 temporary projects |
 | Lifetime | One hour per generated version, with no refresh extension or visible countdown |
 
 The daily allowance reserves maximum output plus input UTF-8 bytes and overhead
 before contacting OpenAI. After the provider reports usage, it charges actual
 input and output tokens (including reasoning) and releases the unused allowance.
-Calls without confirmed usage keep their full reservation. The ledger persists
+Rejected provider requests release their reservation; calls with unknown usage
+(such as interrupted connections) keep their full reservation. The ledger persists
 across restarts and resets at midnight UTC. Existing older reservations without
 usage records remain charged. Set `DEMO_AGENT_DAILY_TOKENS` or
-`DEMO_AGENT_MODEL` on the server to change those settings. Search uses low
+`DEMO_AGENT_IP_DAILY_TOKENS`, or `DEMO_AGENT_MODEL` on the server to change those settings. Search uses low
 reasoning; code generation uses high reasoning.
 The browser cannot override the model, budget, or project size.
 
 Projects are persisted in the ignored `.demo-agent/` directory. Every request
 checks expiry; the timer deletes expired files within 15 seconds, and startup
 also culls expired projects. A valid project survives a restart with its original
-expiry. Interrupted builds become failed projects. Preview JavaScript runs in an
+expiry. Project pages, status, previews and downloads require the creating
+browser session. Interrupted builds become failed projects. Failed builds free
+capacity immediately and are deleted after five minutes. Downloads omit the
+visitor prompt; generated guidance stays in untrusted `demo-context.json` rather
+than being interpolated into `AGENTS.md`. Preview JavaScript runs in an
 iframe with an opaque origin and a restrictive CSP; it cannot access the gallery
 or call the agent API. Generated code is syntax checked, but is an AI-generated
 starting point and may need adjustments. Backend and additional AI functionality
@@ -143,8 +150,8 @@ Set these server environment variables:
 Set **Pages runtime** `DEMO_AGENT_BACKEND_URL` to the service's HTTPS origin and
 `DEMO_AGENT_PROXY_TOKEN` to the same shared secret. The OpenAI key stays on the
 Node service. Staging origins must be explicitly added to `DEMO_AGENT_ORIGINS`.
-Until those runtime settings exist, the deployed gallery returns a clear
-configuration message for agent requests. No infrastructure is provisioned by
+Until those runtime settings exist and `/agent/api/health` reports readiness,
+the gallery keeps Moe hidden. No infrastructure is provisioned by
 the build, and no secrets are included in the release bundle.
 
 Run the integration checks with `npm run test:agent`. They cover catalog matching,

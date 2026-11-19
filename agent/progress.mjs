@@ -24,7 +24,11 @@ export async function readGenerationResponse(response, onProgress, onText) {
       onProgress?.(stage);
     }
     if (['response.completed', 'response.incomplete', 'response.failed'].includes(event.type)) return event.response;
-    if (event.type === 'error') throw new Error('Generation stream failed');
+    if (event.type === 'error') {
+      const error = new Error('Generation stream failed');
+      error.providerCode = event.code || event.error?.code;
+      throw error;
+    }
   }
   for await (const text of response.body.pipeThrough(new TextDecoderStream())) {
     buffer += text;
