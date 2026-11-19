@@ -49,6 +49,7 @@ const variablesRendered = ref(false);
 const renderingVariables = ref(false);
 const loadingVariables = ref(false);
 const variableLoadError = ref('');
+const fieldSelectionError = ref('');
 const variableRenderMode = ref<TemplateRenderMode | null>(null);
 const hiddenVariableControlIds = ref<string[]>([]);
 const variableControls = ref<TemplateVariableControl[]>([]);
@@ -509,10 +510,22 @@ onMounted(() => {
             showWhen: ({ hasSelection }) => hasSelection,
             enabledWhen: ({ hasSelection, isEditable }) => hasSelection && isEditable,
             onSelect: async ({ context }) => {
+              fieldSelectionError.value = '';
               const target = superdoc.ui.selection.current()?.selectionTarget;
-              const alias = (await context?.selectedTextSettled || '').trim();
-              if (!alias || !target) return;
-              await fieldController.value?.createFieldFromSelection(alias, target);
+              const selectedText = await context?.selectedTextSettled || '';
+              if (!selectedText.trim() || !target || !fieldController.value) {
+                fieldSelectionError.value = 'Select text before adding a field.';
+                return;
+              }
+              try {
+                const field = await fieldController.value.createFieldFromSelection(selectedText, target);
+                if (!field) throw new Error('The document is not ready.');
+                closeFieldEditor();
+                activeTab.value = 'all';
+                fieldExplorerVisible.value = true;
+              } catch (error) {
+                fieldSelectionError.value = error instanceof Error ? error.message : 'Could not create a field from the selected text.';
+              }
             },
           }],
         }],
@@ -644,6 +657,11 @@ onBeforeUnmount(() => {
       @toggle-field-explorer="fieldExplorerVisible = !fieldExplorerVisible"
       @toggle-field-autofill="toggleFieldAutofill"
     />
+
+    <div v-if="fieldSelectionError" class="field-selection-error" role="alert">
+      <span>{{ fieldSelectionError }}</span>
+      <button type="button" aria-label="Dismiss field error" @click="fieldSelectionError = ''">×</button>
+    </div>
 
     <!-- Main Content -->
     <div class="main">
@@ -791,6 +809,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.field-selection-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; color: #842029; background: #f8d7da; }
+.field-selection-error button { border: 0; background: transparent; color: inherit; font-size: 20px; cursor: pointer; }
 .app {
   display: flex;
   flex-direction: column;
