@@ -143,8 +143,9 @@ Generation returns nonempty strings for `title`, `summary`, `javascript`, `css`
 and `guidance`.
 
 `agent/superdoc-version.json` pins SuperDoc, exported as `SUPERDOC_VERSION`.
-The file also pins SuperDoc's required DOCX Engine dependency. The stable dependency updater writes this file and includes it in automated
-release commits and source artifacts. Both preview and standalone
+The file also pins SuperDoc's required DOCX Engine dependency. The stable
+dependency updater writes this file and includes it in automated release
+commits and source artifacts. Both preview and standalone
 output load that version's official jsDelivr JavaScript and CSS. The host owns
 the toolbar, editor, sample document, controls, output and status nodes. Model
 output exports one function:
@@ -181,8 +182,8 @@ The download uses Vite for local development and builds. README/AGENTS are
 host-owned instructions with the version pin and entry-point contract. Visitor
 prompts are omitted entirely. Model-generated titles, summaries and guidance
 are reference data in `demo-context.json`, explicitly marked untrusted by
-AGENTS.md; they are never interpolated into agent instructions. It needs no API key to run. When changing
-the host contract, update both generated documents along with the scaffold and
+AGENTS.md; they are never interpolated into agent instructions. It needs no API
+key to run. When changing the host contract, update both generated documents along with the scaffold and
 generator instructions.
 
 ## HTTP routes

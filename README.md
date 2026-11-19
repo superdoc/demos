@@ -113,9 +113,9 @@ input and output tokens (including reasoning) and releases the unused allowance.
 Rejected provider requests release their reservation; calls with unknown usage
 (such as interrupted connections) keep their full reservation. The ledger persists
 across restarts and resets at midnight UTC. Existing older reservations without
-usage records remain charged. Set `DEMO_AGENT_DAILY_TOKENS` or
-`DEMO_AGENT_IP_DAILY_TOKENS`, or `DEMO_AGENT_MODEL` on the server to change those settings. Search uses low
-reasoning; code generation uses high reasoning.
+usage records remain charged. Set `DEMO_AGENT_DAILY_TOKENS`,
+`DEMO_AGENT_IP_DAILY_TOKENS`, or `DEMO_AGENT_MODEL` on the server to change those
+settings. Search uses low reasoning; code generation uses high reasoning.
 The browser cannot override the model, budget, or project size.
 
 Projects are persisted in the ignored `.demo-agent/` directory. Every request
