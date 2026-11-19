@@ -83,3 +83,29 @@ test('production gallery preserves a single canonical and matching Open Graph de
   assert.match(html,/<meta name="description" content="Explore working SuperDoc demos/);
   assert.equal((html.match(/<h1\b/g)||[]).length,1);
 });
+
+test('production gallery identifies its actual website and publisher in server HTML', async t => {
+  const { root } = await fixture(t);
+  await writeFile(path.join(root, 'dist-landing/index.html'), await readFile(new URL('../dist-landing/index.html', import.meta.url), 'utf8'));
+  await renderGallery({ root, mode: 'production', output: 'index.html' });
+  const html = await readFile(path.join(root, 'index.html'), 'utf8');
+  const scripts = [...html.matchAll(/<script\s+type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
+  assert.equal(scripts.length, 1, 'Rendered server HTML must contain one structured identity graph');
+  const schema = JSON.parse(scripts[0][1]);
+  assert.equal(schema['@context'], 'https://schema.org');
+  const organization = schema['@graph'].filter(node => node['@type'] === 'Organization');
+  const websites = schema['@graph'].filter(node => node['@type'] === 'WebSite');
+  assert.equal(organization.length, 1);
+  assert.equal(websites.length, 1);
+  assert.deepEqual(organization[0], {
+    '@type': 'Organization', '@id': 'https://www.superdoc.dev/#organization',
+    name: 'SuperDoc', url: 'https://www.superdoc.dev/',
+  });
+  assert.equal(websites[0]['@id'], 'https://demos.superdoc.dev/#website');
+  assert.equal(websites[0].url, 'https://demos.superdoc.dev/');
+  assert.equal(websites[0].name, 'SuperDoc Demos');
+  assert.deepEqual(websites[0].publisher, { '@id': organization[0]['@id'] });
+  assert.equal(schema['@graph'].length, 2);
+  assert.equal(websites[0].potentialAction, undefined);
+  assert.equal(websites[0].aggregateRating, undefined);
+});
