@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js",
-    "test": "node --test src/config.test.js src/agent.test.js src/job-service.test.js src/streaming.test.js src/collaboration/*.test.js src/collaboration/**/*.test.js src/rooms/*.test.js",
+    "test": "node --test src/config.test.js src/agent.test.js src/native-reference-tools.test.js src/full-reference-api.test.js src/citation-import.test.js src/job-service.test.js src/streaming.test.js src/collaboration/*.test.js src/collaboration/**/*.test.js src/rooms/*.test.js",
     "test:collaboration": "node --test src/collaboration/*.test.js src/collaboration/**/*.test.js"
   },
   "dependencies": {
@@ -13,7 +13,7 @@
     "@fastify/multipart": "9.2.1",
     "@fastify/websocket": "11.2.0",
     "@hocuspocus/server": "2.15.3",
-    "@superdoc/sdk": "2.29.0-next.14",
+    "@superdoc/sdk": "2.30.0",
     "@xmldom/xmldom": "0.9.12",
     "citeproc": "2.4.63",
     "fastify": "5.12.4",

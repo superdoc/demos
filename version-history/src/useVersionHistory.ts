@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SuperDoc } from 'superdoc';
 import { apiPath, authHeaders, checked, type RoomSession, type User } from './session';
@@ -61,6 +62,7 @@ export function useVersionHistory(session: RoomSession) {
     const source = editor.current;
     const recording = recorder.current;
     if (!source || !recording) return Promise.resolve();
+    demoMetric('task_started', 'version_history');
     setStatus('saving');
     setError('');
     const baseVersionId = currentVersion.current;
@@ -78,6 +80,7 @@ export function useVersionHistory(session: RoomSession) {
       currentVersion.current = version.id;
       setVersions((previous) => [version, ...previous.filter((item) => item.id !== version.id)].sort((a, b) => b.number - a.number));
       setStatus('saved');
+      demoMetric('task_succeeded', 'version_history');
       try {
         const after = await source.getDocumentApi()?.info({});
         if (mounted.current && after?.revision !== checkpoint.revision) setStatus('pending');
@@ -85,6 +88,7 @@ export function useVersionHistory(session: RoomSession) {
       void refresh();
     })().catch((cause) => {
       if (mounted.current) {
+        demoMetric('task_failed', 'version_history');
         setStatus('error');
         setError(cause instanceof Error ? cause.message : 'This version could not be saved. Your current document is still open.');
         void refresh();
@@ -120,7 +124,7 @@ export function useVersionHistory(session: RoomSession) {
         if (changed && !saving.current) setStatus('pending');
       });
       recorder.current.start();
-      setStatus('ready');
+      setStatus('ready'); demoMetric('ready', 'version_history');
     } catch (cause) {
       recorder.current = null;
       setRecordError(cause instanceof Error ? cause.message : 'The Changes API is unavailable.');

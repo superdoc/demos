@@ -101,7 +101,7 @@
   <main class="showcase">
     <a class="site-header" href="https://superdoc.dev" aria-label="Visit SuperDoc">
       <img src="/superdoc-logo.png" alt="">
-      <div class="site-title"><h1>SuperDoc Demos</h1><p class="site-subheading">Open source demos</p><p class="site-version">SuperDoc v2.31.0 (latest)</p></div>
+      <div class="site-title"><h1>SuperDoc Demos</h1><p class="site-subheading">Open source demos</p><p class="site-version">SuperDoc v2.33.0 (latest)</p></div>
     </a>
     <section class="agent" hidden aria-label="Moe demo agent">
       <form class="agent-form" id="agent-form">
@@ -134,6 +134,7 @@
         try {
           await navigator.clipboard.writeText(dialog.querySelector('code').textContent);
           copy.textContent = 'Copied';
+          window.dispatchEvent(new CustomEvent('superdoc:demo', {detail:{action:'build_copied',capability:'none',example:dialog.id.replace(/^build-/, '')}}));
           status.textContent = 'Commands copied to clipboard.';
         } catch {
           status.textContent = 'Could not access the clipboard. Select the commands above and copy them.';

@@ -107,7 +107,7 @@ const collaborationServer = createCollaborationServer({
     },
     async onChange({ documentName }) {
     const documentId = documentIdFromRoomName(documentName);
-    if (documentId) rooms?.updateLastActivityAt(documentId);
+    if (documentId) { rooms?.updateLastActivityAt(documentId); rooms?.notifyDocumentChanged(documentId); }
     const timestamp = Date.now();
     if (timestamp - (lastChangeLog.get(documentName) ?? 0) >= 1_000) {
       lastChangeLog.set(documentName, timestamp);

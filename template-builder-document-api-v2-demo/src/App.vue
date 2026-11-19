@@ -1,4 +1,6 @@
 <script setup lang="ts">
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
+
 import { computed, nextTick, ref, shallowRef, watch, onMounted, onBeforeUnmount } from 'vue';
 import { BlankDOCX, DOCX, getFileObject, SuperDoc } from 'superdoc';
 import type { SelectionTarget } from 'superdoc/ui';
@@ -181,6 +183,7 @@ const handleValueChange = async (value: string) => {
   if (!editingField.value) return;
   if (editingField.value.lockMode !== 'unlocked') return;
   const success = await fieldController.value?.updateValue(editingInstances.value, value);
+  demoMetric(success ? 'task_succeeded' : 'task_failed', 'fields');
   if (!success) console.error('Failed to update one or more field values');
 };
 
@@ -345,6 +348,7 @@ const handleDeleteField = async () => {
 
 const handleCreateField = async (input: NewFieldInput) => {
   const created = await fieldController.value?.createField(input);
+  demoMetric(created ? 'task_succeeded' : 'task_failed', 'fields');
   if (!created) {
     console.error('Failed to create field');
     return;
@@ -422,13 +426,15 @@ const handleAutocompleteSelect = async (field: AutofillField) => {
 };
 
 const handleExport = async () => {
-  console.log('Exporting...');
-  await superdocInstance.value?.ui.document.export({
+  if (!superdocInstance.value) return;
+  demoMetric('export_requested');
+  try { await superdocInstance.value.ui.document.export({
     exportType: ['docx'],
     exportedName: documentName.value.replace(/\.docx$/i, ''),
     triggerDownload: true,
   });
-  console.log('Exported template');
+  demoMetric('export_completed');
+  } catch (error) { demoMetric('export_failed'); throw error; }
 };
 
 const handleUpload = async (file: File) => {
@@ -572,7 +578,7 @@ onMounted(() => {
         ];
       });
       isReady.value = true;
-      console.log('SuperDoc ready');
+      console.log('SuperDoc ready'); demoMetric('ready', 'fields');
 
       await fieldController.value.initialize();
 

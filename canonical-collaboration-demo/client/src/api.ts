@@ -37,6 +37,12 @@ export class ApiClient {
     return parse ? parse(response) : response.json() as Promise<T>;
   }
 
+  subscribeDocumentChanges(roomId: string, onChanged: () => void): () => void {
+    const events = new EventSource(`${this.baseUrl}${this.roomPath(roomId)}/document-events`);
+    events.onmessage = onChanged;
+    return () => events.close();
+  }
+
   async getRoom(roomId: string): Promise<Room | undefined> {
     const state = await this.request<{ document?: Room }>(this.roomPath(roomId));
     return state.document;

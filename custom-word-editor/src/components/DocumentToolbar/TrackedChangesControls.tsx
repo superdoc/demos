@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Optional analytics. */ } };
 import { useState } from 'react';
 import { useSuperDocCommand } from 'superdoc/ui/react';
 import './TrackedChangesControls.css';
@@ -16,11 +17,14 @@ export function TrackedChangesControls() {
     setPending(action);
     setError('');
     try {
+      demoMetric('task_started', 'review');
       const result = await command.executeAsync();
       if (result === false || (typeof result === 'object' && result !== null && 'success' in result && !result.success)) {
+        demoMetric('task_failed', 'review');
         setError(`Could not ${action} all tracked changes.`);
-      }
+      } else { demoMetric('task_succeeded', 'review'); }
     } catch {
+      demoMetric('task_failed', 'review');
       setError(`Could not ${action} all tracked changes.`);
     } finally {
       setPending(null);

@@ -125,6 +125,23 @@ function fields(document) {
   return result.sort((a, b) => positions.get(a.simple || a.startRun) - positions.get(b.simple || b.startRun));
 }
 
+// Keep a generated citation legible beside prose without changing the body runs.
+// The native insertion API does not insert a separator at a collapsed text position.
+function citationSeparator(field) {
+  const start = field.simple || field.startRun;
+  const paragraph = paragraphOf(start);
+  let before = '';
+  let found = false;
+  function visit(node) {
+    if (node === start) { found = true; return; }
+    if (found || (node.namespaceURI === W && ['del', 'instrText'].includes(node.localName))) return;
+    if (node.namespaceURI === W && node.localName === 't') before += node.textContent;
+    for (const child of Array.from(node.childNodes)) { visit(child); if (found) break; }
+  }
+  if (paragraph) visit(paragraph);
+  return /[\p{L}\p{N}.,;:!?)\]}’”'"]$/u.test(before) ? ' ' : '';
+}
+
 function htmlRuns(document, html) {
   const wrapper = parse(`<div>${html.replace(/&nbsp;/g, '&#160;')}</div>`).documentElement;
   const result = [];
@@ -280,7 +297,7 @@ export async function renderReferenceFields(outputPath, { style = 'APA', fieldCo
     const isBibliography = /^\s*BIBLIOGRAPHY\b/i.test(field.instruction);
     if (fieldCodes) replaceCache(field, [plainHtml(`{ ${field.instruction.trim()} }`)], isBibliography);
     else if (isBibliography) replaceCache(field, bibliography.length ? bibliography : [''], true, layout);
-    else if (rendered.has(field)) replaceCache(field, [rendered.get(field)], false);
+    else if (rendered.has(field)) replaceCache(field, [citationSeparator(field) + rendered.get(field)], false);
   }
   for (const part of parts) zip.file(part.path, serializer.serializeToString(part.document));
   if (!fieldCodes) {
@@ -294,5 +311,59 @@ export async function renderReferenceFields(outputPath, { style = 'APA', fieldCo
       zip.file(file.name, serializer.serializeToString(document));
     }
   }
+  await fs.writeFile(outputPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+}
+
+// Native bibliography mutations currently require an independent simple field.
+// Temporarily normalize the complex field produced by our CSL renderer, keeping
+// its paragraph ID and visible text. The caller then invokes the native method
+// and reapplies CSL layout. Refuse shared/nested content rather than moving it.
+export async function prepareNativeBibliography(outputPath, bibliographyId) {
+  const zip = await JSZip.loadAsync(await fs.readFile(outputPath));
+  const document = parse(await zip.file('word/document.xml').async('string'));
+  const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
+  const matches = fields(document).filter(field => /^\s*BIBLIOGRAPHY\b/i.test(field.instruction)
+    && paragraphOf(field.simple || field.startRun)?.getAttributeNS(W14, 'paraId') === bibliographyId);
+  if (matches.length !== 1 || matches[0].simple) throw new Error('The complex bibliography could not be uniquely located.');
+  const field = matches[0];
+  const first = paragraphOf(field.startRun);
+  const last = paragraphOf(field.endRun);
+  if (first.parentNode !== last.parentNode || first.parentNode.localName !== 'body') throw new Error('Nested bibliography fields are unsupported by the compatibility adapter.');
+  const allRuns = nodes(document, 'r');
+  const begin = allRuns.indexOf(field.startRun);
+  const end = allRuns.indexOf(field.endRun);
+  if (begin < 0 || end < begin) throw new Error('Invalid bibliography field boundaries.');
+  const removal = new Set(allRuns.slice(begin, end + 1));
+  const paragraphs = [];
+  for (let paragraph = first; paragraph; paragraph = paragraph.nextSibling) {
+    if (paragraph.nodeType !== 1) continue;
+    if (paragraph.namespaceURI !== W || paragraph.localName !== 'p') throw new Error('The bibliography crosses unsupported document content.');
+    for (const child of Array.from(paragraph.childNodes)) {
+      if (child.nodeType !== 1) { if (child.textContent.trim()) throw new Error('The bibliography shares content.'); continue; }
+      if (child.namespaceURI === W && child.localName === 'pPr') continue;
+      if (!removal.has(child)) throw new Error('The bibliography shares content and cannot be normalized safely.');
+    }
+    paragraphs.push(paragraph);
+    if (paragraph === last) break;
+  }
+  if (paragraphs.at(-1) !== last) throw new Error('The bibliography field end was not found.');
+  const simple = word(document, 'fldSimple', { instr: field.instruction });
+  let previousParagraph;
+  for (const run of field.runs) {
+    const paragraph = paragraphOf(run);
+    if (run.parentNode !== paragraph) throw new Error('Nested bibliography runs cannot be normalized safely.');
+    if (previousParagraph && previousParagraph !== paragraph) {
+      const line = word(document, 'r'); line.appendChild(word(document, 'br')); simple.appendChild(line);
+    }
+    simple.appendChild(run.cloneNode(true));
+    previousParagraph = paragraph;
+  }
+  first.insertBefore(simple, field.startRun);
+  for (const run of removal) run.parentNode.removeChild(run);
+  for (const paragraph of paragraphs.slice(1)) {
+    if (nodes(paragraph, 'sectPr').length) throw new Error('Bibliography section boundaries cannot be normalized.');
+    paragraph.parentNode.removeChild(paragraph);
+  }
+  zip.file('word/document.xml', serializer.serializeToString(document));
   await fs.writeFile(outputPath, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
 }

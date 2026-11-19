@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
 import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import type { SuperDoc } from 'superdoc';
@@ -146,7 +147,9 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   async function finishJob(job: Job) {
     onDocumentUpdated?.();
+    if (job.status === 'failed') demoMetric('ai_failed', 'collaboration');
     if (job.status === 'completed') {
+      demoMetric('ai_succeeded', 'collaboration');
       const history = await api.getChatHistory(roomId);
       setMessages(history);
       setJobs((current) => current.filter((candidate) => candidate.id !== job.id));
@@ -208,10 +211,12 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
     promptNavigationRef.current = null;
     setPrompt('');
     try {
+      demoMetric('ai_started', 'collaboration');
       const job = await api.createJob(roomId, message, isSuggesting, selectedText || undefined);
       setJobs((current) => [...current, job]);
       await watchJob(job);
     } catch (caught) {
+      demoMetric('ai_failed', 'collaboration');
       setError(caught instanceof Error ? caught.message : String(caught));
     }
   }

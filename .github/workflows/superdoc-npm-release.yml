@@ -3,9 +3,11 @@ name: SuperDoc npm release
 on:
   schedule:
     - cron: '17 0,8,16 * * *'
-  pull_request:
-    types: [closed]
+  # Release only committed base-repository code, including merged fork PRs.
+  push:
     branches: [main]
+    paths-ignore:
+      - '.github/superdoc-release.json'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -36,7 +38,6 @@ concurrency:
 
 jobs:
   check:
-    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       update: ${{ steps.check.outputs.update }}
@@ -46,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -56,7 +57,7 @@ jobs:
         id: check
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run || inputs.simulated_latest != '' || inputs.simulated_deployed != '' || inputs.simulate_failure) && 'true' || 'false' }}
-          DEPLOY_CURRENT: ${{ github.event_name == 'pull_request' || inputs.deploy_current }}
+          DEPLOY_CURRENT: ${{ github.event_name == 'push' || inputs.deploy_current }}
           SIMULATED_LATEST: ${{ inputs.simulated_latest }}
           SIMULATED_DEPLOYED: ${{ inputs.simulated_deployed }}
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
@@ -90,7 +91,7 @@ jobs:
     with:
       environment: production
       dry_run: ${{ needs.check.outputs.dry_run == 'true' }}
-      ref: ${{ needs.update.outputs.commit_sha || github.event.pull_request.merge_commit_sha || github.sha }}
+      ref: ${{ needs.update.outputs.commit_sha || github.sha }}
       source_artifact: ${{ needs.update.outputs.source_artifact }}
     secrets: inherit
 
@@ -107,7 +108,7 @@ jobs:
       - name: Record successful production deployment
         env:
           SUPERDOC_VERSION: ${{ needs.check.outputs.version }}
-          DEPLOYED_SOURCE_SHA: ${{ needs.update.outputs.commit_sha || github.event.pull_request.merge_commit_sha || github.sha }}
+          DEPLOYED_SOURCE_SHA: ${{ needs.update.outputs.commit_sha || github.sha }}
         run: |
           git fetch --depth=1 origin "$DEPLOYED_SOURCE_SHA"
           node scripts/record-superdoc-release.mjs
@@ -121,13 +122,13 @@ jobs:
   notify:
     name: Notify Slack
     needs: [check, update, deploy, record]
-    if: ${{ always() && ((github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run && inputs.simulated_latest == '' && inputs.simulated_deployed == '' && !inputs.simulate_failure)) && (needs.check.result == 'failure' || needs.update.result == 'failure' || needs.deploy.result == 'failure' || needs.record.result == 'failure' || needs.check.result == 'cancelled' || needs.update.result == 'cancelled' || needs.deploy.result == 'cancelled' || needs.record.result == 'cancelled' || needs.deploy.result == 'success') }}
+    if: ${{ always() && (github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run && inputs.simulated_latest == '' && inputs.simulated_deployed == '' && !inputs.simulate_failure)) && (needs.check.result == 'failure' || needs.update.result == 'failure' || needs.deploy.result == 'failure' || needs.record.result == 'failure' || needs.check.result == 'cancelled' || needs.update.result == 'cancelled' || needs.deploy.result == 'cancelled' || needs.record.result == 'cancelled' || needs.deploy.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.update.outputs.commit_sha || github.event.pull_request.merge_commit_sha || github.sha }}
+          ref: ${{ needs.update.outputs.commit_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -1,3 +1,4 @@
+import { installDemoAnalytics } from './install-demo-analytics.mjs';
 import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -63,3 +64,5 @@ await cp(
 await renderGallery({ mode: "local", output: path.join(output, "index.html") });
 
 console.log(`Built local gallery in ${path.relative(root, output)}/`);
+
+await installDemoAnalytics(output, [...demos.map(d=>d.route),'collab']);

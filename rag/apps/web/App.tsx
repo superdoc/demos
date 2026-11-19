@@ -1,3 +1,13 @@
+const demoMetric = (action: string, capability = "document") => {
+	try {
+		window.dispatchEvent(
+			new CustomEvent("superdoc:demo", { detail: { action, capability } }),
+		);
+	} catch {
+		/* Analytics must not affect the demo. */
+	}
+};
+
 import { useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChatPanel } from "./components/ChatPanel";
@@ -24,6 +34,7 @@ function App() {
 				const doc = resp.documents.find((d) => d.id === citation.documentId);
 				if (doc) setActiveFilename(doc.filename);
 			}
+			demoMetric("citation_opened", "answer");
 			setActiveCitation(null);
 			requestAnimationFrame(() => setActiveCitation(citation));
 		},

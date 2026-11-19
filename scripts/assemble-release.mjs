@@ -1,3 +1,4 @@
+import { installDemoAnalytics } from './install-demo-analytics.mjs';
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -52,5 +53,6 @@ async function main() {
   // Attach gallery API and project forwarding to the static release.
   await assemblePagesWorker({ output, backendUrl: process.env.VERSION_HISTORY_BACKEND_URL });
   console.log(`Assembled ${manifest.length} demos from demos.json`);
+  await installDemoAnalytics(output, manifest.map(d => d.liveDemoUri.replace(/^\/+|\/+$/g, '')));
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

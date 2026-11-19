@@ -225,8 +225,9 @@ three times a day at 00:17, 08:17, and 16:17 UTC. A new stable version runs
 to production after the builds and tests pass. It uses the existing Cloudflare and
 Railway secrets; no token or change to the SuperDoc source repository is needed.
 GitHub schedules run from the default branch and may be delayed.
-Merged pull requests into `main` also run this workflow to deploy the current
-source, and manual runs remain available.
+Pushes to `main`, including merged pull requests, also run this workflow to deploy
+that exact source commit. Changes only to `.github/superdoc-release.json` do not
+start another release. Manual runs remain available.
 
 `.github/superdoc-release.json` records the last successful automated deployment.
 The first scheduled run establishes that baseline by validating and deploying npm's
@@ -294,7 +295,11 @@ The former `GOOGLE_CHAT_WEBHOOK_URL` and `SLACK_WEBHOOK_URL` secrets are not use
 Each message includes the SuperDoc version, failed stages when applicable, a
 workflow-log link, and all demo titles and production links from `demos.json`.
 Adding a demo to that catalog automatically includes it in future notifications.
-Notifications are sent for merged PR deployments and stable release runs.
+Notifications are sent for production source deployments from `main` and stable
+release runs. Post-merge releases use the trusted `push` event and check out its
+exact `github.sha` from the base repository. Fork PR code is validated separately
+by the unprivileged `pull_request` workflow. Release notifications link the pushed
+commit without assuming every push came from a PR.
 Routine checks with no release, PR updates, and manual dry runs or simulations
 stay silent.
 

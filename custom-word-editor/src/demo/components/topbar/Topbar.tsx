@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
 import { useRef, useState, type ReactNode } from 'react';
 import { BlankDOCX } from 'superdoc';
 import { useSuperDocDocument, useSuperDocHost, useSuperDocUI } from 'superdoc/ui/react';
@@ -20,8 +21,11 @@ export function Topbar({ viewControls, onDocumentReplaced }: { viewControls?: Re
   const exportDocument = async (exportedName = 'reviewed-contract') => {
     if (!host || !('export' in host) || typeof host.export !== 'function') return;
     setSaving(true);
+    demoMetric('export_requested');
     try {
       await host.export({ exportType: ['docx'], exportedName });
+      demoMetric('export_completed');
+    } catch (error) { demoMetric('export_failed'); throw error;
     } finally {
       setSaving(false);
     }
@@ -83,13 +87,15 @@ export function Topbar({ viewControls, onDocumentReplaced }: { viewControls?: Re
         }],
       });
       setSaving(true);
+      demoMetric('export_requested');
       const result = await ui.document.export({ exportType: ['docx'], triggerDownload: false });
       if (!(result instanceof Blob)) throw new Error('SuperDoc did not return a DOCX file.');
       const writable = await handle.createWritable();
       await writable.write(result);
-      await writable.close();
+      await writable.close(); demoMetric('export_completed');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
+      demoMetric('export_failed');
       console.error(error);
       setImportError('The document could not be saved.');
     } finally {

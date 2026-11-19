@@ -51,14 +51,14 @@ test("PR titles and branch names cannot inject Slack markup or mentions", () => 
   assert.ok(trigger.includes("&amp;lt;!here&amp;gt;"));
 });
 
-test("only merged PRs and stable release runs can notify", () => {
-  const env = { ...triggerEnv, GITHUB_EVENT_NAME: "pull_request" };
+test("unmerged PRs, unrelated events and manual simulations cannot notify", () => {
+  const env = { ...triggerEnv, GITHUB_EVENT_NAME: "pull_request_target" };
   for (const action of ["opened", "synchronize", "reopened", "edited", "closed"]) {
     assert.equal(shouldNotifyTrigger({ env, event: { action, pull_request: { ...pullRequest, merged: false } } }), false);
   }
   assert.equal(shouldNotifyTrigger({ env, event: { action: "closed", pull_request: { ...pullRequest, merged: true } } }), true);
   assert.equal(shouldNotifyTrigger({ env: { ...triggerEnv, GITHUB_EVENT_NAME: "schedule" } }), true);
-  for (const eventName of ["push", "merge_group", "pull_request_target", undefined]) {
+  for (const eventName of ["push", "merge_group", undefined]) {
     assert.equal(shouldNotifyTrigger({ env: { ...triggerEnv, GITHUB_EVENT_NAME: eventName } }), false);
   }
   const manual = { ...triggerEnv, GITHUB_EVENT_NAME: "workflow_dispatch" };
@@ -71,13 +71,79 @@ test("only merged PRs and stable release runs can notify", () => {
 test("PR updates never contact Slack, even when pipeline stages fail", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "superdoc-notification-suppression-"));
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const action of ["opened", "synchronize", "reopened", "closed"]) {
-    await writeFile(`${root}/event.json`, JSON.stringify({ action, pull_request: { ...pullRequest, merged: false } }));
-    await notifyRelease({ root, env: {
-      GITHUB_EVENT_NAME: "pull_request", GITHUB_EVENT_PATH: `${root}/event.json`,
-      RELEASE_RESULTS: JSON.stringify({ check: { result: "failure" } }),
-    }, fetchImpl: () => { assert.fail("PR updates must not send a notification"); } });
+  for (const eventName of ["pull_request", "pull_request_target"]) {
+    for (const action of ["opened", "synchronize", "reopened", "closed"]) {
+      await writeFile(`${root}/event.json`, JSON.stringify({ action, pull_request: { ...pullRequest, merged: false } }));
+      await notifyRelease({ root, env: {
+        GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: `${root}/event.json`,
+        RELEASE_RESULTS: JSON.stringify({ check: { result: "failure" } }),
+      }, fetchImpl: () => { assert.fail("PR updates must not send a notification"); } });
+    }
   }
+});
+
+test("a merged fork PR in the trusted base context notifies with the original PR link", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "superdoc-fork-merge-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(`${root}/demos.json`, JSON.stringify(demos));
+  await writeFile(`${root}/event.json`, JSON.stringify({ action: "closed", pull_request: {
+    ...pullRequest, merged: true, head: { ref: "codex/full-reference-preset", repo: { fork: true } },
+  } }));
+  let payload;
+  await notifyRelease({ root, env: {
+    ...triggerEnv, GITHUB_EVENT_NAME: "pull_request_target", GITHUB_EVENT_PATH: `${root}/event.json`,
+    GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1", RELEASE_RESULTS: JSON.stringify(success),
+    SUPERDOC_VERSION: "2.31.0", RELEASE_DRY_RUN: "false", SLACK_BOT_TOKEN: botToken, SLACK_CHANNEL_ID: channelId,
+  }, fetchImpl: async (_url, request) => {
+    payload = JSON.parse(request.body);
+    return Response.json({ ok: true });
+  } });
+  assert.ok(payload, "The trusted merged-fork event must reach notification delivery");
+  assert.match(payload.text, /Trigger: PR merge.*PR #93/);
+  assert.match(payload.text, /codex\/full-reference-preset → main/);
+});
+
+test("the release workflow deploys exact main pushes without a privileged fork checkout", async () => {
+  const workflow = await readFile(new URL("../.github/workflows/superdoc-npm-release.yml", import.meta.url), "utf8");
+  assert.match(workflow, /^  push:\n    branches: \[main\]\n    paths-ignore:\n      - '\.github\/superdoc-release\.json'/m);
+  assert.doesNotMatch(workflow, /pull_request_target|pull_request\.head\.|merge_commit_sha|refs\/pull\/|allow-unsafe-pr-checkout/);
+  assert.match(workflow, /DEPLOY_CURRENT: \$\{\{ github.event_name == 'push' \|\| inputs.deploy_current \}\}/);
+  assert.match(workflow, /ref: \$\{\{ github.sha \}\}/);
+  assert.match(workflow, /ref: \$\{\{ needs.update.outputs.commit_sha \|\| github.sha \}\}/);
+  assert.match(workflow, /github.event_name == 'push' \|\| github.event_name == 'schedule'/);
+  assert.match(workflow, /Live runs must use the default branch/);
+});
+
+test("only non-deletion pushes to the repository default branch can notify", () => {
+  const event = { repository: { default_branch: "main" }, deleted: false };
+  const env = { ...triggerEnv, GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main" };
+  assert.equal(shouldNotifyTrigger({ env, event }), true);
+  assert.equal(shouldNotifyTrigger({ env, event: { ...event, deleted: true } }), false);
+  assert.equal(shouldNotifyTrigger({ env, event: {} }), false);
+  for (const ref of ["refs/heads/feature", "refs/tags/main", "refs/pull/124/merge", undefined]) {
+    assert.equal(shouldNotifyTrigger({ env: { ...env, GITHUB_REF: ref }, event }), false);
+  }
+});
+
+test("a main push delivers a source deployment notification linked to the deployed commit", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "superdoc-main-push-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const commit = "b".repeat(40);
+  await writeFile(`${root}/demos.json`, JSON.stringify(demos));
+  await writeFile(`${root}/event.json`, JSON.stringify({ after: commit, ref: "refs/heads/main", repository: { default_branch: "main" } }));
+  let payload;
+  await notifyRelease({ root, env: {
+    ...triggerEnv, GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main", GITHUB_EVENT_PATH: `${root}/event.json`,
+    GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1", RELEASE_RESULTS: JSON.stringify(success),
+    SUPERDOC_VERSION: "2.31.0", RELEASE_DRY_RUN: "false", SLACK_BOT_TOKEN: botToken, SLACK_CHANNEL_ID: channelId,
+  }, fetchImpl: async (_url, request) => {
+    payload = JSON.parse(request.body);
+    return Response.json({ ok: true });
+  } });
+  assert.ok(payload);
+  assert.match(payload.text, /Trigger: Production source deployment — push to main/);
+  assert.ok(payload.text.includes(`https://github.com/superdoc/demos/commit/${commit}|bbbbbbb`));
+  assert.doesNotMatch(payload.text, /PR merge|Branch testing/);
 });
 
 test("successful deployments list every catalog demo with a production link", () => {

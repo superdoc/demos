@@ -1,3 +1,4 @@
+const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
 import { useEffect, useRef, useState } from 'react';
 import { DocumentEditor } from './DocumentEditor';
 import { BuildThis } from './BuildThis';
@@ -43,8 +44,8 @@ function Workspace({ session }: { session: RoomSession }) {
     setOpenError('');
     if (!version) { setSelected(null); return; }
     setOpening(true);
-    try { setSelected(await history.open(version)); }
-    catch { setOpenError('This saved version could not be downloaded. Please try again.'); }
+    try { setSelected(await history.open(version)); demoMetric('explored', 'version_history'); }
+    catch { demoMetric('task_failed', 'version_history'); setOpenError('This saved version could not be downloaded. Please try again.'); }
     finally { setOpening(false); }
   };
 
@@ -53,7 +54,6 @@ function Workspace({ session }: { session: RoomSession }) {
       <header className="topbar">
         <h1>{selected ? timestamp(selected.createdAt) : <>Current version <span className="room-name">· {session.roomId}</span></>}</h1>
         <a className="primary-button more-demos-button" href={galleryUrl}>More demos</a>
-        {selected && <button className="primary-button" disabled={saving} onClick={() => void selectVersion(null)}>Back to current version</button>}
         <BuildThis />
         <span className="toolbar-status" role="status">{selected ? 'You’re viewing an earlier version' : saveLabels[history.status]}</span>
         <span className="connection-status" role="status">{connected ? 'Connected' : 'Reconnecting…'}</span>
@@ -83,15 +83,16 @@ function Workspace({ session }: { session: RoomSession }) {
 
     <aside className={`history-panel ${selected ? 'with-changes' : ''}`} aria-label="Version history">
       <h2>Version history</h2>
+      <div className={`version-list-container ${history.versions.length > 1 ? 'has-multiple-versions' : ''}`}>
       <nav className="version-list" aria-label="Document versions">
         <div className={`current-version-card ${!selected ? 'selected' : ''}`}>
           <button className="version-card current-card" aria-current={!selected ? 'true' : undefined} disabled={saving || opening} onClick={() => void selectVersion(null)}>
-            <span className="version-title">Current version <span className="live-label">Live</span></span>
+            <span className="version-title">{selected ? 'Back to current version' : 'Current version'} <span className="live-label">Live</span></span>
             <span className="version-subtitle">Continue editing</span>
             <span className="version-author"><i />{session.user.name}</span>
           </button>
-          <button className="save-version-button" disabled={!history.canSave || history.status === 'loading' || saving || !connected || selected !== null}
-            onClick={() => void history.save().catch(() => {})}>{saving ? 'Saving version…' : 'Save version'}</button>
+          {!selected && <button className="save-version-button" disabled={!history.canSave || history.status === 'loading' || saving || !connected}
+            onClick={() => void history.save().catch(() => {})}>{saving ? 'Saving version…' : 'Save version'}</button>}
         </div>
         {history.versions.length > 0 && <h3>Today</h3>}
         {history.versions.map((version) => <button
@@ -108,6 +109,7 @@ function Workspace({ session }: { session: RoomSession }) {
         </button>)}
         {history.versions.length === 0 && <p className="empty-history">No saved versions yet. Choose Save version to keep a snapshot.</p>}
       </nav>
+      </div>
       {opening && <p className="changes-message" role="status">Downloading version…</p>}
       {openError && <p className="changes-message error" role="alert">{openError}</p>}
       {history.listError && <div className="changes-message error" role="alert">{history.listError} <button onClick={() => void history.refresh()}>Refresh versions</button></div>}

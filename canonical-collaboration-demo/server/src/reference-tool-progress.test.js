@@ -1,40 +1,38 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createReferenceProgress } from './reference-integration/agent/reference-tool-progress.js';
-import { createRunProgress } from './reference-integration/agent/agent-run-progress.js';
+import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
+const source = { operationId: 'doc.citations.sources.insert', args: { type: 'book', fields: { title: 'Saved report' } } };
 
-test('source receipts supply titles for later citation reports; failures cannot become completed entries', () => {
-  const describe = createReferenceProgress({ items: [] });
-  const progress = createRunProgress(describe);
-  progress.record({ tool: 'superdoc_references', args: { action: 'create', fields: { title: 'Requested title' } },
-    result: { success: true, source: { sourceId: 'saved-id', fields: { title: 'Saved title' } } } });
-  progress.record({ tool: 'superdoc_insert_citation', args: { sourceId: 'saved-id', anchor: { kind: 'sectionEnd', sectionHeading: 'Overview' } },
-    result: { ok: false, error: 'A placement failure.' } });
+test('native source receipts report saved metadata without treating a failed citation as applied', () => {
+  const progress = createRunProgress(createReferenceProgress({ items: [] }));
+  progress.record({ tool: 'superdoc_api_call', args: source, result: { success: true, source: { sourceId: 'saved-id' } } });
+  progress.record({ tool: 'superdoc_api_call', args: { operationId: 'doc.citations.insert', args: { sourceIds: ['saved-id'] } }, result: { success: false, error: 'Target missing.' } });
   const report = progress.interruptionReport('turn_limit');
-  assert.match(report, /Saved reference "Saved title"/);
-  assert.match(report, /Last failed operation: Insert citation for "Saved title" at the end of "Overview"/);
+  assert.match(report, /Saved reference "Saved report"/);
+  assert.match(report, /Last failed operation: doc.citations.insert/);
   assert.doesNotMatch(report, /Inserted citation/);
 });
 
-test('reports do not claim verified placement without a verification receipt', () => {
-  const describe = createReferenceProgress({ items: [] });
-  const description = describe({ tool: 'superdoc_insert_footnote', args: { anchor: { kind: 'afterText', text: 'requested quote' } }, result: { success: true } });
-  assert.equal(description.completed, 'Inserted footnote.');
-  assert.doesNotMatch(description.completed, /verified|requested quote/);
+test('native lists with total counts are successful reads, not incomplete batches', () => {
+  assert.equal(toolFailed({ evaluatedRevision: '1', total: 1, items: [{ sourceId: 'saved' }] }), false);
+  assert.equal(toolFailed({ evaluatedRevision: '1', total: 0, items: [] }), false);
 });
 
-test('a no-op bibliography deletion is not reported as a deletion', () => {
-  const describe = createReferenceProgress({ items: [] });
-  const description = describe({ tool: 'superdoc_bibliographies', args: { action: 'delete' }, result: { success: true, removed: false } });
-  assert.equal(description.completed, 'No bibliography was removed.');
-});
-
-test('a fatal tool failure still reports earlier saved references', () => {
+test('partial API batches report successful source writes before the failed operation', () => {
   const progress = createRunProgress(createReferenceProgress({ items: [] }));
-  progress.record({ tool: 'superdoc_references', args: { action: 'create', fields: { title: 'Saved report' } }, result: { success: true } });
-  progress.record({ tool: 'superdoc_bibliographies', args: { action: 'create' }, result: { ok: false, error: 'Requires Editing mode.' } });
-  const report = progress.interruptionReport('tool_failure', 'Bibliography requires Editing mode.');
+  progress.record({ tool: 'superdoc_api_call', args: { calls: [source, { operationId: 'doc.citations.bibliography.insert', args: {} }] },
+    result: { completed: 1, total: 2, receipts: [{ index: 0, ok: true, result: { success: true, source: { sourceId: 'saved' } } },
+      { index: 1, ok: false, result: { success: false, failure: { message: 'Invalid position.' } } }] } });
+  const report = progress.interruptionReport('tool_failure');
   assert.match(report, /Saved reference "Saved report"/);
-  assert.match(report, /Last failed operation: create bibliography/);
-  assert.doesNotMatch(report, /No changes were made|Created bibliography/);
+  assert.match(report, /Last failed operation: doc.citations.bibliography.insert/);
+  assert.doesNotMatch(report, /Created bibliography/);
+});
+
+test('dry runs do not claim source creation or bibliography deletion', () => {
+  const progress = createRunProgress(createReferenceProgress({ items: [] }));
+  progress.record({ tool: 'superdoc_api_call', args: { ...source, dryRun: true }, result: { success: true } });
+  progress.record({ tool: 'superdoc_api_call', args: { operationId: 'doc.citations.bibliography.remove', args: { dryRun: true } }, result: { success: true } });
+  assert.doesNotMatch(progress.interruptionReport('turn_limit'), /Saved reference|Deleted bibliography/);
 });

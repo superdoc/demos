@@ -1,10 +1,14 @@
 export function toolFailed(result) {
+  if (Array.isArray(result?.receipts) && typeof result.total === 'number' && result.completed !== result.total) return true;
+  if (Array.isArray(result?.receipts) && result.receipts.some(receipt => receipt.ok === false || toolFailed(receipt.result))) return true;
   return result?.ok === false || result?.success === false || result?.result?.success === false
     || result?.status === 'failed' || Boolean(result?.error);
 }
 
 function errorDetail(result) {
-  const detail = result?.error ?? result?.failure?.message ?? result?.result?.failure?.message;
+  const failedReceipt = result?.receipts?.find(receipt => receipt.ok === false || toolFailed(receipt.result));
+  const detail = result?.error ?? result?.failure?.message ?? result?.result?.failure?.message
+    ?? failedReceipt?.error ?? failedReceipt?.result?.failure?.message ?? result?.reason;
   return typeof detail === 'string' ? detail : detail ? JSON.stringify(detail) : 'The tool reported a failure.';
 }
 
@@ -25,9 +29,10 @@ export function createRunProgress(describeCall = ({ tool }) => ({ operation: too
 
   function record(call) {
     const description = describeCall(call);
+    if (description.applied?.length) completed.push(...description.applied);
     if (!toolFailed(call.result)) {
       if (description.completed) completed.push(description.completed);
-      else otherSuccesses.set(call.tool, (otherSuccesses.get(call.tool) ?? 0) + 1);
+      else if (!description.applied?.length) otherSuccesses.set(call.tool, (otherSuccesses.get(call.tool) ?? 0) + 1);
       return { failed: false, repeatedFailure: false };
     }
     const error = errorDetail(call.result);

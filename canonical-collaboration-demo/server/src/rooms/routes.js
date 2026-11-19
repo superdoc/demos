@@ -1,3 +1,4 @@
+import { bibliographyInput } from '../reference-integration/native/bibliography-input.js';
 // The route registration table is at the end of this file.
 import { config } from '../config.js';
 
@@ -54,6 +55,27 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
   async function deleteDocument(request, reply) {
     await rooms.delete(request.params.roomId);
     return reply.code(204).send();
+  }
+
+  async function documentEvents(request, reply) {
+    const roomId = request.params.roomId;
+    const room = rooms.require(roomId);
+    reply.hijack();
+    reply.raw.writeHead(200, { ...reply.getHeaders(), 'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    const send = event => {
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    const unsubscribe = rooms.subscribeDocumentChanges(roomId, send);
+    const heartbeat = setInterval(() => {
+      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(': keep-alive\n\n');
+    }, 15_000);
+    heartbeat.unref();
+    const cleanup = () => { unsubscribe(); clearInterval(heartbeat); };
+    reply.raw.on('close', cleanup);
+    reply.raw.on('error', cleanup);
+    send({ document_id: room.document.id, generation: room.document.generation });
+    return reply;
   }
 
   async function citationSources(request) {
@@ -133,9 +155,9 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     if (room.activeJobs || room.document.referenceBusy) throw app.httpErrors.badRequest('Wait for the current document update to finish.');
     if (typeof expectedRevision !== 'string' || !expectedRevision.trim()) throw app.httpErrors.badRequest('A document revision is required.');
     try {
-      const result = await room.document.dispatch('superdoc_bibliographies', {
+      const result = await room.document.manageBibliographies(bibliographyInput({
         action: 'create', position: 'documentEnd', changeMode: 'direct', expectedRevision,
-      });
+      }));
       room.updateLastActivityAt();
       return result;
     } catch (error) {
@@ -250,6 +272,7 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     // Apply one SuperDoc tool operation to the current document.
     { url: `${roomPath}/document`, method: 'PATCH', handler: dispatchDocumentTool },
     { url: `${roomPath}/citation-sources`, method: 'GET', handler: citationSources },
+    { url: `${roomPath}/document-events`, method: 'GET', handler: documentEvents },
     { url: `${roomPath}/footnotes`, method: 'POST', handler: insertFootnote },
     { url: `${roomPath}/citation-sources`, method: 'POST', handler: mutateCitation },
     { url: `${roomPath}/citations`, method: 'POST', handler: mutateCitation },

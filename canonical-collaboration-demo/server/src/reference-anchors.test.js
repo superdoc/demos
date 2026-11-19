@@ -9,8 +9,6 @@ import { readParagraphPosition, resolveReferenceAnchor, verifyInsertedReference 
 import { insertFootnoteInSnapshot } from './reference-integration/workarounds/footnote-insert.js';
 import { insertCitationInSnapshot } from './reference-integration/workarounds/citation-insert.js';
 import { renderReferenceFields } from './reference-integration/workarounds/reference-rendering.js';
-import { citationInput } from './reference-integration/tools/citation-tool.js';
-import { footnoteInput } from './reference-integration/tools/footnote-tool.js';
 
 const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const W14 = 'http://schemas.microsoft.com/office/word/2010/wordml';
@@ -116,18 +114,11 @@ test('a second note resolves against the current text and existing marker in the
   assert.equal(await verifyInsertedReference(file, { kind: 'footnote', blockId: '06', offset: second.resolvedAnchor.offset, noteId: result.footnote.noteId }), true);
 });
 
-test('toolbar numeric cursor insertion continues to work independently of agent semantic anchors', async (t) => {
+test('toolbar numeric cursor insertion continues to work independently of agent SDK calls', async (t) => {
   const file = await fixture(t);
   const at = { kind: 'text', coordinateSpace: 'visible', segments: [{ blockId: '02', range: { start: 0, end: 0 } }] };
   const inserted = await insertCitationInSnapshot(file, { at, sourceIds: ['TestSource'] });
   assert.equal(await verifyInsertedReference(file, { kind: 'citation', ...inserted }), true);
   const note = await insertFootnoteInSnapshot(file, { at, content: 'At the cursor.' });
   assert.equal(await verifyInsertedReference(file, { kind: 'footnote', blockId: '02', offset: 0, noteId: note.footnote.noteId }), true);
-});
-
-test('agent insertion tools reject the old numeric contract and require semantic anchors', () => {
-  assert.throws(() => citationInput({ blockId: '06', offset: 5, sourceId: 'TestSource', expectedRevision: '1' }), /anchor/);
-  assert.throws(() => footnoteInput({ blockId: '06', offset: 5, content: 'Note', expectedRevision: '1' }), /anchor/);
-  assert.throws(() => footnoteInput({ anchor: { kind: 'afterText', text: 'risk', offset: 5 }, content: 'Note', expectedRevision: '1' }), /anchor/);
-  assert.equal(footnoteInput({ anchor: { kind: 'afterText', text: 'exchange risk' }, content: 'Note', expectedRevision: '1', changeMode: 'tracked' }).changeMode, 'tracked');
 });
