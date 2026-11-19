@@ -912,6 +912,7 @@ onBeforeUnmount(() => {
 .main {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -1154,5 +1155,28 @@ onBeforeUnmount(() => {
   font-size: 14px;
   text-align: center;
   padding: 24px;
+}
+
+@media (max-width: 900px) {
+  .main {
+    flex-direction: column;
+  }
+
+  .editor-container {
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .editor-wrapper {
+    min-height: 0;
+  }
+
+  .sidebar {
+    width: auto;
+    max-height: 40%;
+    min-height: 0;
+    border-left: 0;
+    border-top: 1px solid #e0e0e0;
+  }
 }
 </style>
