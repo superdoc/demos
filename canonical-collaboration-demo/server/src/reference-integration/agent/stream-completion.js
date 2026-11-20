@@ -1,4 +1,51 @@
 import { streamTextTool } from '../tools/stream-text-tool.js';
+import { setTimeout as delay } from 'node:timers/promises';
+
+const charactersPerUpdate = 5;
+const updateIntervalMs = 50;
+
+// Consume model output independently from the serialized document writes.
+function bufferUpdates(writer, signal) {
+  let latest;
+  let written = 0;
+  let running;
+  let failure;
+  let stopped = false;
+  let lastWrite = 0;
+
+  async function pump() {
+    while (!stopped && latest && written < Array.from(latest.text).length) {
+      signal.throwIfAborted();
+      const wait = updateIntervalMs - (Date.now() - lastWrite);
+      if (lastWrite && wait > 0) await delay(wait, undefined, { signal });
+      if (stopped) break;
+      const characters = Array.from(latest.text);
+      const end = Math.min(written + charactersPerUpdate, characters.length);
+      await writer.update({ ...latest, text: characters.slice(0, end).join('') });
+      written = end;
+      lastWrite = Date.now();
+    }
+  }
+
+  function start() {
+    if (!running && !failure && !stopped) {
+      running = pump().catch((error) => { failure = error; }).finally(() => {
+        running = undefined;
+        if (!stopped && !failure && latest && written < Array.from(latest.text).length) start();
+      });
+    }
+  }
+
+  return {
+    push(args) { latest = args; start(); },
+    async drain() {
+      while (running) await running;
+      signal.throwIfAborted();
+      if (failure) throw failure;
+    },
+    async stop() { stopped = true; await this.drain(); },
+  };
+}
 
 // The streamed tool has flat scalar arguments. Read only complete metadata and
 // a safely decoded prefix of text; incomplete escapes stay buffered.
@@ -70,7 +117,7 @@ export async function streamCompletion(client, request, { signal, document, chan
       for (const delta of choice.delta?.tool_calls ?? []) {
         let call = calls.get(delta.index);
         if (!call) {
-          call = { id: '', type: 'function', function: { name: '', arguments: '' }, startedAt: new Date().toISOString(), lastLength: 0, lastUpdate: 0 };
+          call = { id: '', type: 'function', function: { name: '', arguments: '' }, startedAt: new Date().toISOString() };
           calls.set(delta.index, call);
         }
         if (delta.id) call.id += delta.id;
@@ -82,11 +129,10 @@ export async function streamCompletion(client, request, { signal, document, chan
         }
         if (streamTextEnabled && call.function.name === streamTextTool.function.name) {
           const args = partialTextArguments(call.function.arguments);
-          if (args?.text && (args.text.length - call.lastLength >= 24 || Date.now() - call.lastUpdate >= 80)) {
+          if (args?.text) {
             call.writer ??= document.createTextStream({ tag: call.id, changeMode, signal });
-            await call.writer.update(args);
-            call.lastLength = args.text.length;
-            call.lastUpdate = Date.now();
+            call.buffer ??= bufferUpdates(call.writer, signal);
+            call.buffer.push(args);
           }
         }
       }
@@ -96,11 +142,14 @@ export async function streamCompletion(client, request, { signal, document, chan
     const ordered = [...calls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
     if (ordered.some((call) => !call.id || !call.function.name)) throw new Error('Incomplete OpenAI tool identity.');
     if ((ordered.length > 0) !== (finishReason === 'tool_calls')) throw new Error('Incomplete OpenAI tool-call stream.');
+    await Promise.all(ordered.map((call) => call.buffer?.drain()));
+    signal.throwIfAborted();
     return {
       choice: { role: 'assistant', content: content || null, ...(ordered.length ? { tool_calls: ordered.map(({ id, type, function: fn }) => ({ id, type, function: fn })) } : {}) },
       writers: new Map(ordered.filter((call) => call.writer).map((call) => [call.id, call.writer])),
     };
   } catch (error) {
+    await Promise.allSettled([...calls.values()].map((call) => call.buffer?.stop()));
     if ([...calls.values()].some((call) => call.writer)) {
       error.message += ' Text already streamed into the document remains applied.';
     }
