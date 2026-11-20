@@ -25,7 +25,7 @@ const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 for (const [name, version] of Object.entries(manifest.dependencies)) {
   const directory = path.join('node_modules', name);
   fs.mkdirSync(directory, { recursive: true });
-  fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ version }));
+  fs.writeFileSync(path.join(directory, 'package.json'), JSON.stringify({ version, ...(name === 'superdoc' ? { dependencies: { '@superdoc/docx-engine': '0.30.0' } } : {}) }));
 }
 if (!args.includes('--frozen-lockfile') && args[0] !== 'ci') fs.writeFileSync('pnpm-lock.yaml', 'updated lockfile');
 `;
@@ -59,6 +59,8 @@ test('the stable updater preserves stable/prerelease exceptions and reports the 
   await writeFile(historyLock, 'original prerelease lockfile');
   const editorLock = path.join(root, 'custom-word-editor/pnpm-lock.yaml');
   await writeFile(editorLock, 'original stable lockfile');
+  await mkdir(path.join(root, 'agent'));
+  await writeFile(path.join(root, 'agent/superdoc-version.json'), '"2.29.0"\n');
   await mkdir(path.join(root, 'dist-landing'));
   await writeFile(path.join(root, 'dist-landing/index.html'), 'SuperDoc v2.29.0');
   const bin = path.join(root, 'bin');
@@ -83,6 +85,9 @@ test('the stable updater preserves stable/prerelease exceptions and reports the 
   assert.equal(await dependency('custom-word-editor'), '2.29.0');
   assert.equal(await readFile(editorLock, 'utf8'), 'original stable lockfile');
   assert.equal(await dependency('template-builder-document-api-v2-demo'), '2.31.0');
+  assert.deepEqual(JSON.parse(await readFile(path.join(root, 'agent/superdoc-version.json'), 'utf8')), { superdoc: '2.31.0', docxEngine: '0.30.0' });
+  const releaseFiles = await readFile(new URL('../.github/superdoc-update-files.txt', import.meta.url), 'utf8');
+  assert.ok(releaseFiles.split('\n').includes('agent/superdoc-version.json'));
   assert.equal(await readFile(output, 'utf8'), 'version=2.31.0\n');
   assert.equal(await readFile(path.join(root, 'dist-landing/index.html'), 'utf8'), 'SuperDoc v2.31.0');
   const calls = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);

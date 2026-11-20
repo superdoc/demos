@@ -99,6 +99,12 @@ if (new Set(resolvedVersions).size !== 1) {
 }
 
 const resolved = resolvedVersions[0];
+// Keep generated previews and downloads on the same release as the stable gallery.
+const sharedEntry = installed.find(({ entry }) => !exceptions.has(entry.directory)).entry;
+const sharedPackage = JSON.parse(await readFile(`${sharedEntry.directory}/node_modules/superdoc/package.json`, "utf8"));
+const docxEngine = sharedPackage.dependencies?.["@superdoc/docx-engine"];
+if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(docxEngine || "")) throw new Error("Expected an exact pinned DOCX Engine dependency");
+await writeFile("agent/superdoc-version.json", `${JSON.stringify({ superdoc: resolved, docxEngine }, null, 2)}\n`);
 const reactEntry = packages.find((entry) => "@superdoc/react" in entry.dependencies);
 const sdkEntry = packages.find((entry) => "@superdoc/sdk" in entry.dependencies);
 const reactVersion = await resolveInstalledVersion(reactEntry, "@superdoc/react");

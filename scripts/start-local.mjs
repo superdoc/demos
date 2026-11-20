@@ -41,7 +41,7 @@ run(process.execPath, ["scripts/build-gallery.mjs"]);
 
 const collaborationEnvironment = loadCollaborationEnvironment();
 const services = [
-  spawn(process.execPath, ["scripts/serve-gallery.mjs"], { cwd: root, stdio: "inherit" }),
+  spawn(process.execPath, ["--env-file-if-exists=.env.local", "scripts/serve-gallery.mjs"], { cwd: root, stdio: "inherit" }),
   spawn(process.execPath, ["src/server.js"], {
     cwd: path.join(collaborationRoot, "server"),
     env: collaborationEnvironment,

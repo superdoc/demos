@@ -3,6 +3,8 @@ dist/
 worker-dist/
 pages-worker-dist/
 node_modules/
+.env.local
+.demo-agent/
 /dist-gallery/
 **/test-results/
 **/playwright-report/
