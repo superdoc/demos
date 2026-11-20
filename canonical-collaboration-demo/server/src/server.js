@@ -174,6 +174,7 @@ async function getHealth() {
       api: config.collaborationApi,
       client: config.collaborationClient,
       agent: config.collaborationAgent,
+      agentPresence: config.collaborationAgentPresence,
       auth: config.collaborationAuth.mode,
       storage: config.collaborationStorage,
       docx: config.collaborationDocx.mode,

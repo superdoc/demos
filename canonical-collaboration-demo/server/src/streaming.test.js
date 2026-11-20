@@ -60,10 +60,36 @@ test('document text streams before tool completion, and fragmented arguments rec
   const result = await streamCompletion(h.client, {}, h.options);
   assert.ok(h.updates.length >= 2, 'Document must receive intermediate updates');
   assert.ok(h.updates[0].text.length < JSON.parse(json).text.length);
+  assert.equal(h.updates.at(-1).text, JSON.parse(json).text);
+  assert.ok(h.updates.every((update, index) => Array.from(update.text).length - Array.from(h.updates[index - 1]?.text ?? '').length <= 5));
   assert.equal(result.choice.tool_calls[0].function.arguments, json);
   assert.equal(result.writers.get('call_stream'), h.writer);
   assert.equal(h.statuses.length, 1);
   assert.equal(h.statuses[0].status, 'generating');
+});
+
+test('model chunks keep arriving while document writes are in progress', async () => {
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let consumed = false;
+  const h = fixture([]);
+  h.client.chat.completions.create = async () => (async function* () {
+    yield tool('{"mode":"append","anchor":null,"text":"Hello', true);
+    yield tool(' world"}');
+    consumed = true;
+    yield chunk({}, 'tool_calls');
+  })();
+  h.writer.update = async (args) => {
+    h.updates.push(args.text);
+    if (h.updates.length === 1) await blocked;
+  };
+  const result = streamCompletion(h.client, {}, h.options);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(consumed, true);
+  assert.deepEqual(h.updates, ['Hello']);
+  release();
+  await result;
+  assert.equal(h.updates.at(-1), 'Hello world');
 });
 
 test('interrupted and cancelled streams do not commit or silently report success', async () => {
@@ -72,7 +98,7 @@ test('interrupted and cancelled streams do not commit or silently report success
     if (finish) events.push(chunk({}, finish));
     const h = fixture(events);
     await assert.rejects(streamCompletion(h.client, {}, h.options), /stream ended before completion.*already streamed/);
-    assert.equal(h.updates[0].text, 'Partial text');
+    assert.equal(h.updates[0].text, 'Parti');
   }
   const controller = new AbortController();
   const h = fixture([tool('{"mode":"append","anchor":null,"text":"Partial text', true), chunk({}, 'tool_calls')], controller);
