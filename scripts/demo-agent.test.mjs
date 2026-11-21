@@ -60,6 +60,7 @@ test('search returns only real catalog matches and never starts a build for a ma
   assert.equal(result.offer, null);
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0].reasoning, { effort: 'low' });
+  assert.equal(f.calls[0].text.verbosity, 'low');
   assert.equal(f.calls[0].max_output_tokens, LIMITS.searchTokens);
   assert.equal(f.calls[0].store, false);
 });
