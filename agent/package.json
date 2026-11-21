@@ -1,0 +1,7 @@
+{
+  "name": "superdoc-demo-bot",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12.0" },
+  "dependencies": { "@slack/web-api": "8.5.0" }
+}

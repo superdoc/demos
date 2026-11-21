@@ -80,7 +80,7 @@ test('related demo suggestions do not suppress a requested build offer', async (
   assert.equal((await f.ready((await build.json()).id)).state, 'ready');
 });
 
-test('Moe streams a public acknowledgement before the final reply using one low-reasoning call', { timeout: 3000 }, async (t) => {
+test('Demo Bot streams a public acknowledgement before the final reply using one low-reasoning call', { timeout: 3000 }, async (t) => {
   let controller, call, calls = 0;
   const stream = new ReadableStream({ start(value) { controller = value; } });
   const reply = { acknowledgement: 'Let me check what you mean by ASCII animation.', message: 'What would you like the animation to do?', canBuild: false, matches: [] };
@@ -93,18 +93,33 @@ test('Moe streams a public acknowledgement before the final reply using one low-
     const response = await f.request('/agent/api/search', { prompt: 'ASCII animations' }, { Accept: 'application/x-ndjson' });
     assert.match(response.headers.get('content-type'), /application\/x-ndjson/);
     const reader = response.body.getReader();
+    let buffer = '';
+    async function nextEvent() {
+      while (!buffer.includes('\n')) {
+        const chunk = await reader.read();
+        assert.ok(!chunk.done, 'Search ended before the expected event');
+        buffer += new TextDecoder().decode(chunk.value);
+      }
+      const end = buffer.indexOf('\n');
+      const event = JSON.parse(buffer.slice(0, end));
+      buffer = buffer.slice(end + 1);
+      return event;
+    }
+    const progress = [];
+    for (let i = 0; i < 3; i++) progress.push(await nextEvent());
+    assert.ok(progress.every((event) => event.type === 'progress'));
+    assert.match(progress[0].message, /library/);
+    assert.match(progress[1].message, /setup guides/);
+    assert.match(progress[2].message, /Matching/);
     const text = JSON.stringify(reply);
     const split = text.indexOf(',"message"');
     emit({ type: 'response.reasoning_text.delta', delta: 'private reasoning must not reach the visitor' });
     emit({ type: 'response.output_text.delta', delta: text.slice(0, split) });
-    const first = new TextDecoder().decode((await reader.read()).value).trim();
-    assert.deepEqual(JSON.parse(first), { type: 'acknowledgement', message: reply.acknowledgement });
+    assert.deepEqual(await nextEvent(), { type: 'acknowledgement', message: reply.acknowledgement });
     assert.equal(call.reasoning.effort, 'low');
     assert.equal(call.stream, true);
     emit({ type: 'response.completed', response: { status: 'completed', usage: { input_tokens: 100, output_tokens: 200, total_tokens: 300 }, output: [{ content: [{ type: 'output_text', text }] }] } });
-    let rest = '';
-    for (;;) { const chunk = await reader.read(); if (chunk.done) break; rest += new TextDecoder().decode(chunk.value); }
-    const result = JSON.parse(rest.trim());
+    const result = await nextEvent();
     assert.equal(result.type, 'result');
     assert.equal(result.data.message, reply.message);
     assert.equal(result.data.offer, null);
@@ -346,7 +361,7 @@ test('the server enforces concurrent build capacity without starting a third AI 
 });
 
 test('per-IP search throttling cannot be bypassed with different session cookies', async (t) => {
-  const f = await fixture(t);
+  const f = await fixture(t, { dailyTokens: 1000000 });
   for (let i = 0; i < 20; i++) assert.equal((await f.request('/agent/api/search', { prompt: 'review' }, { Cookie: `demo_agent=${i.toString(16).padStart(32, '0')}` })).status, 200);
   assert.equal((await f.request('/agent/api/search', { prompt: 'review' }, { Cookie: `demo_agent=${'f'.repeat(32)}` })).status, 429);
   assert.equal(f.calls.length, 20);
@@ -385,6 +400,7 @@ test('Pages proxy uses authenticated backend forwarding, preserves cookies, and 
   const response = await proxy.fetch(new Request('https://demos.superdoc.dev/agent/api/search', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.1', Origin: 'https://demos.superdoc.dev', Cookie: 'demo_agent=abc', 'X-Demo-Client-IP': 'spoofed' }, body: '{}' }), env);
   assert.equal(calls[0].url, 'https://agent.example/agent/api/search');
   assert.equal(calls[0].headers.get('x-demo-agent-token'), 'proxy-secret');
+  assert.equal(calls[0].headers.get('x-demo-agent-target'), 'demo-bot-ext');
   assert.equal(calls[0].headers.get('x-demo-client-ip'), '192.0.2.1');
   assert.equal(calls[0].headers.get('cookie'), 'demo_agent=abc');
   assert.ok(response.headers.get('set-cookie'));
@@ -517,14 +533,14 @@ test('preview script policy permits only the pinned SuperDoc and DOCX Engine CDN
   assert.deepEqual(scripts.filter((source) => source.startsWith('https:')), [`${SUPERDOC_CDN}superdoc.min.js`, `${DOCX_ENGINE_CDN}docx-engine.es.js`]);
 });
 
-test('Moe stays hidden unless the backend health check confirms readiness', async () => {
+test('Demo Bot stays hidden unless the backend health check confirms readiness', async () => {
   const html = await readFile(new URL('../dist-landing/index.html', import.meta.url), 'utf8');
   assert.match(html, /<section class="agent" hidden/);
   const source = await readFile(new URL('../dist-landing/agent/gallery.js', import.meta.url), 'utf8');
   for (const readiness of ['ready', 'unconfigured', 'unavailable', 'invalid', 'network']) {
     const section = { hidden: true };
     const form = { querySelector: () => ({}), addEventListener() {}, closest: () => section };
-    const context = { document: { querySelector: (selector) => selector === '#agent-form' ? form : { addEventListener() {} } }, AbortSignal,
+    const context = { document: { querySelector: (selector) => selector === '#agent-form' ? form : { style: {}, scrollHeight: 56, addEventListener() {} } }, AbortSignal,
       fetch: async (url) => {
         assert.equal(url, '/agent/api/health');
         if (readiness === 'network') throw new Error('offline');
@@ -544,6 +560,7 @@ test('release assembly composes the agent proxy without changing version-history
   await assemblePagesWorker({ output, backendUrl: 'https://version-history.example' });
   const routes = JSON.parse(await readFile(path.join(output, '_routes.json'), 'utf8'));
   assert.ok(routes.include.includes('/agent/api/*'));
+  assert.ok(routes.include.includes('/agent/open/*'));
   assert.ok(routes.include.includes('/version-history/collaboration'));
   const worker = await import(`data:text/javascript;base64,${Buffer.from(await readFile(path.join(output, '_worker.js'), 'utf8')).toString('base64')}`);
   assert.equal((await worker.default.fetch(new Request('https://gallery.example/agent/api/health'), {})).status, 503);
@@ -566,4 +583,19 @@ test('interrupted builds persist their shorter failure lifetime across repeated 
   assert.equal((await (await f.request(`/agent/api/projects/${id}`)).json()).expiresAt, failed.expiresAt);
   f.advance(LIMITS.failedTtl);
   assert.equal((await f.request(`/agent/api/projects/${id}`)).status, 410);
+});
+
+test('deployments expose non-secret health and reject a gallery routed to the internal instance', async (t) => {
+  const f = await fixture(t, { proxyToken: 'private-proxy', instance: 'demo-bot-int' });
+  const health = await (await f.request('/health')).json();
+  assert.equal(health.instance, 'demo-bot-int');
+  assert.equal(health.configured, true);
+  assert.doesNotMatch(JSON.stringify(health), /test-key|private-proxy/);
+  assert.equal((await f.request('/agent/api/search', { prompt: 'word count' })).status, 403);
+  const wrong = await f.request('/agent/api/search', { prompt: 'word count' }, { 'X-Demo-Agent-Token': 'private-proxy', 'X-Demo-Agent-Target': 'demo-bot-ext' });
+  assert.equal(wrong.status, 503);
+  assert.match((await wrong.json()).error, /wrong Demo Bot deployment/);
+  assert.equal(f.calls.length, 0);
+  assert.equal((await f.request('/agent/agent.css')).status, 404); // Falls through to static serving without proxy auth.
+  assert.equal((await f.request(`/agent/projects/${'a'.repeat(32)}/`)).status, 410); // Session/capability checks, not proxy authentication.
 });

@@ -193,6 +193,21 @@ jobs:
         run: |
           curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 --max-time 15 "$VERSION_HISTORY_BACKEND_URL/api/health"
 
+      - name: Configure customer Demo Bot routing
+        if: ${{ inputs.dry_run == false }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEMO_AGENT_BACKEND_URL: ${{ vars.DEMO_AGENT_BACKEND_URL }}
+          DEMO_AGENT_PROXY_TOKEN: ${{ secrets.DEMO_AGENT_PROXY_TOKEN }}
+        run: |
+          if [ -n "$DEMO_AGENT_BACKEND_URL" ] && [ -n "$DEMO_AGENT_PROXY_TOKEN" ]; then
+            for target in production preview; do
+              printf '%s' "$DEMO_AGENT_BACKEND_URL" | bunx wrangler pages secret put DEMO_AGENT_BACKEND_URL --project-name superdoc-demos --env "$target"
+              printf '%s' "$DEMO_AGENT_PROXY_TOKEN" | bunx wrangler pages secret put DEMO_AGENT_PROXY_TOKEN --project-name superdoc-demos --env "$target"
+            done
+          fi
+
       - name: Deploy gallery and demos to production
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
         env:

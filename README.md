@@ -4,6 +4,19 @@ Working demos built with [SuperDoc](https://superdoc.dev) — the document engin
 
 Live at [demos.superdoc.dev](https://demos.superdoc.dev)
 
+## Building impactful demos
+
+Use the [Demo Impact Scorecard](./DEMO_IMPACT_SCORECARD.md) when creating or
+improving a demo, and check it again before handoff. Aim for **26–30/30** across
+relevance, clarity, differentiation, reusability, actionability, and credibility,
+with evidence supporting each rating. Save the assessment as `DEMO_SCORECARD.md`
+in the demo's directory, keep measured outcomes separate, and record the next
+improvement. The [repository agent instructions](./AGENTS.md) make this part of
+the demo workflow.
+
+The scorecard evaluates demo projects, including generated examples. Demo Bot
+and its interfaces are engineering tools and do not receive impact ratings.
+
 ## Demos
 
 ### [`version-history/`](./version-history) — Version History
@@ -65,9 +78,10 @@ See each demo's directory for specific setup instructions.
 ## Demo agent
 
 The prompt below **SuperDoc Demos** appears only after the backend health check
-reports it is configured, and expands when focused. Moe replies naturally,
+reports it is configured. It stays the same height on focus and grows with
+typed content up to a fixed maximum, with the send arrow at the bottom right. Demo Bot replies naturally,
 remembers a few recent messages, and searches the visible entries in `demos.json`
-when you need a demo. The placeholder reads "Describe a demo to find or build it."
+when you need a demo. The placeholder reads "Describe the demo you’re looking for".
 Every request assumes the SuperDoc editor: "ASCII animations" means animation
 inside its document, not a separate app. If a new editor example is feasible and clear enough,
 **Build this demo** opens a new tab with a temporary
@@ -77,10 +91,12 @@ DOCX, `README.md`, and `AGENTS.md` for continuing with a coding agent.
 
 Every message appears in its own card, newest first below the prompt, pushing
 the gallery down. Your messages use a green **You** label; responses use a blue
-**Moe** label. Public thinking/status messages stay in the full page-session log.
-Reply with "yes" or a refinement to continue from Moe's last proposal.
+**Demo Bot** label. Public thinking/status messages stay in the full page-session log.
+Reply with "yes" or a refinement to continue from Demo Bot's last proposal.
 
-The temporary project page shows a single progress line while Moe plans,
+Search shows real catalog, setup-guide and matching progress. The temporary
+project page shows a centered custom-demo loading panel with an animated
+butterfly and wave, plus a single progress line while Demo Bot plans,
 writes, and styles the example. Download the source to continue with your own
 coding agent; there is no follow-up prompt box on the preview page. See
 [`agent/README.md`](agent/README.md) for the complete architecture, API, generation
@@ -131,6 +147,15 @@ or call the agent API. Generated code is syntax checked, but is an AI-generated
 starting point and may need adjustments. Backend and additional AI functionality
 are left as guidance instead of using more tokens or running generated server code.
 
+### Demo Bot in Slack
+
+DM Demo Bot or mention it in a channel to find examples and receive an explicit
+build offer. Builds share the gallery's spending and size limits. Private DMs
+contain a browser-bound preview/download link and build updates. The optional
+HTTP events app, install manifest and setup instructions are in
+[`agent/SLACK.md`](agent/SLACK.md). A Slack installation and server-only app
+credentials are required; the integration is disabled until configured.
+
 ### Hosting the agent alongside the existing Cloudflare Pages gallery
 
 The release bundle includes the `/agent/` browser assets and extends the existing
@@ -151,7 +176,7 @@ Set **Pages runtime** `DEMO_AGENT_BACKEND_URL` to the service's HTTPS origin and
 `DEMO_AGENT_PROXY_TOKEN` to the same shared secret. The OpenAI key stays on the
 Node service. Staging origins must be explicitly added to `DEMO_AGENT_ORIGINS`.
 Until those runtime settings exist and `/agent/api/health` reports readiness,
-the gallery keeps Moe hidden. No infrastructure is provisioned by
+the gallery keeps Demo Bot hidden. No infrastructure is provisioned by
 the build, and no secrets are included in the release bundle.
 
 Run the integration checks with `npm run test:agent`. They cover catalog matching,

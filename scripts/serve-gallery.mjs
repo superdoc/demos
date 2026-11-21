@@ -3,6 +3,8 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { createAgentService } from "../agent/service.mjs";
+import { startSlackBot } from "../agent/slack.mjs";
+import { createGalleryAgentGateway } from './demo-agent-gateway.mjs';
 
 const root = path.resolve(import.meta.dirname, "..", "dist-gallery");
 const port = Number(process.env.PORT || 4173);
@@ -21,9 +23,19 @@ const contentTypes = {
   ".webp": "image/webp",
 };
 
-const agent = await createAgentService();
+const agent = process.env.DEMO_AGENT_BACKEND_URL
+  ? { handle: createGalleryAgentGateway(), close() {} }
+  : await createAgentService();
+let slack;
+try { if (!process.env.DEMO_AGENT_BACKEND_URL) slack = await startSlackBot(agent); }
+catch { console.error('Demo Bot Slack did not start. Check agent/SLACK.md and server-side Slack settings.'); }
 const server = createServer(async (request, response) => {
   try {
+    if (new URL(request.url, 'http://localhost').pathname === '/slack/events') {
+      if (slack?.enabled) await slack.handle(request, response);
+      else response.writeHead(503).end('Slack is not configured on this gallery.');
+      return;
+    }
     if (await agent.handle(request, response)) return;
     const requestUrl = new URL(request.url, "http://localhost");
     if (requestUrl.pathname === "/revisions" || requestUrl.pathname.startsWith("/revisions/")) {
@@ -78,10 +90,11 @@ const server = createServer(async (request, response) => {
     response.writeHead(200, { ...headers, "Content-Length": fileStat.size });
     createReadStream(filePath).pipe(response);
   } catch {
-    response.writeHead(404).end("Not found");
+    if (response.headersSent) response.destroy();
+    else response.writeHead(404).end("Not found");
   }
 }).listen(port, () => {
   console.log(`SuperDoc demo gallery: http://localhost:${port}`);
 });
-server.on('close', () => agent.close());
+server.on('close', () => { agent.close(); void slack?.stop().catch(() => {}); });
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close());

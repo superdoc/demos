@@ -12,7 +12,7 @@ match. Visitors can download the generated source as a ZIP and continue locally.
 
 SuperDoc is always the product context, even for a short request such as
 "ASCII animations": that means animating ASCII text inside the SuperDoc
-document, not building a separate animation beside an unused editor. Moe
+document, not building a separate animation beside an unused editor. Demo Bot
 clarifies only missing behavior, never whether to use SuperDoc. Requests to
 remove SuperDoc or build an independent app do not receive a standalone build
 offer. Keep this rule in search, generation and downloaded guidance
@@ -57,17 +57,22 @@ editing only their copies does not change the next release.
 
 1. The prompt starts hidden. A successful `GET /agent/api/health` with
    `configured: true` reveals it. Unconfigured, unavailable or invalid health
-   responses leave the gallery usable without Moe. The gallery sends `POST /agent/api/search` with `{ "prompt": "...", "history": [...] }`.
+   responses leave the gallery usable without Demo Bot. The composer has a stable
+   height on focus, grows with typed content up to 216px and keeps the send
+   button at the bottom right. The gallery sends `POST /agent/api/search` with `{ "prompt": "...", "history": [...] }`.
    History stays in browser memory and contains at most four user/assistant
    messages, each limited to 600 characters. Other roles are rejected.
    Short confirmations and refinements use that context. Successful replies
    clear the input for the next message; failed sends retain its draft.
-2. One low-reasoning Responses API call produces a public acknowledgement,
+2. The service reports real catalog preparation, reads the catalog demos’
+   local setup guides and reports matching before its provider call. These
+   phases do not claim an external docs/repository search. One low-reasoning
+   Responses API call produces a public acknowledgement,
    a conversational answer, a build-readiness decision and catalog matches.
    The acknowledgement streams to the page before the final reply; raw model
    reasoning and partial JSON never reach the visitor. Returned demo IDs are
    filtered against the real catalog and deduplicated (at most three matches).
-3. When Moe has enough detail for a feasible editor example and a new build is
+3. When Demo Bot has enough detail for a feasible editor example and a new build is
    requested or needed, the service issues a random, session-bound,
    single-use build offer valid for ten minutes. Search never starts a build.
    Related catalog suggestions can appear alongside that offer. Finding an
@@ -82,6 +87,23 @@ editing only their copies does not change the next release.
    lifetime. The trusted shell loads the sandboxed preview and enables source
    download. Failed output becomes a failed project with
    a public error. There is no automatic retry or model-driven tool loop.
+
+## Slack interface
+
+The optional [Slack app](SLACK.md) uses the same service instance through its
+server-only `search`, `startProject`, `projectStatus` and `createHandoff` methods.
+The HTTP routes delegate to the same search/build operations. `slack.mjs` owns
+Signed HTTP event handlers, user/thread isolation, owner-bound offers, private delivery,
+retry deduplication and persisted completion notifications. `slack-manifest.json`
+contains the installable app settings; the optional runtime dependencies are
+pinned in `agent/package-lock.json`. Slack is explicitly opt-in.
+
+`GET /agent/open/:project/:token/` displays a trusted claim form. Its same-origin
+POST consumes the ten-minute handoff token and binds the project to a browser
+session. GETs never transfer access. Slack retains its separate owner session;
+only one secondary browser session is accepted at a time. Handoff URLs are sent
+only in private DMs, with unfurls disabled. See SLACK.md for the bearer-link trust
+boundary and setup requirements.
 
 ## Access and recovery
 
@@ -99,12 +121,12 @@ state is retained for five minutes and then culled.
 
 ## Browser UI contract
 
-- The prompt says "Describe a demo to find or build it." Keep the keyboard hint
-  without an extra find/build tagline. The blue Moe speaker label has no colon
+- The prompt says "Describe the demo you’re looking for". Keep the keyboard hint
+  without an extra find/build tagline. The blue Demo Bot speaker label has no colon
   in replies, acknowledgements, errors, or build progress.
 - Each message has its own card below the prompt, newest first, in normal page
   flow so it pushes the gallery down. Visitor messages use a green **You**
-  prefix; Moe messages use a blue **Moe** prefix, without colons. Keep the full
+  prefix; Demo Bot messages use a blue **Demo Bot** prefix, without colons. Keep the full
   page-session log, including public acknowledgement/status cards, after the
   final reply arrives. Private model reasoning is never displayed or retained.
   Only the newest build offer stays actionable after a follow-up.
@@ -115,6 +137,8 @@ state is retained for five minutes and then culled.
 - Title and description appear once in the trusted outer shell. The iframe
   starts with the demo's controls/status/editor, without repeated headings.
   Downloaded standalone HTML retains its own title and introduction.
+- The custom-demo loading panel has a butterfly moving along a wave. Reduced
+  motion preferences disable the movement and all loading spinners.
 - A single accessible progress line sits below the loading description and
   updates as provider events arrive: planning, interactions, styling, and setup
   guidance. Code validation and preview preparation run before publication.
@@ -124,6 +148,22 @@ state is retained for five minutes and then culled.
   working with your own coding agent.
 - The trusted shell uses `textContent` for generated titles, descriptions,
   guidance and errors. Generated content must not become shell HTML.
+
+## Demo impact review
+
+Demo Bot applies the shared [Demo Impact Scorecard](../DEMO_IMPACT_SCORECARD.md)
+to the SuperDoc examples it generates. It uses all six categories to guide each
+example and includes a provisional assessment, total, decision and next
+improvement in generated guidance. The agent and its gallery/Slack interfaces
+do not receive demo impact scores. This does not add a model call or raise the
+existing code, token or time limits. Without browser verification, the prompt
+caps credibility at 3 and prohibits claims of validated status or measured
+customer outcomes. Model-generated scores remain untrusted reference data.
+
+Every downloaded project includes `DEMO_IMPACT_SCORECARD.md`. Its host-owned
+README and AGENTS instructions require the next contributor to review the
+rubric and maintain `DEMO_SCORECARD.md` after verifying the actual behavior.
+The repository's root AGENTS.md applies the same workflow to maintained demos.
 
 ## Model contract and SuperDoc integration
 
@@ -176,7 +216,8 @@ Parsing is not a security audit, API validation, or browser behavior test.
 ## Download format
 
 `projectFiles()` produces `index.html`, `app.js`, `app.css`, `base.css`,
-`sample.docx`, `package.json`, `README.md`, `AGENTS.md`, `demo-context.json` and `.gitignore`.
+`sample.docx`, `package.json`, `README.md`, `AGENTS.md`, `demo-context.json`,
+`DEMO_IMPACT_SCORECARD.md` and `.gitignore`.
 
 The download uses Vite for local development and builds. README/AGENTS are
 host-owned instructions with the version pin and entry-point contract. Visitor
@@ -190,8 +231,9 @@ generator instructions.
 
 | Method and path | Input / response |
 | --- | --- |
+| `GET /agent/open/:id/:token/` | Private browser claim form; same-origin POST consumes the link |
 | `GET /agent/api/health` | Configuration boolean and public limits; no credentials |
-| `POST /agent/api/search` | `{ prompt, history? }` → message, real matches and optional offer; optional NDJSON acknowledgement + result stream |
+| `POST /agent/api/search` | `{ prompt, history? }` → message, real matches and optional offer; optional NDJSON progress + acknowledgement + result stream |
 | `POST /agent/api/projects` | `{ offer }` → HTTP 202 with ID and project URL |
 | `GET /agent/api/projects/:id` | Session-bound state, current build progress, title, summary, guidance, expiry and error |
 | `GET /agent/projects/:id/` | Trusted preview shell |
@@ -207,11 +249,13 @@ session return 404. Empty, null, array and scalar JSON bodies return 400. Genera
 and reported through project state; an accepted HTTP 202 does not imply success.
 
 Gallery requests set `Accept: application/x-ndjson`. The stream contains an
+`progress` events (`message`) for catalog/setup-guide/matching work, an
 `acknowledgement` event (`message`), then a `result` event (`data`: the usual JSON
 response), or an `error` event (`data.error`). Failures after streaming headers
 arrive through that error event. Clients without this Accept header still get
 the original JSON response and HTTP error status. No extra AI call is made for
-the acknowledgement. Build offers include the validated recent conversation
+the acknowledgement or progress. Local setup guides are read during each
+search so those public stages describe actual work. Build offers include the validated recent conversation
 so an answer to a clarification reaches generation with its original context.
 
 ## Limits and spending
@@ -323,7 +367,9 @@ restart; do not erase `.demo-agent/` to reload code.
 | `DEMO_AGENT_DATA_DIR` | Persistent project/budget directory |
 | `DEMO_AGENT_ORIGINS` | Comma-separated allowed gallery origins |
 | `DEMO_AGENT_PROXY_TOKEN` | Secret shared by the Pages proxy and backend |
-| `DEMO_AGENT_BACKEND_URL` | Pages runtime binding pointing to the HTTPS service origin |
+| `DEMO_AGENT_BACKEND_URL` | Gallery/Pages server setting pointing to `demo-bot-ext` |
+| `DEMO_AGENT_INSTANCE` | Deployment label: `demo-bot-ext` or `demo-bot-int`; same behavior |
+| `DEMO_AGENT_REVISION` | Identical source fingerprint on both services |
 | `DEMO_AGENT_LOCAL` | Use local catalog links when set to `1` |
 | `PORT` | Gallery defaults to 4173; standalone agent defaults to 4180 |
 | `NODE_ENV` | Production entry point requires Origin/proxy-token configuration |
@@ -344,6 +390,13 @@ Tests inject the provider, clock, catalog and temporary storage into
 `createAgentService()`. Keep those seams usable. Add regression cases for route,
 budget, lifecycle or isolation changes. Do not replace behavioral checks with
 assertions that only duplicate implementation strings.
+
+The focused browser scenario is retained in `tests/demo-agent-ux.mjs`. With
+`tests/` dependencies and Chromium installed, run `pnpm --dir tests run test:agent`.
+It uses a synthetic provider, loads the real pinned CDN editor, and checks focus,
+typing/height limits, progress, suggestion/CTA spacing, the first-click popup,
+loading and reduced motion, mobile overflow, download and error recovery.
+It writes screenshots to a printed temporary directory and makes no OpenAI calls.
 
 For browser QA:
 
@@ -367,6 +420,10 @@ reservation ledger, or provider limit; inspect the returned public message.
 Do not clear the ledger or reset a production allowance to hide a failed test.
 
 ## Deployment
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the managed Railway services, gallery
+routing, persistent volumes and redeployment procedure.
+
 
 Build with the repository root as Docker context:
 

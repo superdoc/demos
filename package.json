@@ -7,6 +7,6 @@
     "start": "node scripts/start-local.mjs",
     "gallery": "node --env-file-if-exists=.env.local scripts/serve-gallery.mjs",
     "agent": "node --env-file-if-exists=.env.local agent/server.mjs",
-    "test:agent": "node --test scripts/demo-agent.test.mjs"
+    "test:agent": "node --test scripts/demo-agent*.test.mjs"
   }
 }

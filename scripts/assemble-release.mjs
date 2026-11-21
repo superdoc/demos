@@ -16,7 +16,7 @@ export async function assemblePagesWorker({ output, backendUrl }) {
     + `\n${agentProxy}\nexport default createDemoAgentProxy(versionHistory);\n`);
   const routesPath = path.join(output, '_routes.json');
   const routes = JSON.parse(await readFile(routesPath, 'utf8'));
-  routes.include.push('/agent/api/*', '/agent/projects/*');
+  routes.include.push('/agent/api/*', '/agent/projects/*', '/agent/open/*');
   await writeFile(routesPath, JSON.stringify(routes, null, 2) + '\n');
 }
 

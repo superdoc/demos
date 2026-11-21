@@ -10,3 +10,5 @@ node_modules/
 **/playwright-report/
 
 .private/
+
+.wrangler/

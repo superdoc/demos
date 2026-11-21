@@ -4,6 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"test": "playwright test",
+		"test:agent": "node demo-agent-ux.mjs",
 		"test:install": "playwright install --with-deps chromium"
 	},
 	"devDependencies": {
