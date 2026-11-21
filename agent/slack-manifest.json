@@ -21,7 +21,9 @@
         "app_mentions:read",
         "chat:write",
         "im:history",
-        "im:write"
+        "im:write",
+        "channels:history",
+        "groups:history"
       ]
     }
   },
@@ -36,7 +38,9 @@
     "event_subscriptions": {
       "bot_events": [
         "app_mention",
-        "message.im"
+        "message.im",
+        "message.channels",
+        "message.groups"
       ],
       "request_url": "https://demo-bot-int-production.up.railway.app/slack/events"
     }

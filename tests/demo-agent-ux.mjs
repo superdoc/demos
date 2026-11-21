@@ -30,6 +30,11 @@ export default async function check({ browser, artifacts }) {
         searches++;
         assert.ok(call.instructions.includes('Template Builder'));
         assert.ok(call.instructions.includes('context')); // Real setup guides are included in the catalog.
+        if (searches > 1) {
+          const previous = JSON.parse(call.input).conversation;
+          assert.match(previous[1].content, /Demos discussed: Template Builder/);
+          return Response.json(complete({ acknowledgement: 'Let’s discuss the example.', message: 'A focused document interaction is easier for reviewers to understand than extra dashboard controls.', canBuild: false, matches: [] }));
+        }
         return searchGate.promise;
       }
       builds++;
@@ -144,13 +149,17 @@ export default async function check({ browser, artifacts }) {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       if (width === 390) await page.screenshot({ path: path.join(artifacts, 'gallery-mobile.png') });
     }
+    await prompt.fill('Can we discuss how that example would work for reviewers?'); await prompt.press('Enter');
+    await page.locator('.agent-message').first().filter({ hasText: 'A focused document interaction' }).waitFor();
+    assert.equal(await page.locator('.agent-message').first().locator('.agent-match, .agent-build-options').count(), 0);
+    assert.equal(builds, 1, 'Discussion must not generate another project');
     await page.route('**/agent/api/search', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The service is temporarily unavailable.' }) }));
     await prompt.fill('Keep this draft after an error'); await prompt.press('Enter');
     await page.locator('.agent-message[data-error]').waitFor();
     assert.equal(await prompt.inputValue(), 'Keep this draft after an error');
     assert.equal(await prompt.evaluate((node) => node.readOnly), false);
     assert.deepEqual(errors, []);
-    assert.equal(searches, 1); assert.equal(builds, 1);
+    assert.equal(searches, 2); assert.equal(builds, 1);
     console.log(JSON.stringify({ composer: 'focus stable; grows to 216px; arrow anchored', search: 'three real phases; no automatic build', cta: 'spacing verified; first click opens preview', loading: 'butterfly wave; mobile; reduced motion', preview: 'real editor text and ZIP', errors: 'draft retained', browser: browser.version() }));
   } finally {
     searchGate.resolve(Response.json(complete(answer))); buildGate.resolve(Response.json(complete(generated)));

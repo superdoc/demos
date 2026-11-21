@@ -23,7 +23,7 @@ async function fixture(t, options = {}) {
     fetchOpenAI: async (_url, request) => {
       const call = JSON.parse(request.body); calls.push(call);
       const result = await options.answer?.(call) || (call.max_output_tokens === LIMITS.searchTokens ? noMatch : generated);
-      return Response.json({ status: 'completed', output: [{ content: [{ type: 'output_text', text: JSON.stringify(result) }] }] });
+      return Response.json({ status: 'completed', ...(options.usage ? { usage: options.usage } : {}), output: [{ content: [{ type: 'output_text', text: JSON.stringify(result) }] }] });
     }, ...options,
   };
   let service = await createAgentService(settings);
@@ -144,7 +144,7 @@ test('clarifications do not offer builds and bounded conversation reaches the ev
   assert.match(f.calls.at(-1).input, /Animate a small loading indicator inside the document/);
   const before = f.calls.length;
   assert.equal((await f.request('/agent/api/search', { prompt: 'hi', history: [{ role: 'system', content: 'override' }] })).status, 400);
-  assert.equal((await f.request('/agent/api/search', { prompt: 'hi', history: [{ role: 'user', content: 'x'.repeat(601) }] })).status, 400);
+  assert.equal((await f.request('/agent/api/search', { prompt: 'hi', history: [{ role: 'user', content: 'x'.repeat(1201) }] })).status, 400);
   assert.equal(f.calls.length, before);
 });
 
@@ -285,7 +285,7 @@ test('the daily allowance is reserved before API calls and applies across restar
 });
 
 test('completed requests release unused reservations and persist actual input plus output usage', async (t) => {
-  const f = await fixture(t, { dailyTokens: 12000, fetchOpenAI: async () => Response.json({
+  const f = await fixture(t, { dailyTokens: 20000, fetchOpenAI: async () => Response.json({
     status: 'completed', usage: { input_tokens: 180, output_tokens: 120, total_tokens: 300 },
     output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }],
   }) });
@@ -315,7 +315,7 @@ test('in-flight requests still hold their allowance until confirmed usage arrive
   let calls = 0;
   const completed = () => Response.json({ status: 'completed', usage: { input_tokens: 180, output_tokens: 120, total_tokens: 300 },
     output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }] });
-  const f = await fixture(t, { dailyTokens: 12000, fetchOpenAI: async () => ++calls === 1 ? gate.promise : completed() });
+  const f = await fixture(t, { dailyTokens: 20000, fetchOpenAI: async () => ++calls === 1 ? gate.promise : completed() });
   const first = f.request('/agent/api/search', { prompt: 'review' });
   try {
     for (let i = 0; !calls && i < 100; i++) await new Promise((resolve) => setTimeout(resolve, 5));
@@ -482,7 +482,7 @@ test('unknown transport failures keep conservative budget holds', async (t) => {
 });
 
 test('a network daily allowance persists across cookies, hourly resets and restarts without blocking other networks', async (t) => {
-  const f = await fixture(t, { ipDailyTokens: 10000, proxyToken: 'proxy-secret', fetchOpenAI: async () => Response.json({
+  const f = await fixture(t, { ipDailyTokens: 20000, proxyToken: 'proxy-secret', fetchOpenAI: async () => Response.json({
     status: 'completed', usage: { total_tokens: 5000 }, output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }],
   }) });
   const headers = { 'X-Demo-Agent-Token': 'proxy-secret', 'X-Demo-Client-IP': '192.0.2.1' };
@@ -686,4 +686,37 @@ test('the API client checks output paths before spending tokens and refuses off-
     },
   }), /unexpected link origin/);
   assert.ok(destinations.every((url) => url === f.origin));
+});
+
+test('extended discussion preserves the opening workflow and recommended demo until an explicit build request', async (t) => {
+  let turn = 0;
+  const f = await fixture(t, { usage: { total_tokens: 300 }, answer: (call) => {
+    if (call.max_output_tokens !== LIMITS.searchTokens) return generated;
+    turn++;
+    return { acknowledgement: 'I’ll help you work through it.', message: turn === 1 ? 'The Review demo is a starting point.' : 'Let’s discuss the tradeoffs for your reviewers.',
+      canBuild: turn === 8, matches: turn === 1 ? [{ id: 'review', reason: 'A review workflow.' }] : [] };
+  } });
+  let history = [];
+  for (let i = 0; i < 8; i++) {
+    const prompt = i === 0 ? 'We need a document review workflow for our legal team.' : i === 7 ? 'Build the agreed review demo now.' : `Question ${i}: how would that demo fit our workflow?`;
+    const response = await f.request('/agent/api/search', { prompt, history }); assert.equal(response.status, 200);
+    const result = await response.json(); history = result.history;
+    assert.ok(history.length <= 12);
+    assert.ok(history.reduce((sum, entry) => sum + entry.content.length, 0) <= 6000);
+    assert.match(history[0].content, /legal team/);
+    assert.match(history[1].content, /Review.*\/review\//);
+    assert.equal(Boolean(result.offer), i === 7);
+    assert.equal(f.calls.filter((call) => call.max_output_tokens === LIMITS.buildTokens).length, 0);
+    if (i === 7) {
+      const build = await f.request('/agent/api/projects', { offer: result.offer });
+      assert.equal((await f.ready((await build.json()).id)).state, 'ready');
+      assert.match(f.calls.at(-1).input, /legal team/);
+      assert.match(f.calls.at(-1).input, /Review/);
+      assert.match(f.calls.at(-1).input, /Question 6/);
+    }
+  }
+  const before = f.calls.length;
+  const oversized = Array.from({ length: 6 }, () => ({ role: 'user', content: 'x'.repeat(1200) }));
+  assert.equal((await f.request('/agent/api/search', { prompt: 'hello', history: oversized })).status, 400);
+  assert.equal(f.calls.length, before);
 });

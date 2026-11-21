@@ -63,17 +63,31 @@ SLACK_ALLOWED_CHANNELS=C123ABC,C456DEF
 User restrictions apply to every invocation. Channel restrictions apply to
 mentions; an allowed user can still DM the bot. Without allowlists, installed
 workspace members can DM it or mention it in channels where it has been invited.
-The app does not subscribe to ordinary public/private channel messages.
+To continue channel threads without another mention, add the bot scopes
+`channels:history` and `groups:history` under OAuth & Permissions and reinstall
+the app, then subscribe to `message.channels` and `message.groups` under Event
+Subscriptions. The manifest includes these settings for new installs. Slack
+will deliver channel messages, but the bot discards ordinary chatter: it only
+responds in an active thread started by an explicit mention, for the same user.
+These scopes grant access to messages in public/private channels the bot joins;
+leave them off if you prefer to require a mention for every channel reply.
 
 ## Use it
 
 - DM **Demo Bot** a request such as `Find a tracked-changes example` or `Build a
   live word count demo`.
 - In a channel, invite the bot and mention it: `@Demo Bot find a template demo`.
-  Replies stay in the request's thread. Mention it again for channel follow-ups.
-- Follow-up conversation is bounded to four recent messages of at most 600
-  characters each, isolated by user and thread. Unthreaded DMs retain that user's
-  recent direct conversation.
+  Replies stay in the request's thread. With the additional message subscriptions
+  enabled, continue that active thread without mentioning the bot again.
+- Follow-up conversation retains the opening goal and recommended demo names,
+  plus recent exchanges: at most 12 messages, 1,200 characters per message and
+  6,000 characters total. It stays isolated by user and channel/thread. Replies
+  to a top-level DM from either you or the bot continue the same conversation.
+  State expires after an hour of inactivity and survives service restarts.
+- Demo Bot enjoys discussing demo ideas and feature tradeoffs, with opinions
+  grounded in the six Demo Impact Scorecard categories. It can explain its own
+  capabilities and limits. Discussion does not automatically recommend examples
+  or offer a build; ask explicitly when you are ready to make one.
 - Search never starts a build. Click **Build this demo** on your own offer to
   generate code. Offers last ten minutes and are single use.
 - The bot confirms it can DM you before starting a build, then sends a private

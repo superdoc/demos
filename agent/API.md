@@ -64,8 +64,10 @@ Content-Type: application/json
 
 1. `POST /agent/api/search` with `{"prompt":"Build a focused new demo…"}`.
    The response contains `message`, `matches` and an optional single-use `offer`.
-   Clarifications can include the existing bounded `history` array (four short
-   `user`/`assistant` entries). Search never starts generation.
+   For follow-ups, send back the response's `history` array (up to 12
+   `user`/`assistant` entries, 1,200 characters each and 6,000 total). It retains
+   the opening goal and demo references. Discussion/capability questions need
+   neither catalog cards nor a build offer. Search never starts generation.
 2. To explicitly accept a build, `POST /agent/api/projects` with
    `{"offer":"OFFER_FROM_SEARCH"}` using the same session. Receive the project ID.
 3. Poll `GET /agent/api/projects/PROJECT_ID` until `state` is `ready` or `failed`.

@@ -60,8 +60,10 @@ editing only their copies does not change the next release.
    responses leave the gallery usable without Demo Bot. The composer has a stable
    height on focus, grows with typed content up to 216px and keeps the send
    button at the bottom right. The gallery sends `POST /agent/api/search` with `{ "prompt": "...", "history": [...] }`.
-   History stays in browser memory and contains at most four user/assistant
-   messages, each limited to 600 characters. Other roles are rejected.
+   The response returns bounded `history` for the next turn. The gallery keeps
+   it in memory and Slack persists it per conversation: up to 12 user/assistant
+   messages, 1,200 characters each and 6,000 characters total. The opening goal
+   and demo references are retained with recent exchanges; other roles are rejected.
    Short confirmations and refinements use that context. Successful replies
    clear the input for the next message; failed sends retain its draft.
 2. The service reports real catalog preparation, reads the catalog demos’
@@ -234,7 +236,7 @@ generator instructions.
 | --- | --- |
 | `GET /agent/open/:id/:token/` | Private browser claim form; same-origin POST consumes the link |
 | `GET /agent/api/health` | Configuration boolean and public limits; no credentials |
-| `POST /agent/api/search` | `{ prompt, history? }` → message, real matches and optional offer; optional NDJSON progress + acknowledgement + result stream |
+| `POST /agent/api/search` | `{ prompt, history? }` → message, bounded history, real matches and optional offer; optional NDJSON progress + acknowledgement + result stream |
 | `POST /agent/api/projects` | `{ offer }` → HTTP 202 with ID and project URL |
 | `GET /agent/api/projects/:id` | Session-bound state, current build progress, title, summary, guidance, expiry and error |
 | `GET /agent/projects/:id/` | Trusted preview shell |
@@ -471,3 +473,14 @@ Completed Slack builds return separate live-preview and direct ZIP links in the
 requester’s DM. Downloads do not need a browser or cookies. See [API.md](./API.md)
 for authenticated HTTP calls and the one-command agent client, including scoped
 link access, refresh/revocation and expiry.
+
+## Conversational behavior
+
+Demo Bot is a friendly, opinionated planning partner as well as a builder. Its
+shared personality lives in `personality.mjs`; planning/search receives the
+actual Demo Impact Scorecard. It favors focused customer workflows and can
+explain its capabilities or critique a proposal without presenting more cards
+or a build CTA. Build offers require an explicit request or clear acceptance
+of a build proposal. No extra model call, model upgrade or reasoning increase
+is introduced. `conversation.mjs` bounds memory while preserving the opening
+workflow and referenced demos across a longer discussion.

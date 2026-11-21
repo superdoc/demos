@@ -248,8 +248,8 @@ test('the Slack manifest and public origin enforce a bounded single-workspace in
   const manifest = JSON.parse(await readFile(new URL('../agent/slack-manifest.json', import.meta.url), 'utf8'));
   assert.equal(manifest.display_information.name, 'Demo Bot');
   assert.equal(manifest.settings.socket_mode_enabled, false);
-  assert.deepEqual(manifest.settings.event_subscriptions.bot_events, ['app_mention', 'message.im']);
-  assert.deepEqual(manifest.oauth_config.scopes.bot, ['app_mentions:read', 'chat:write', 'im:history', 'im:write']);
+  assert.deepEqual(manifest.settings.event_subscriptions.bot_events, ['app_mention', 'message.im', 'message.channels', 'message.groups']);
+  assert.deepEqual(manifest.oauth_config.scopes.bot, ['app_mentions:read', 'chat:write', 'im:history', 'im:write', 'channels:history', 'groups:history']);
   assert.equal(slackPublicOrigin('http://localhost:4173'), 'http://localhost:4173');
   for (const url of ['http://public.example', 'https://user:secret@example.com', 'https://example.com/path', 'https://example.com/?key=secret']) assert.throws(() => slackPublicOrigin(url));
 });
@@ -268,4 +268,61 @@ test('catalog examples use the gallery host while generated previews and ZIPs us
   const links = generated.updates.at(-1).blocks.flatMap((block) => block.elements || []).filter((button) => button.url);
   assert.deepEqual(links.map((link) => link.text.text), ['Open live preview', 'Download ZIP']);
   assert.ok(links.every((link) => new URL(link.url).origin === generated.origin));
+});
+
+test('channel thread replies continue the same user conversation without another mention and ignore unrelated chatter', async (t) => {
+  const f = await fixture(t);
+  await f.say({ channel: 'CCHAN', kind: 'mention', ts: '111.001', content: 'Find an editor demo for our review workflow' });
+  await f.say({ channel: 'CCHAN', thread: '111.001', content: 'How does that example handle editing?' });
+  const input = JSON.parse(f.calls.at(-1).input);
+  assert.equal(input.conversation[0].content, 'Find an editor demo for our review workflow');
+  assert.match(input.conversation[1].content, /Review/);
+  assert.equal(input.request, 'How does that example handle editing?');
+  assert.equal(f.sent.at(-1).thread_ts, '111.001');
+  const before = f.calls.length;
+  await f.say({ channel: 'CCHAN', content: 'ordinary channel message' });
+  await f.say({ channel: 'CCHAN', thread: '999.001', content: 'different thread' });
+  await f.say({ user: 'UOTHER', channel: 'CCHAN', thread: '111.001', content: 'another person without an invocation' });
+  assert.equal(f.calls.length, before);
+  await f.restart();
+  await f.say({ channel: 'CCHAN', thread: '111.001', content: 'And how would we adapt it?' });
+  assert.equal(JSON.parse(f.calls.at(-1).input).conversation.length, 4);
+  f.advance(LIMITS.ttl + 1);
+  await f.say({ channel: 'CCHAN', thread: '111.001', content: 'expired discussion' });
+  assert.equal(f.calls.length, before + 1);
+});
+
+test('DM replies to either the bot or initial user message retain the original context across restart', async (t) => {
+  const f = await fixture(t);
+  await f.say({ ts: '222.001', content: 'I need a document review example' });
+  const botThread = f.sent.at(-1).ts;
+  await f.restart();
+  await f.say({ thread: botThread, content: 'Can we discuss that first?' });
+  assert.equal(JSON.parse(f.calls.at(-1).input).conversation[0].content, 'I need a document review example');
+  await f.say({ thread: '222.001', content: 'Does it work for my reviewers?' });
+  assert.equal(JSON.parse(f.calls.at(-1).input).conversation.length, 4);
+  assert.match(JSON.parse(f.calls.at(-1).input).conversation[1].content, /Review/);
+});
+
+test('mention and message subscriptions cannot generate duplicate responses for one Slack message', async (t) => {
+  const f = await fixture(t);
+  await f.say({ channel: 'CCHAN', kind: 'mention', ts: '333.001', id: 'EMENTION' });
+  await f.say({ channel: 'CCHAN', thread: '333.001', ts: '334.001', kind: 'message', id: 'EMESSAGE' });
+  await f.say({ channel: 'CCHAN', thread: '333.001', ts: '334.001', kind: 'mention', id: 'EDUPLICATE' });
+  assert.equal(f.calls.length, 2);
+});
+
+test('refining a discussion invalidates old offers and a completed build remains part of its private conversation', async (t) => {
+  const f = await fixture(t);
+  const old = await f.say({ content: 'Build a document review example' });
+  await f.say({ content: 'Before building, let’s discuss the reviewer workflow' });
+  await f.bot.onBuild(old);
+  assert.equal(f.calls.filter((call) => call.max_output_tokens === LIMITS.buildTokens).length, 0);
+  assert.match(f.ephemerals.at(-1).text, /expired/);
+  const job = await f.build(); await f.bot.poll();
+  await f.say({ channel: 'DPRIVATE', thread: job.ts, content: 'How can I extend that example?' });
+  const input = JSON.parse(f.calls.at(-1).input);
+  assert.ok(input.conversation.some((entry) => entry.content.includes('now built: Word count')));
+  assert.ok(!JSON.stringify(input.conversation).includes('/agent/open/'));
+  assert.ok(!JSON.stringify(input.conversation).includes('/download/'));
 });

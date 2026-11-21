@@ -109,7 +109,7 @@ form.addEventListener('submit', async (event) => {
     });
     finishSteps();
     const answer = addMessage('Demo Bot', data.message);
-    conversation = [...conversation, { role: 'user', content: prompt.slice(0, 600) }, { role: 'assistant', content: data.message.slice(0, 600) }].slice(-4);
+    conversation = data.history || [...conversation, { role: 'user', content: prompt.slice(0, 600) }, { role: 'assistant', content: data.message.slice(0, 600) }].slice(-4);
     input.value = '';
     resizePrompt();
     replied = true;

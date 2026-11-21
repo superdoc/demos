@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { readFile, writeFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { LIMITS } from './service.mjs';
+import { rememberConversation, rememberBuild } from './conversation.mjs';
 
 const digest = (value) => createHash('sha256').update(value).digest('hex');
 const validId = (value) => typeof value === 'string' && /^[A-Z0-9]{2,40}$/.test(value);
@@ -36,7 +37,7 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
   function prune() {
     for (const bucket of ['seen', 'contexts', 'offers', 'jobs']) for (const [key, entry] of Object.entries(state[bucket])) if (entry.expiresAt <= now()) delete state[bucket][key];
     for (const [bucket, maximum] of [['seen', 2000], ['contexts', 200], ['offers', 200]]) {
-      const entries = Object.entries(state[bucket]);
+      const entries = Object.entries(state[bucket]).sort((a, b) => a[1].expiresAt - b[1].expiresAt);
       for (const [key] of entries.slice(0, Math.max(0, entries.length - maximum))) delete state[bucket][key];
     }
   }
@@ -81,14 +82,21 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
     if (result.offer) blocks.push({ type: 'actions', elements: [{ type: 'button', action_id: 'demo_bot_build', text: text('Build this demo'), style: 'primary', value: result.offer }] });
     return blocks;
   }
+  const conversationKey = (user, channel, thread) => digest(`${teamId}:${user}:${channel}:${thread || 'dm'}`);
   async function onMessage({ event, body = {}, context = {}, kind = 'message' }) {
     const team = body.team_id || context.teamId;
     const direct = event.channel_type === 'im';
-    if (closed || event.bot_id || event.subtype || !event.user || (kind !== 'mention' && !direct)
+    if (closed || event.bot_id || event.subtype || !event.user
       || !permitted(team, event.user, event.channel, direct)) return;
     const thread = event.thread_ts || (direct ? undefined : event.ts);
-    const key = digest(`${team}:${event.user}:${event.channel}:${thread || 'dm'}`);
-    if (!await once(`message:${body.event_id || `${team}:${event.channel}:${event.ts}`}`)) return;
+    const threadKey = conversationKey(event.user, event.channel, thread);
+    const entry = state.contexts[threadKey];
+    const key = entry?.parent && entry.expiresAt > now() ? entry.parent : threadKey;
+    // Ordinary channel chatter is ignored. Follow-ups must belong to this user's
+    // still-active bot conversation in the same thread, unless explicitly mentioned.
+    if (!direct && kind !== 'mention' && (!event.thread_ts || !state.contexts[key]?.history || state.contexts[key].expiresAt <= now())) return;
+    if (body.event_id && !await once(`event:${body.event_id}`)) return;
+    if (!await once(`message:${team}:${event.channel}:${event.ts}`)) return;
     if (busy.has(key)) { await ephemeral(event.channel, event.user, 'Please wait for the current reply, then send your next message.'); return; }
     busy.add(key);
     let pending;
@@ -98,9 +106,14 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
         await client.chat.postMessage(message(event.channel, thread, `Describe the SuperDoc demo you need in 1–${LIMITS.prompt} characters. I can find an example or offer to build a focused one.`)); return;
       }
       pending = await client.chat.postMessage(message(event.channel, thread, 'Thinking…'));
-      const result = await service.search({ prompt, history: state.contexts[key]?.history || [] }, caller(event.user));
-      state.contexts[key] = { history: [...(state.contexts[key]?.history || []), { role: 'user', content: prompt.slice(0, 600) }, { role: 'assistant', content: result.message.slice(0, 600) }].slice(-4), expiresAt: now() + LIMITS.ttl };
-      if (result.offer) state.offers[result.offer] = { user: event.user, team, channel: event.channel, ts: pending.ts, expiresAt: now() + 600000 };
+      // Replies to a top-level bot DM continue the original DM conversation.
+      if (direct && !thread) for (const ts of [event.ts, pending.ts].filter(Boolean)) state.contexts[conversationKey(event.user, event.channel, ts)] = { parent: key, expiresAt: now() + LIMITS.ttl };
+      const previous = state.contexts[key]?.history || [];
+      const result = await service.search({ prompt, history: previous }, caller(event.user));
+      state.contexts[key] = { history: result.history || rememberConversation(previous, prompt, result), expiresAt: now() + LIMITS.ttl };
+      // Earlier offers in this discussion no longer reflect its latest requirements.
+      for (const [value, offer] of Object.entries(state.offers)) if (offer.contextKey === key && offer.user === event.user) delete state.offers[value];
+      if (result.offer) state.offers[result.offer] = { user: event.user, team, channel: event.channel, ts: pending.ts, contextKey: key, expiresAt: now() + 600000 };
       await save();
       await update(event.channel, pending.ts, result.message, resultBlocks(result));
     } catch (error) {
@@ -129,6 +142,9 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
             if (status.state === 'ready') {
               if (!job.links) { job.links = await service.createProjectLinks(id, caller(job.user).session); await save(); }
               await update(job.channel, job.ts, `Your demo is ready: ${status.title}\nLive preview: ${absolute(job.links.previewUrl)}\nDownload ZIP: ${absolute(job.links.downloadUrl)}`, projectBlocks(job, status));
+              for (const key of job.contextKeys || []) if (state.contexts[key]) {
+                state.contexts[key] = { history: rememberBuild(state.contexts[key].history || [], status), expiresAt: now() + LIMITS.ttl };
+              }
             }
             else await update(job.channel, job.ts, status.error || 'The demo could not be built. Send a new request to try a smaller feature.');
             delete state.jobs[id]; await save();
@@ -158,7 +174,10 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
       const project = await service.startProject(action.value, caller(user));
       const link = await service.createHandoff(project.id, caller(user).session);
       const status = service.projectStatus(project.id, caller(user).session);
-      state.jobs[project.id] = { id: project.id, user, channel: dm, ts: pending.ts, link, progress: status.progress, expiresAt: status.expiresAt };
+      const dmKey = conversationKey(user, dm);
+      state.contexts[dmKey] = { history: state.contexts[offer.contextKey]?.history || [], expiresAt: now() + LIMITS.ttl };
+      state.contexts[conversationKey(user, dm, pending.ts)] = { parent: dmKey, expiresAt: now() + LIMITS.ttl };
+      state.jobs[project.id] = { id: project.id, user, channel: dm, ts: pending.ts, link, contextKeys: [...new Set([offer.contextKey, dmKey].filter(Boolean))], progress: status.progress, expiresAt: status.expiresAt };
       await save();
       await update(channel, body.message.ts, 'Your build has started. I sent a private preview link in a direct message.');
       await update(dm, pending.ts, 'Creating your custom demo. Open the private link to follow along.', projectBlocks(state.jobs[project.id], status));

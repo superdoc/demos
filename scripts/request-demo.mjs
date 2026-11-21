@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
 // No browser, cookies or provider key. --build explicitly accepts any offered build.
-export async function requestDemo({ url, token, prompt, build = false, output,
+export async function requestDemo({ url, token, prompt, history = [], build = false, output,
   fetchBackend = fetch, pollInterval = 2000, signal = AbortSignal.timeout(300000), onProgress = () => {} }) {
   const origin = new URL(url);
   const local = origin.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname);
@@ -31,10 +31,10 @@ export async function requestDemo({ url, token, prompt, build = false, output,
     if (!response.ok) throw new Error(data.error || `Demo Bot request failed (${response.status}).`);
     return data;
   }
-  const result = await api('/agent/api/search', { prompt });
+  const result = await api('/agent/api/search', { prompt, history });
   if (!build || !result.offer) {
     if (output) throw new Error(result.message || 'No build was offered. Request a focused new demo to download its generated project.');
-    return { message: result.message, matches: result.matches, buildAvailable: Boolean(result.offer) };
+    return { message: result.message, matches: result.matches, history: result.history, buildAvailable: Boolean(result.offer) };
   }
   const project = await api('/agent/api/projects', { offer: result.offer });
   let status;
