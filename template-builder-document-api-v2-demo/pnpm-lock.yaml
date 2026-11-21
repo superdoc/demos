@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       superdoc:
-        specifier: 2.33.0
-        version: 2.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32)
+        specifier: 2.34.0
+        version: 2.34.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32)
       vue:
         specifier: ^3.4.0
         version: 3.5.32(typescript@5.9.3)
@@ -413,8 +413,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@superdoc/docx-engine@0.32.0':
-    resolution: {integrity: sha512-RWfQM2twE1BPGb/W7an9sq9hFqzirD9lmPUDa+G0TEvC0JxcBKvIgs2NHmo71Plm8rXxoeIKIYQ+n8bJQgVd1w==}
+  '@superdoc/docx-engine@0.33.0':
+    resolution: {integrity: sha512-3XTnHUG0jQXma5GzNgfJdhpZaYsP+BUqxtY0aEbXOCAY5QS/+DR7gkFu6aeGhv9AWcIG2kCP7/N6514uDz70Mw==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -567,12 +567,15 @@ packages:
   isomorphic.js@0.2.5:
     resolution: {integrity: sha512-PIeMbHqMt4DnUP3MA/Flc0HElYjMXArsw1qwJZcm9sqR8mq3l8NYizFMty0pWwE/tzIGH3EKK5+jes5mAr85yw==}
 
-  konva@10.9.1:
-    resolution: {integrity: sha512-m49x+GatSxEUSvqahYhxpTjgKbtrLtw4P4o4B4iux953ZFpceaK52Ea+CFsAsd7W4I0Y5u6mMoRUsY/eltNZmw==}
+  konva@10.10.0:
+    resolution: {integrity: sha512-hPU7xXWxhOqLScPo1gNCtY/PJAH2aXS//Wile6lfWmoO14vkZQbeS2HK5aV6FJ5Q2OzxgdGVSiMhyLspSk4fRw==}
     peerDependencies:
+      '@napi-rs/canvas': ^1.1.0
       canvas: ^3.0.0
-      skia-canvas: ^3.0.0
+      skia-canvas: ^3.0.0 || ^4.0.0
     peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
       canvas:
         optional: true
       skia-canvas:
@@ -651,8 +654,8 @@ packages:
     resolution: {integrity: sha512-1POYv7uv2gXoyGFpBCmpDVSNV74IfsWlDW216UPjbWufNf+bSU6GdbDsxdcxtfwb4xlI3yxzOTKClUosxARYrQ==}
     engines: {node: '>=0.10.0'}
 
-  superdoc@2.33.0:
-    resolution: {integrity: sha512-7sjd8xVBdMLjZl5DCsfZdoaj9KSssXBwGDjKO/Mtk8YGGfsBePMqjbzw63NFkvQ2IQw8Gs46Nja9w0OIYm3jzg==}
+  superdoc@2.34.0:
+    resolution: {integrity: sha512-f3CI6Hrg5LQyfZv21hMk527S4Eb5UMBF82ok8BsuMoGuOR6BUZljsMUIAXdb+qhSOxKvlrka1YbN/3PQEwyhRA==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -1020,7 +1023,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@superdoc/docx-engine@0.32.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
+  '@superdoc/docx-engine@0.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       vue: 3.5.32(typescript@5.9.3)
       xml-js: 1.6.11
@@ -1211,7 +1214,7 @@ snapshots:
 
   isomorphic.js@0.2.5: {}
 
-  konva@10.9.1: {}
+  konva@10.10.0: {}
 
   lib0@0.2.120:
     dependencies:
@@ -1293,13 +1296,13 @@ snapshots:
 
   speakingurl@14.0.1: {}
 
-  superdoc@2.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32):
+  superdoc@2.34.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32):
     dependencies:
       '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@superdoc/docx-engine': 0.32.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
+      '@superdoc/docx-engine': 0.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
       '@types/ws': 8.18.2
       eventemitter3: 5.0.4
-      konva: 10.9.1
+      konva: 10.10.0
       pinia: 3.0.4(typescript@5.9.3)(vue@3.5.32(typescript@5.9.3))
       use-sync-external-store: 1.7.0(react@19.3.1)
       uuid: 11.1.1
@@ -1309,6 +1312,7 @@ snapshots:
     optionalDependencies:
       react: 19.3.1
     transitivePeerDependencies:
+      - '@napi-rs/canvas'
       - canvas
       - skia-canvas
       - typescript

@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "superdoc": "2.33.0",
+    "superdoc": "2.34.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {
