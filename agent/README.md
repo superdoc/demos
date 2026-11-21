@@ -372,6 +372,7 @@ restart; do not erase `.demo-agent/` to reload code.
 | `OPENAI_API_KEY` | Server-only provider credential |
 | `DEMO_AGENT_MODEL` | Advanced model override; search uses low reasoning, generation uses high |
 | `DEMO_AGENT_DAILY_TOKENS` | Positive integer daily reservation ceiling |
+| `DEMO_AGENT_SLACK_UNLIMITED` | Internal Slack only: `1` uses provider limits instead of app daily/hourly quotas; ignored on external service |
 | `DEMO_AGENT_IP_DAILY_TOKENS` | Positive integer per-network daily ceiling, default 50,000 |
 | `DEMO_AGENT_DATA_DIR` | Persistent project/budget directory |
 | `DEMO_AGENT_ORIGINS` | Comma-separated allowed gallery origins |
@@ -484,3 +485,8 @@ or a build CTA. Build offers require an explicit request or clear acceptance
 of a build proposal. No extra model call, model upgrade or reasoning increase
 is introduced. `conversation.mjs` bounds memory while preserving the opening
 workflow and referenced demos across a longer discussion.
+
+Internal Slack quota exemption is a server-only transport policy, guarded by both
+`DEMO_AGENT_INSTANCE=demo-bot-int` and `DEMO_AGENT_SLACK_UNLIMITED=1`. Browser/API
+requests keep their normal quotas. Exempt usage has a separate persisted ledger
+and does not require clearing any prior usage to resume Slack conversations.

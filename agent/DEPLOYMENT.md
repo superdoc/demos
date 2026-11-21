@@ -1,8 +1,9 @@
 # Demo Bot deployments
 
-Both backends run the same source, model, reasoning settings, limits, Slack HTTP
+Both backends share source, model, reasoning settings, Slack HTTP
 transport and project lifecycle. Their OpenAI project keys, proxy credentials
-and persistent runtime data are isolated. Neither deployment has extra features.
+and persistent runtime data are isolated. The internal deployment can exempt
+verified Slack calls from app usage quotas.
 
 | Service | Audience | HTTPS origin |
 | --- | --- | --- |
@@ -26,15 +27,20 @@ project's monthly budget/alerts are configured there; this deployment does not
 change or verify the OpenAI billing dashboard's settings.
 
 Both services use `gpt-5-mini`, low reasoning for conversations/search and high
-reasoning for generation. Each independently enforces 300,000 tokens/day,
-50,000 tokens/day per network or Slack account, 1,400 output tokens/search,
+reasoning for generation. Browser/API traffic independently enforces 300,000
+tokens/day and 50,000 tokens/day per network. Requests retain 1,400 output tokens/search,
 12,000 output tokens/build, 64 KB generated code, two concurrent builds and
 20 active projects. Reservations include input and reasoning/output tokens and
 are reconciled with confirmed provider usage. Ready previews and ZIP downloads
 expire after one hour; a 15-second cleanup loop deletes expired projects.
 
-`DEMO_AGENT_INSTANCE` labels the service; it does not select a different feature
-set. `GET /health` reports that label, limits and a source SHA-256 fingerprint,
+On `demo-bot-int`, `DEMO_AGENT_SLACK_UNLIMITED=1` exempts verified Slack calls
+from app daily token and hourly request quotas. OpenAI provider limits still
+apply. Slack usage is metered separately in `budget.slack`; old usage is retained.
+The setting is ignored by the external service. Concurrency, code/output size,
+request timeouts, project capacity and expiry remain enforced for all callers.
+
+`DEMO_AGENT_INSTANCE` labels the service and guards this internal-only policy. `GET /health` reports that label, limits and a source SHA-256 fingerprint,
 with no secrets. Matching fingerprints confirm the same packaged source.
 Health confirms configuration, not provider billing availability.
 

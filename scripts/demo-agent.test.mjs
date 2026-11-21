@@ -721,3 +721,33 @@ test('extended discussion preserves the opening workflow and recommended demo un
   assert.equal((await f.request('/agent/api/search', { prompt: 'hello', history: oversized })).status, 400);
   assert.equal(f.calls.length, before);
 });
+
+test('browser and API callers cannot select the internal Slack quota exemption', async (t) => {
+  const f = await fixture(t, { instance: 'demo-bot-int', slackUnlimited: true, dailyTokens: 1, ipDailyTokens: 1, proxyToken: 'proxy-secret' });
+  const response = await f.request('/agent/api/search', { prompt: 'hello', transport: 'slack', slackUnlimited: true }, {
+    'X-Demo-Agent-Token': 'proxy-secret', Authorization: 'Bearer proxy-secret', 'X-Demo-Agent-Session': 'f'.repeat(32), 'X-Demo-Agent-Transport': 'slack',
+  });
+  assert.equal(response.status, 429);
+  assert.equal(f.calls.length, 0);
+  const health = await (await f.request('/health')).json();
+  assert.equal(health.slackUnlimited, true);
+});
+
+test('internal Slack can resume over an exhausted legacy ledger without resetting usage, including after restart', async (t) => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'slack-provider-limits-'));
+  t.after(() => rm(dataDirectory, { recursive: true, force: true }));
+  const day = new Date().toISOString().slice(0, 10);
+  await writeFile(path.join(dataDirectory, 'budget.json'), JSON.stringify({ day, reserved: 999999, identities: { old: 50000 } }));
+  const settings = { dataDirectory, apiKey: 'fake', instance: 'demo-bot-int', slackUnlimited: true, dailyTokens: 1, ipDailyTokens: 1, catalog,
+    fetchOpenAI: async () => Response.json({ status: 'completed', usage: { total_tokens: 300 }, output: [{ content: [{ type: 'output_text', text: JSON.stringify(noMatch) }] }] }),
+  };
+  for (let i = 1; i <= 2; i++) {
+    const service = await createAgentService(settings);
+    try { await service.search({ prompt: 'Discuss the demo' }, { session: 'a'.repeat(32), identity: 'b'.repeat(64), transport: 'slack' }); }
+    finally { service.close(); }
+    const ledger = JSON.parse(await readFile(path.join(dataDirectory, 'budget.json'), 'utf8'));
+    assert.equal(ledger.reserved, 999999);
+    assert.equal(ledger.identities.old, 50000);
+    assert.equal(ledger.slack.actualTokens, 300 * i);
+  }
+});

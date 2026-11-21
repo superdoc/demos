@@ -326,3 +326,25 @@ test('refining a discussion invalidates old offers and a completed build remains
   assert.ok(!JSON.stringify(input.conversation).includes('/agent/open/'));
   assert.ok(!JSON.stringify(input.conversation).includes('/download/'));
 });
+
+test('internal Slack can use provider limits without daily or hourly app quotas and is metered separately', async (t) => {
+  const f = await fixture(t, { service: { instance: 'demo-bot-int', slackUnlimited: true, dailyTokens: 1, ipDailyTokens: 1 } });
+  for (let i = 0; i < 22; i++) await f.say({ content: 'Discuss this demo idea' });
+  assert.equal(f.calls.length, 22); // Beyond the normal 20 searches/hour.
+  for (let i = 0; i < 4; i++) { await f.build(); await f.bot.poll(); }
+  assert.equal(f.calls.filter((call) => call.max_output_tokens === LIMITS.buildTokens).length, 4);
+  const ledger = JSON.parse(await readFile(path.join(f.dataDirectory, 'budget.json'), 'utf8'));
+  assert.equal(ledger.reserved, 0);
+  assert.equal(ledger.slack.actualTokens, 300 * 30);
+  assert.equal(ledger.slack.reserved, 300 * 30);
+  await f.restart(); await f.say();
+  assert.equal(f.calls.length, 31);
+});
+
+test('Slack quota bypass is disabled by default and cannot be enabled for the external service', async (t) => {
+  for (const config of [{ instance: 'demo-bot-int' }, { instance: 'demo-bot-ext', slackUnlimited: true }]) {
+    const f = await fixture(t, { service: { ...config, dailyTokens: 1, ipDailyTokens: 1 } });
+    await f.say(); assert.equal(f.calls.length, 0);
+    assert.match(f.updates.at(-1).text, /daily token allowance/);
+  }
+});

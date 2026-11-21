@@ -56,6 +56,7 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
   const caller = (user) => ({
     session: createHmac('sha256', state.secret).update(`${teamId}:${user}`).digest('hex').slice(0, 32),
     identity: digest(`slack:${teamId}:${user}`),
+    transport: 'slack',
   });
   function permitted(team, user, channel, direct) {
     return team === teamId && validId(user) && validId(channel) && user !== botUserId

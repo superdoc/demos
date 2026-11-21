@@ -122,12 +122,19 @@ a browser session hash. Other browsers cannot use the consumed link or the
 project's status, preview or ZIP URLs. Refreshing a private link can connect a
 new browser; an earlier claimed browser then loses that secondary access.
 
-Both gallery and Slack use a shared global daily token allowance and the same
-build/project capacity. Slack identities have the existing 50,000-token daily
-and 20-search/3-build hourly defaults per account, instead of per network. Slack
-cannot increase model effort, generation tokens, project size or preview TTL.
-The provider project's dollar spending limit is configured separately in the
-OpenAI dashboard.
+By default, gallery and Slack use the shared daily token allowance, with
+50,000 tokens/day and 20-search/3-build hourly defaults per Slack account.
+On `demo-bot-int` only, `DEMO_AGENT_SLACK_UNLIMITED=1` removes Slack's application
+daily token and hourly request quotas. Slack then relies on OpenAI's project/org
+rate, credit and enforced spend limits. Usage remains metered in a separate
+`budget.slack` ledger, so it does not consume the browser/API daily allowance.
+Existing ledger entries are preserved. No HTTP header or JSON field can select
+this exemption, and `demo-bot-ext` ignores the flag entirely.
+
+Concurrency, active-project capacity, explicit build consent, per-request output
+limits, code size, timeouts and preview TTL remain enforced. Configure the
+provider project's enforced spend limit separately in OpenAI; a spend alert
+alone does not stop requests.
 
 The existing private data directory stores `slack-state.json`: a random secret
 for deriving unguessable service sessions, bounded recent conversations and
