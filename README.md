@@ -154,7 +154,9 @@ build offer. Builds share the gallery's spending and size limits. Private DMs
 contain a browser-bound preview/download link and build updates. The optional
 HTTP events app, install manifest and setup instructions are in
 [`agent/SLACK.md`](agent/SLACK.md). A Slack installation and server-only app
-credentials are required; the integration is disabled until configured.
+credentials are required; the integration is disabled until configured. Completed
+builds return separate preview and direct ZIP links. Coding agents can also
+[prompt, build and download over HTTP](agent/API.md) without opening a browser.
 
 ### Hosting the agent alongside the existing Cloudflare Pages gallery
 

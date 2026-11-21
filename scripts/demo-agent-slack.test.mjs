@@ -150,6 +150,14 @@ test('a browser handoff is not consumed by GET/unfurls, requires a valid origin,
   await f.bot.poll();
   assert.match(f.updates.at(-1).text, /ready/);
   assert.equal(f.updates.at(-1).channel, 'DPRIVATE');
+  const ready = f.updates.at(-1);
+  const buttons = ready.blocks.flatMap((block) => block.elements || []);
+  const download = buttons.find((button) => button.text?.text === 'Download ZIP');
+  assert.ok(ready.text.includes(download.url)); // HTTP agents can read URLs from plain Slack text.
+  assert.ok(ready.text.includes('Live preview:'));
+  const zip = await fetch(download.url); // No cookies, credentials or browser claim.
+  assert.equal(zip.status, 200);
+  assert.equal(zip.headers.get('content-type'), 'application/zip');
 });
 
 test('pending Slack notifications resume with the same owner session after restart', async (t) => {

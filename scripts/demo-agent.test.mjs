@@ -397,10 +397,12 @@ test('Pages proxy uses authenticated backend forwarding, preserves cookies, and 
   const calls = [];
   const proxy = createDemoAgentProxy({ fetch: () => new Response('asset') }, async (request) => { calls.push(request); return new Response('backend', { headers: { 'Set-Cookie': 'demo_agent=123; HttpOnly' } }); });
   const env = { DEMO_AGENT_BACKEND_URL: 'https://agent.example', DEMO_AGENT_PROXY_TOKEN: 'proxy-secret' };
-  const response = await proxy.fetch(new Request('https://demos.superdoc.dev/agent/api/search', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.1', Origin: 'https://demos.superdoc.dev', Cookie: 'demo_agent=abc', 'X-Demo-Client-IP': 'spoofed' }, body: '{}' }), env);
+  const response = await proxy.fetch(new Request('https://demos.superdoc.dev/agent/api/search', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.1', Origin: 'https://demos.superdoc.dev', Cookie: 'demo_agent=abc', 'X-Demo-Client-IP': 'spoofed', 'X-Demo-Agent-Session': 'attacker-selected', Authorization: 'Bearer should-not-forward' }, body: '{}' }), env);
   assert.equal(calls[0].url, 'https://agent.example/agent/api/search');
   assert.equal(calls[0].headers.get('x-demo-agent-token'), 'proxy-secret');
   assert.equal(calls[0].headers.get('x-demo-agent-target'), 'demo-bot-ext');
+  assert.equal(calls[0].headers.get('x-demo-agent-session'), null);
+  assert.equal(calls[0].headers.get('authorization'), null);
   assert.equal(calls[0].headers.get('x-demo-client-ip'), '192.0.2.1');
   assert.equal(calls[0].headers.get('cookie'), 'demo_agent=abc');
   assert.ok(response.headers.get('set-cookie'));
@@ -598,4 +600,90 @@ test('deployments expose non-secret health and reject a gallery routed to the in
   assert.equal(f.calls.length, 0);
   assert.equal((await f.request('/agent/agent.css')).status, 404); // Falls through to static serving without proxy auth.
   assert.equal((await f.request(`/agent/projects/${'a'.repeat(32)}/`)).status, 410); // Session/capability checks, not proxy authentication.
+});
+
+test('direct ZIP links require ownership to issue, survive restart, rotate and expire without granting preview access', async (t) => {
+  const f = await fixture(t);
+  const project = await f.build(); await f.ready(project.id);
+  const route = `/agent/api/projects/${project.id}/links`;
+  assert.equal((await f.request(route, {}, { Cookie: '' })).status, 404);
+  const links = await (await f.request(route, {})).json();
+  assert.ok(links.previewExpiresAt < links.expiresAt);
+  const persisted = await readFile(path.join(f.dataDirectory, `${project.id}.json`), 'utf8');
+  assert.ok(!persisted.includes(links.downloadUrl.split('/').at(-1)));
+  const outsider = (path) => f.request(path, undefined, { Cookie: '' });
+  const invalid = links.downloadUrl.slice(0, -32) + 'f'.repeat(32);
+  assert.equal((await outsider(invalid)).status, 404);
+  for (const restart of [false, true]) {
+    if (restart) await f.restart();
+    const response = await outsider(links.downloadUrl);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'application/zip');
+    assert.match(response.headers.get('content-disposition'), /attachment/);
+    assert.equal(Buffer.from(await response.arrayBuffer()).readUInt32LE(0), 0x04034b50);
+    assert.equal((await outsider(links.downloadUrl)).status, 200); // Unfurls/GETs don't consume it.
+    assert.equal((await outsider(`/agent/projects/${project.id}/preview`)).status, 404);
+  }
+  const refreshed = await (await f.request(route, {})).json();
+  assert.equal((await outsider(links.downloadUrl)).status, 404);
+  assert.equal((await outsider(refreshed.downloadUrl)).status, 200);
+  f.advance(LIMITS.ttl + 1);
+  assert.equal((await outsider(refreshed.downloadUrl)).status, 410);
+  assert.ok(!(await readdir(f.dataDirectory)).includes(`${project.id}.json`));
+});
+
+test('an API agent can prompt, build, get preview and ZIP links, and download without cookies', async (t) => {
+  const { requestDemo } = await import('./request-demo.mjs');
+  const f = await fixture(t, { proxyToken: 'api-secret' });
+  const calls = [];
+  const output = path.join(f.dataDirectory, 'agent-demo.zip');
+  const result = await requestDemo({ url: f.origin, token: 'api-secret', prompt: 'Build document review controls', build: true, output, pollInterval: 5,
+    fetchBackend: async (url, init) => {
+      calls.push({ url: String(url), init });
+      assert.ok(!init.headers?.Cookie);
+      const response = await fetch(url, init);
+      if (init.headers?.['X-Demo-Agent-Session']) assert.equal(response.headers.get('set-cookie'), null);
+      return response;
+    },
+  });
+  assert.ok(result.previewUrl.startsWith(f.origin + '/agent/open/'));
+  assert.ok(result.downloadUrl.includes(`/agent/projects/${result.id}/download/`));
+  const archive = await readFile(output);
+  assert.ok(archive.includes(Buffer.from('AGENTS.md')));
+  assert.ok(archive.includes(Buffer.from('DEMO_IMPACT_SCORECARD.md')));
+  assert.equal(calls.at(-1).init.headers, undefined); // Download needs neither API credential nor session.
+  const session = calls[0].init.headers['X-Demo-Agent-Session'];
+  assert.equal((await f.request('/agent/api/search', { prompt: 'spoofed machine' }, { 'X-Demo-Agent-Token': 'api-secret', 'X-Demo-Agent-Session': session })).status, 403);
+  const headers = { 'X-Demo-Agent-Session': session, Authorization: 'Bearer api-secret' };
+  assert.equal((await f.request(`/agent/api/projects/${result.id}`, undefined, headers)).status, 200);
+  assert.equal((await f.request(`/agent/api/projects/${result.id}`, undefined, { ...headers, Authorization: 'Bearer wrong' })).status, 403);
+  assert.equal((await f.request(`/agent/api/projects/${result.id}`, undefined, { ...headers, 'X-Demo-Agent-Session': 'a'.repeat(32) })).status, 404);
+  assert.equal((await f.request(`/agent/api/projects/${result.id}`, undefined, { ...headers, 'X-Demo-Agent-Session': 'invalid' })).status, 403);
+});
+
+test('the headless client searches without paid generation unless a build is explicitly accepted', async (t) => {
+  const { requestDemo } = await import('./request-demo.mjs');
+  const f = await fixture(t, { proxyToken: 'api-secret' });
+  const result = await requestDemo({ url: f.origin, token: 'api-secret', prompt: 'review controls' });
+  assert.equal(result.buildAvailable, true);
+  assert.equal(f.calls.length, 1);
+  await assert.rejects(requestDemo({ url: f.origin, token: 'wrong', prompt: 'review' }), /API sessions require/);
+  assert.equal(f.calls.length, 1);
+});
+
+test('the API client checks output paths before spending tokens and refuses off-origin download destinations', async (t) => {
+  const { requestDemo } = await import('./request-demo.mjs');
+  const f = await fixture(t, { proxyToken: 'api-secret' });
+  const output = path.join(f.dataDirectory, 'existing.zip'); await writeFile(output, 'keep this file');
+  await assert.rejects(requestDemo({ url: f.origin, token: 'api-secret', prompt: 'review', build: true, output }), /already exists/);
+  assert.equal(f.calls.length, 0);
+  const destinations = [];
+  await assert.rejects(requestDemo({ url: f.origin, token: 'api-secret', prompt: 'review', build: true, pollInterval: 5,
+    fetchBackend: (url, init) => {
+      destinations.push(new URL(url).origin);
+      return new URL(url).pathname.endsWith('/links')
+        ? Response.json({ previewUrl: '/agent/open/test', downloadUrl: 'https://other.example/collect' }) : fetch(url, init);
+    },
+  }), /unexpected link origin/);
+  assert.ok(destinations.every((url) => url === f.origin));
 });

@@ -333,6 +333,24 @@ Builder capabilities: a real SuperDoc editor with a small vanilla-JavaScript wor
     return `/agent/open/${project.id}/${token}/`;
   }
 
+  async function createProjectLinks(projectId, session) {
+    const project = ownedProject(projectId, session);
+    if (project.state !== 'ready') throw new HttpError(409, 'The project is not ready yet.');
+    const previewUrl = await createHandoff(projectId, session);
+    const token = id();
+    // A reusable, download-only capability: no browser session or backend secret required.
+    project.downloadHash = createHash('sha256').update(token).digest('hex');
+    await persist(project);
+    return { previewUrl, downloadUrl: `/agent/projects/${project.id}/download/${token}`,
+      previewExpiresAt: project.handoffExpiresAt, expiresAt: project.expiresAt };
+  }
+
+  function sendDownload(response, project) {
+    const archive = zip(projectFiles(project));
+    response.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="superdoc-${project.id.slice(0, 8)}.zip"`, 'Content-Length': archive.length });
+    response.end(archive);
+  }
+
   async function handle(request, response) {
     const url = new URL(request.url, 'http://localhost');
     if (url.pathname === '/health' && request.method === 'GET') {
@@ -352,18 +370,22 @@ Builder capabilities: a real SuperDoc editor with a small vanilla-JavaScript wor
     try {
       // Session/capability-protected previews and handoffs can open directly from Slack.
       // Only the trusted gallery proxy may invoke model-spending endpoints.
+      const machineSession = request.headers['x-demo-agent-session'];
+      // The public gallery adds X-Demo-Agent-Token automatically. Require an explicit
+      // bearer credential too, so its visitors cannot select trusted machine mode.
+      if (machineSession !== undefined && (!proxyToken || request.headers.authorization !== `Bearer ${proxyToken}` || !/^[a-f0-9]{32}$/.test(machineSession))) throw new HttpError(403, 'API sessions require a valid backend credential and a 32-character hexadecimal session ID.');
       const spending = request.method === 'POST' && ['/agent/api/search', '/agent/api/projects'].includes(url.pathname);
-      if ((spending || url.pathname === '/agent/api/health') && proxyToken && request.headers['x-demo-agent-token'] !== proxyToken) throw new HttpError(403, 'Use the gallery to access the demo agent.');
+      if ((spending || url.pathname === '/agent/api/health') && proxyToken && !machineSession && request.headers['x-demo-agent-token'] !== proxyToken) throw new HttpError(403, 'Use the gallery to access the demo agent.');
       if (request.headers['x-demo-agent-target'] && request.headers['x-demo-agent-target'] !== instance) throw new HttpError(503, 'The gallery is connected to the wrong Demo Bot deployment.');
       if (url.pathname === '/agent/api/health' && request.method === 'GET') { send(200, { instance, configured: Boolean(apiKey), limits: { ...LIMITS, dailyTokens, ipDailyTokens } }); return true; }
       // Never trust public X-Forwarded-For headers. A configured proxy authenticates its own IP header.
       const address = proxyToken ? request.headers['x-demo-client-ip'] || 'proxy' : request.socket.remoteAddress;
       const identity = createHash('sha256').update(String(address)).digest('hex');
-      let session = request.headers.cookie?.match(/(?:^|; )demo_agent=([a-f0-9]{32})(?:;|$)/)?.[1];
+      let session = machineSession || request.headers.cookie?.match(/(?:^|; )demo_agent=([a-f0-9]{32})(?:;|$)/)?.[1];
       if (!session) session = id();
-      response.setHeader('Set-Cookie', `demo_agent=${session}; Path=/agent/; HttpOnly; SameSite=Strict; Max-Age=7200${request.socket.encrypted || proxyToken ? '; Secure' : ''}`);
+      if (!machineSession) response.setHeader('Set-Cookie', `demo_agent=${session}; Path=/agent/; HttpOnly; SameSite=Strict; Max-Age=7200${request.socket.encrypted || proxyToken ? '; Secure' : ''}`);
       const sessionHash = createHash('sha256').update(session).digest('hex');
-      if (request.method === 'POST') {
+      if (request.method === 'POST' && !machineSession) {
         const origin = request.headers.origin;
         const host = `${request.socket.encrypted ? 'https' : 'http'}://${request.headers.host}`;
         if (!origin || (origin !== host && !allowedOrigins.includes(origin))) throw new HttpError(403, 'Open the agent from the configured gallery origin.');
@@ -410,6 +432,19 @@ Builder capabilities: a real SuperDoc editor with a small vanilla-JavaScript wor
         const { offer } = await jsonBody(request);
         send(202, await startProject(offer, { session, identity })); return true;
       }
+      const links = url.pathname.match(/^\/agent\/api\/projects\/([a-f0-9]{32})\/links$/);
+      if (links && request.method === 'POST') {
+        await jsonBody(request);
+        send(200, await createProjectLinks(links[1], session)); return true;
+      }
+      const capability = url.pathname.match(/^\/agent\/projects\/([a-f0-9]{32})\/download\/([a-f0-9]{32})$/);
+      if (capability && request.method === 'GET') {
+        const project = projects.get(capability[1]);
+        if (!project || project.expiresAt <= now()) { await cleanup(); throw new HttpError(410, 'This temporary demo has expired. Return to Demo Bot to build another.'); }
+        if (project.downloadHash !== createHash('sha256').update(capability[2]).digest('hex')) throw new HttpError(404, 'Download link not found.');
+        if (project.state !== 'ready') throw new HttpError(409, 'The project is not ready yet.');
+        sendDownload(response, project); return true;
+      }
       const match = url.pathname.match(/^\/agent\/(?:api\/projects|projects)\/([a-f0-9]{32})(?:\/(download|preview))?\/?$/);
       if (match && request.method === 'GET') {
         const project = projects.get(match[1]);
@@ -422,9 +457,7 @@ Builder capabilities: a real SuperDoc editor with a small vanilla-JavaScript wor
         if (!match[2]) { send(200, { id: project.id, state: project.state, progress: project.state === 'building' ? project.progress : undefined, title: project.title, summary: project.summary, guidance: project.guidance, expiresAt: project.expiresAt, error: project.error }); return true; }
         if (project.state !== 'ready') throw new HttpError(409, 'The project is not ready yet.');
         if (match[2] === 'download') {
-          const archive = zip(projectFiles(project));
-          response.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="superdoc-${project.id.slice(0, 8)}.zip"`, 'Content-Length': archive.length });
-          response.end(archive); return true;
+          sendDownload(response, project); return true;
         }
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8',
           'Content-Security-Policy': `sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' data: ${SUPERDOC_CDN}superdoc.min.js ${DOCX_ENGINE_CDN}docx-engine.es.js; style-src 'unsafe-inline' data: ${SUPERDOC_CDN} ${DOCX_ENGINE_CDN}; img-src data: blob:; font-src data: ${SUPERDOC_CDN} ${DOCX_ENGINE_CDN}; connect-src data: blob: ${SUPERDOC_CDN} ${DOCX_ENGINE_CDN}; worker-src blob:; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`,
@@ -440,5 +473,5 @@ Builder capabilities: a real SuperDoc editor with a small vanilla-JavaScript wor
       return true;
     }
   }
-  return { handle, search, startProject, projectStatus, createHandoff, dataDirectory, cleanup, close: () => clearInterval(timer) };
+  return { handle, search, startProject, projectStatus, createHandoff, createProjectLinks, dataDirectory, cleanup, close: () => clearInterval(timer) };
 }

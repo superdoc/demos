@@ -112,8 +112,8 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
   }
   const projectBlocks = (job, status) => [
     section(status.state === 'ready' ? `${status.title}\n${status.summary}` : `Creating a custom demo for you.\n${status.progress || 'This usually takes a minute or two.'}`),
-    { type: 'actions', elements: [linkButton(status.state === 'ready' ? 'Open preview & download' : 'Open build progress', absolute(job.link)), { type: 'button', action_id: 'demo_bot_link', text: text('Get a fresh private link'), value: job.id }] },
-    { type: 'context', elements: [text('Private browser link · Open it within 10 minutes · Project expires one hour after it is ready')] },
+    { type: 'actions', elements: [linkButton(status.state === 'ready' ? 'Open live preview' : 'Open build progress', absolute(job.links?.previewUrl || job.link)), ...(job.links ? [linkButton('Download ZIP', absolute(job.links.downloadUrl))] : []), { type: 'button', action_id: 'demo_bot_link', text: text('Refresh links'), value: job.id }] },
+    { type: 'context', elements: [text('Preview: open within 10 minutes · ZIP: direct download without cookies · Both expire with the project')] },
   ];
   async function poll() {
     if (polling || closed) return;
@@ -125,7 +125,10 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
           if (status.state === 'building') {
             if (status.progress !== job.progress) { await update(job.channel, job.ts, `Demo Bot: ${status.progress}`, projectBlocks(job, status)); job.progress = status.progress; await save(); }
           } else {
-            if (status.state === 'ready') await update(job.channel, job.ts, `Your demo is ready: ${status.title}`, projectBlocks(job, status));
+            if (status.state === 'ready') {
+              if (!job.links) { job.links = await service.createProjectLinks(id, caller(job.user).session); await save(); }
+              await update(job.channel, job.ts, `Your demo is ready: ${status.title}\nLive preview: ${absolute(job.links.previewUrl)}\nDownload ZIP: ${absolute(job.links.downloadUrl)}`, projectBlocks(job, status));
+            }
             else await update(job.channel, job.ts, status.error || 'The demo could not be built. Send a new request to try a smaller feature.');
             delete state.jobs[id]; await save();
           }
@@ -169,8 +172,13 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
     const user = body.user?.id, team = body.team?.id, channel = body.channel?.id;
     if (!permitted(team, user, channel, true) || !channel.startsWith('D') || !/^[a-f0-9]{32}$/.test(action.value || '')) return;
     try {
-      const link = await service.createHandoff(action.value, caller(user).session);
-      await client.chat.postMessage(message(channel, body.message?.thread_ts, 'Your fresh private preview link is ready.', [{ ...section('Open this link within 10 minutes. It connects the project to this browser.'), accessory: linkButton('Open demo', absolute(link)) }]));
+      const session = caller(user).session;
+      const status = service.projectStatus(action.value, session);
+      const links = status.state === 'ready' ? await service.createProjectLinks(action.value, session) : { previewUrl: await service.createHandoff(action.value, session) };
+      await client.chat.postMessage(message(channel, body.message?.thread_ts,
+        `Your private links are ready.\nLive preview: ${absolute(links.previewUrl)}${links.downloadUrl ? `\nDownload ZIP: ${absolute(links.downloadUrl)}` : ''}`,
+        [{ ...section('Open the preview within 10 minutes. Download links work directly until the project expires; refreshing replaces previous links.'), accessory: linkButton('Open live preview', absolute(links.previewUrl)) },
+          ...(links.downloadUrl ? [{ type: 'actions', elements: [linkButton('Download ZIP', absolute(links.downloadUrl))] }] : [])]));
     } catch (error) { await ephemeral(channel, user, publicError(error)).catch(log); }
   }
   const timer = autoPoll ? setInterval(() => void poll().catch(log), pollInterval) : null;

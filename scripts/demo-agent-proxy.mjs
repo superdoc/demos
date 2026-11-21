@@ -15,6 +15,9 @@ export function createDemoAgentProxy(fallback, fetchBackend = fetch) {
       upstream.search = url.search;
       const forwarded = new Request(upstream, request);
       forwarded.headers.delete('host');
+      // Machine sessions are only accepted from direct, authenticated API clients.
+      forwarded.headers.delete('X-Demo-Agent-Session');
+      forwarded.headers.delete('Authorization');
       forwarded.headers.set('X-Demo-Agent-Token', env.DEMO_AGENT_PROXY_TOKEN);
       // This repository's gallery is always customer-facing.
       forwarded.headers.set('X-Demo-Agent-Target', 'demo-bot-ext');

@@ -455,3 +455,10 @@ building locally does not provision infrastructure or publish anything.
    State which behaviors were mocked, tested in a real editor, or left unverified.
 7. Rebuild/copy the public assets and restart the local service so the user can
    inspect the actual result. Never expose secrets or deploy without authorization.
+
+## Direct links and API clients
+
+Completed Slack builds return separate live-preview and direct ZIP links in the
+requester’s DM. Downloads do not need a browser or cookies. See [API.md](./API.md)
+for authenticated HTTP calls and the one-command agent client, including scoped
+link access, refresh/revocation and expiry.

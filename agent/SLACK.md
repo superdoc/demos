@@ -72,12 +72,17 @@ The app does not subscribe to ordinary public/private channel messages.
 - Search never starts a build. Click **Build this demo** on your own offer to
   generate code. Offers last ten minutes and are single use.
 - The bot confirms it can DM you before starting a build, then sends a private
-  preview link. It updates that DM as the build progresses and when ready.
+  preview link. When ready, that DM contains separate **Open live preview** and
+  **Download ZIP** buttons, plus both URLs in plain message text. The ZIP link
+  works directly with `curl` or an agent, without a browser, cookies or credentials.
 - Open the link and click **Open demo** to bind the project to your browser.
   The preview includes **Download project** and the impact scorecard handoff.
-- An unopened link lasts ten minutes. **Get a fresh private link** issues a new
-  one without another model call or build. Only the requesting Slack account can
-  refresh it, and the project still expires at its original time.
+- An unopened link lasts ten minutes. **Refresh links** issues fresh
+  preview/download links without another model call or build. Refreshing revokes
+  the old download link and any unclaimed preview link. Only the requesting Slack account can
+  refresh them, and the project still expires at its original time.
+
+For a fully headless prompt/build/download workflow, see [API.md](./API.md).
 
 ## Access and lifecycle
 
@@ -86,7 +91,11 @@ one workspace. Signatures cover the raw body, use constant-time comparison and
 reject timestamps older than five minutes. Bot messages and message edits are ignored. Interactive actions
 are acknowledged before work; only the original requester can consume an offer.
 
-Project links are sent only by DM, with unfurls disabled. Treat an unopened link
+Project links are sent only by DM, with unfurls disabled. Direct ZIP links are
+download-only bearer links: anyone holding one can download source until the
+project expires. They do not grant preview/status access. Keep them private.
+
+Browser preview links retain the existing claim policy: Treat an unopened link
 as a private, single-use bearer link: whoever receives it can claim it. GETs do
 not claim links, so Slack unfurls and security scanners cannot consume them.
 An explicit same-origin form POST claims the link, consumes its token and stores
