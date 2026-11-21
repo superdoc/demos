@@ -3,6 +3,9 @@ import { toolFailed } from '../agent/agent-run-progress.js';
 export const sourceMutations = new Set(['doc.citations.sources.insert', 'doc.citations.sources.update', 'doc.citations.sources.remove']);
 export const citationMutations = new Set(['doc.citations.insert', 'doc.citations.update', 'doc.citations.remove']);
 export const bibliographyMutations = new Set(['doc.citations.bibliography.insert', 'doc.citations.bibliography.configure', 'doc.citations.bibliography.rebuild', 'doc.citations.bibliography.remove']);
+// The SDK now advertises tracked insertion, but this app's formatting and
+// export pipeline has not yet been verified to preserve those revisions.
+const unverifiedTrackedInsertions = new Set(['doc.citations.insert', 'doc.citations.bibliography.insert']);
 export const nativeOperationId = value => typeof value === 'string' ? (value.trim().startsWith('doc.') ? value.trim() : `doc.${value.trim()}`) : '';
 export const nativeCalls = args => Array.isArray(args?.calls) ? args.calls : [args];
 
@@ -56,6 +59,10 @@ export function createReferenceApi({ handle, toolkit, withMutation, onChanged, o
     const hasSources = calls.some(call => sourceMutations.has(nativeOperationId(call?.operationId)));
     const hasCitations = calls.some(call => citationMutations.has(nativeOperationId(call?.operationId)));
     const hasBibliographies = calls.some(call => bibliographyMutations.has(nativeOperationId(call?.operationId)));
+    if (options?.enforceChangeMode === 'tracked') {
+      const unsupported = calls.find(call => unverifiedTrackedInsertions.has(nativeOperationId(call?.operationId)));
+      if (unsupported) throw new Error(`${nativeOperationId(unsupported.operationId)} is refused under enforceChangeMode: "tracked". Nothing was changed.`);
+    }
     if (!hasSources && !hasBibliographies && !hasCitations) return toolkit.dispatch(handle, 'superdoc_api_call', args, options);
     return withMutation(async () => {
       let governed = structuredClone(args);
