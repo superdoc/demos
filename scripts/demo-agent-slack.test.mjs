@@ -79,7 +79,7 @@ test('DMs and explicit channel mentions reuse catalog search without automatical
   assert.equal(f.calls[0].reasoning.effort, 'low');
   assert.equal(f.sent.at(-1).thread_ts, '123.456');
   const result = f.updates.at(-1);
-  assert.equal(result.blocks[1].accessory.url, f.origin + '/review/');
+  assert.equal(result.blocks[1].accessory.url, 'https://demos.superdoc.dev/review/');
   assert.ok(!JSON.stringify(result).includes('xoxb-'));
 });
 
@@ -252,4 +252,20 @@ test('the Slack manifest and public origin enforce a bounded single-workspace in
   assert.deepEqual(manifest.oauth_config.scopes.bot, ['app_mentions:read', 'chat:write', 'im:history', 'im:write']);
   assert.equal(slackPublicOrigin('http://localhost:4173'), 'http://localhost:4173');
   for (const url of ['http://public.example', 'https://user:secret@example.com', 'https://example.com/path', 'https://example.com/?key=secret']) assert.throws(() => slackPublicOrigin(url));
+});
+
+test('catalog examples use the gallery host while generated previews and ZIPs use the backend host', async (t) => {
+  const catalog = JSON.parse(await readFile(new URL('../demos.json', import.meta.url), 'utf8'));
+  const f = await fixture(t, { service: { catalog }, answer: { ...answer, canBuild: false,
+    matches: [{ id: 'template-builder-api-v2', reason: 'Prepare and fill document templates.' }] } });
+  await f.say({ content: 'Find the existing Template Builder demo' });
+  assert.equal(f.updates.at(-1).blocks[1].accessory.url, 'https://demos.superdoc.dev/builder/');
+  assert.equal(f.calls.length, 1);
+  const generated = await fixture(t, { bot: { galleryUrl: 'https://other-gallery.example' } });
+  await generated.say();
+  assert.equal(generated.updates.at(-1).blocks[1].accessory.url, 'https://other-gallery.example/review/');
+  await generated.build(); await generated.bot.poll();
+  const links = generated.updates.at(-1).blocks.flatMap((block) => block.elements || []).filter((button) => button.url);
+  assert.deepEqual(links.map((link) => link.text.text), ['Open live preview', 'Download ZIP']);
+  assert.ok(links.every((link) => new URL(link.url).origin === generated.origin));
 });

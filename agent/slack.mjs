@@ -11,19 +11,20 @@ const section = (value) => ({ type: 'section', text: text(value) });
 const linkButton = (label, url) => ({ type: 'button', action_id: 'demo_bot_open', text: text(label), url });
 const publicError = (error) => error.status ? error.message.replace('This network', 'Your Slack account') : 'Demo Bot could not finish that request. Please try again.';
 
-export function slackPublicOrigin(value) {
+export function slackPublicOrigin(value, setting = 'DEMO_AGENT_PUBLIC_URL') {
   let url;
-  try { url = new URL(value); } catch { throw new Error('Set DEMO_AGENT_PUBLIC_URL to the gallery or agent origin'); }
+  try { url = new URL(value); } catch { throw new Error(`Set ${setting} to the gallery or agent origin`); }
   const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if ((!local && url.protocol !== 'https:') || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('DEMO_AGENT_PUBLIC_URL must be an HTTPS origin (HTTP localhost is allowed for development)');
+  if ((!local && url.protocol !== 'https:') || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error(`${setting} must be an HTTPS origin (HTTP localhost is allowed for development)`);
   return url.origin;
 }
 
 // Uses the existing service instance: gallery and Slack share one token ledger,
 // generation queue and project store. No browser cookies are exposed to Slack.
-export async function createSlackBot({ service, client, teamId, botUserId, publicUrl, allowedUsers = [], allowedChannels = [], now = Date.now, pollInterval = 3000, autoPoll = true, log = () => console.error('Demo Bot Slack operation failed.') }) {
+export async function createSlackBot({ service, client, teamId, botUserId, publicUrl, galleryUrl = 'https://demos.superdoc.dev', allowedUsers = [], allowedChannels = [], now = Date.now, pollInterval = 3000, autoPoll = true, log = () => console.error('Demo Bot Slack operation failed.') }) {
   if (!validId(teamId) || !validId(botUserId)) throw new Error('Slack workspace and bot identity are required');
   const origin = slackPublicOrigin(publicUrl);
+  const galleryOrigin = slackPublicOrigin(galleryUrl, 'DEMO_AGENT_GALLERY_URL');
   const filename = path.join(service.dataDirectory, 'slack-state.json');
   let state;
   try { state = JSON.parse(await readFile(filename, 'utf8')); }
@@ -73,7 +74,7 @@ export async function createSlackBot({ service, client, teamId, botUserId, publi
   function resultBlocks(result) {
     const blocks = [section(result.message)];
     for (const match of result.matches) {
-      const url = new URL(match.liveDemoUri, origin);
+      const url = new URL(match.liveDemoUri, galleryOrigin);
       if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) continue;
       blocks.push({ ...section(`${match.title}\n${match.reason}`), accessory: linkButton('Open demo', url.href) });
     }
@@ -237,7 +238,7 @@ export async function startSlackBot(service, { env = process.env, WebClient } = 
   const client = new Client(env.SLACK_BOT_TOKEN, { logger, retryConfig: { retries: 2 } });
   const auth = await client.auth.test();
   if (env.SLACK_TEAM_ID && auth.team_id !== env.SLACK_TEAM_ID) throw new Error('Slack token belongs to a different workspace');
-  const bot = await createSlackBot({ service, client, teamId: auth.team_id, botUserId: auth.user_id, publicUrl,
+  const bot = await createSlackBot({ service, client, teamId: auth.team_id, botUserId: auth.user_id, publicUrl, galleryUrl: env.DEMO_AGENT_GALLERY_URL,
     allowedUsers: (env.SLACK_ALLOWED_USERS || '').split(',').map((id) => id.trim()).filter(Boolean),
     allowedChannels: (env.SLACK_ALLOWED_CHANNELS || '').split(',').map((id) => id.trim()).filter(Boolean),
   });

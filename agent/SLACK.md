@@ -48,6 +48,11 @@ private previews work without going through the gallery. A personal Slack
 connector does not supply a bot token or signing secret for this app. Slack
 remains disabled until these app credentials are configured.
 
+Existing catalog examples use `DEMO_AGENT_GALLERY_URL`, which defaults to
+`https://demos.superdoc.dev`. For example, Template Builder links to
+`https://demos.superdoc.dev/builder/`. Keep this separate from the backend's
+`DEMO_AGENT_PUBLIC_URL`, which serves generated previews and ZIP downloads.
+
 Optional allowlists use comma-separated Slack IDs:
 
 ```dotenv

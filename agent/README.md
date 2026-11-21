@@ -375,6 +375,7 @@ restart; do not erase `.demo-agent/` to reload code.
 | `DEMO_AGENT_ORIGINS` | Comma-separated allowed gallery origins |
 | `DEMO_AGENT_PROXY_TOKEN` | Secret shared by the Pages proxy and backend |
 | `DEMO_AGENT_BACKEND_URL` | Gallery/Pages server setting pointing to `demo-bot-ext` |
+| `DEMO_AGENT_GALLERY_URL` | Slack catalog-link origin; defaults to `https://demos.superdoc.dev` |
 | `DEMO_AGENT_INSTANCE` | Deployment label: `demo-bot-ext` or `demo-bot-int`; same behavior |
 | `DEMO_AGENT_REVISION` | Identical source fingerprint on both services |
 | `DEMO_AGENT_LOCAL` | Use local catalog links when set to `1` |
