@@ -91,7 +91,7 @@ editing only their copies does not change the next release.
 ## Slack interface
 
 The optional [Slack app](SLACK.md) uses the same service instance through its
-server-only `search`, `startProject`, `projectStatus` and `createHandoff` methods.
+server-only `search`, `startProject`, `projectStatus`, `createHandoff` and `createProjectLinks` methods.
 The HTTP routes delegate to the same search/build operations. `slack.mjs` owns
 Signed HTTP event handlers, user/thread isolation, owner-bound offers, private delivery,
 retry deduplication and persisted completion notifications. `slack-manifest.json`
@@ -102,7 +102,8 @@ pinned in `agent/package-lock.json`. Slack is explicitly opt-in.
 POST consumes the ten-minute handoff token and binds the project to a browser
 session. GETs never transfer access. Slack retains its separate owner session;
 only one secondary browser session is accepted at a time. Handoff URLs are sent
-only in private DMs, with unfurls disabled. See SLACK.md for the bearer-link trust
+by Slack only in private DMs, with unfurls disabled. Authenticated API owners
+receive their links directly in JSON. See SLACK.md for the bearer-link trust
 boundary and setup requirements.
 
 ## Access and recovery
@@ -238,14 +239,17 @@ generator instructions.
 | `GET /agent/api/projects/:id` | Session-bound state, current build progress, title, summary, guidance, expiry and error |
 | `GET /agent/projects/:id/` | Trusted preview shell |
 | `GET /agent/projects/:id/preview` | Sandboxed generated demo HTML; ready projects only |
-| `GET /agent/projects/:id/download` | Source ZIP; ready projects only |
+| `GET /agent/projects/:id/download` | Session-bound source ZIP; ready projects only |
+| `POST /agent/api/projects/:id/links` | Owner-session `{}` → private preview and direct ZIP links; ready projects only |
+| `GET /agent/projects/:id/download/:token` | Download-only bearer ZIP; no browser/cookies needed |
 | `GET /agent/gallery.js`, `/agent/project.js`, `/agent/agent.css` | Trusted browser assets |
 | `GET /superdoc-logo.png` | Branding asset, served by the gallery or standalone server |
 
-POSTs require JSON and a valid Origin. Invalid/expired offers and unfinished
+API POSTs require JSON. Browser POSTs require a valid Origin; explicit bearer-
+authenticated API sessions do not use browser Origin or cookies (see API.md). Invalid/expired offers and unfinished
 projects return 409. Missing/expired projects return 410. Limits return 429;
 missing provider configuration returns 503. Valid project IDs from another
-session return 404. Empty, null, array and scalar JSON bodies return 400. Generation failures are persisted
+session return 404. Missing/invalid JSON, null, array and scalar bodies return 400. Generation failures are persisted
 and reported through project state; an accepted HTTP 202 does not imply success.
 
 Gallery requests set `Accept: application/x-ndjson`. The stream contains an
@@ -312,12 +316,15 @@ historical reservations or increase limits without reviewing spend implications.
   atomic persistence, admission, rate limits and budget ownership first.
 - A random HttpOnly, SameSite=Strict `demo_agent` cookie binds build offers to
   the requesting browser session; persisted projects store its hash and enforce
-  it on every read and download. It is Secure behind the authenticated proxy
+  it on normal reads and cookie-based downloads. A separately issued ZIP
+  capability grants only source download until expiry; possession of that URL
+  does not grant preview/status access. The cookie is Secure behind the authenticated proxy
   or on an encrypted server connection.
 - Direct local requests use the socket IP for throttling. Production accepts
   the client-IP header only behind the configured proxy token. Never trust a
   public `X-Forwarded-For` header for spending controls.
-- Production requires an allowlisted Origin and proxy token. The Pages proxy
+- Production browser traffic requires an allowlisted Origin and proxy token;
+  direct API sessions require an explicit bearer credential. The Pages proxy
   overwrites the forwarded token/client-IP headers and validates its backend
   origin. No provider credential reaches the client or generated download.
 - The iframe has `sandbox="allow-scripts"` without `allow-same-origin`. Its
@@ -447,7 +454,8 @@ building locally does not provision infrastructure or publish anything.
    Keep the server, trusted shell and untrusted generated preview separate.
 3. Preserve explicit build consent, strict output schemas, pinned real SuperDoc,
    bounded requests/code, spend reservation, admission, expiry and sandboxing.
-4. Keep project reads session-bound and downloaded agent instructions free of
+4. Keep normal project reads session-bound, direct ZIP capabilities download-only,
+   and downloaded agent instructions free of
    visitor/model text. Update API, UI, downloads and this guide together.
 5. Verify new SuperDoc signatures against the pinned package before teaching
    them to the generator. Retain a synthetic regression for every API failure.

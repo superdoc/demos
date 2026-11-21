@@ -137,8 +137,9 @@ The browser cannot override the model, budget, or project size.
 Projects are persisted in the ignored `.demo-agent/` directory. Every request
 checks expiry; the timer deletes expired files within 15 seconds, and startup
 also culls expired projects. A valid project survives a restart with its original
-expiry. Project pages, status, previews and downloads require the creating
-browser session. Interrupted builds become failed projects. Failed builds free
+expiry. Project pages, status, previews and cookie-based downloads require the
+owner session. Separately issued direct ZIP links grant download-only access
+until project expiry. Interrupted builds become failed projects. Failed builds free
 capacity immediately and are deleted after five minutes. Downloads omit the
 visitor prompt; generated guidance stays in untrusted `demo-context.json` rather
 than being interpolated into `AGENTS.md`. Preview JavaScript runs in an
