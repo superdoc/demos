@@ -20,6 +20,7 @@ type Scenario = {
   steps: Step[];
   checkInput?: (input: ModelInput, parts: ContentPart[]) => void;
   answer: string;
+  streamReply?: { first: string; startAfter?: Promise<void>; continueAfter: Promise<void> };
 };
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAIAAABt+uBvAAAApElEQVR4nO3QMQ0AIBDAwF8QiWNk4YCVDpdUQHOz9tGj+X4QDxAgQIAAhQMECBAgQOEAAQIECFA4QIAAAQIUDhAgQIAAhQMECBAgQOEAAQIECFA4QIAAAQIUDhAgQIAAhQMECBAgQOEAAQIECFA4QIAAAQIUDhAgQIAAhQMECBAgQOEAAQIECFA4QIAAAQIUDhAgQIAAhQMECBAgQOEAAQIE6GcXyyhaaFjrkaIAAAAASUVORK5CYII=', 'base64');
@@ -31,6 +32,8 @@ let demo: Awaited<ReturnType<typeof startAgentDemo>> | undefined;
 let scenario: Scenario | undefined;
 let roomCount = 0;
 let transcriptions = 0;
+let modelRequests = 0;
+let spoken: string[] = [];
 
 async function handleModelRequest(request: IncomingMessage, response: ServerResponse) {
   const chunks: Buffer[] = [];
@@ -47,8 +50,10 @@ async function handleModelRequest(request: IncomingMessage, response: ServerResp
     return;
   }
   assert.equal(request.url, '/v1/chat/completions');
-  assert.ok(scenario, 'The browser should submit only after Send is clicked.');
-  const input = JSON.parse(body.toString()) as ModelInput;
+  modelRequests++;
+  const input = JSON.parse(body.toString()) as ModelInput & { stream?: boolean };
+  assert.equal(input.stream, true);
+  assert.ok(scenario, 'The browser submitted an unexpected prompt.');
   const userIndex = input.messages.findLastIndex(({ role }) => role === 'user');
   const content = input.messages[userIndex].content;
   const parts: ContentPart[] = Array.isArray(content) ? content : [{ type: 'text', text: content ?? '' }];
@@ -65,12 +70,20 @@ async function handleModelRequest(request: IncomingMessage, response: ServerResp
   }
   const step = scenario.steps[results.length];
   if (step) assert.ok(input.tools.some(({ function: fn }) => fn.name === step.tool.name), `Missing tool ${step.tool.name}`);
-  const delta = step ? {
+  let delta = step ? {
     tool_calls: [{ index: 0, id: `composer-${results.length}`, type: 'function', function: {
       name: step.tool.name, arguments: JSON.stringify(step.tool.args),
     } }],
   } : { content: scenario.answer };
   response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+  if (!step && scenario.streamReply) {
+    const { first, startAfter, continueAfter } = scenario.streamReply;
+    assert.ok(delta.content?.startsWith(first));
+    await startAfter;
+    response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: first }, finish_reason: null }] })}\n\n`);
+    await continueAfter;
+    delta = { content: delta.content.slice(first.length) };
+  }
   for (const choice of [
     { delta, finish_reason: null },
     { delta: {}, finish_reason: step ? 'tool_calls' : 'stop' },
@@ -80,8 +93,40 @@ async function handleModelRequest(request: IncomingMessage, response: ServerResp
   response.end('data: [DONE]\n\n');
 }
 
+function handleVoiceConnection(socket: {
+  on: (event: 'message', handler: (raw: Buffer) => void) => void;
+  send: (data: string) => void;
+}, request: IncomingMessage, logs: string[]) {
+  const send = (event: object) => socket.send(JSON.stringify(event));
+  let text: string | undefined;
+  socket.on('message', (raw) => {
+    try {
+      assert.equal(request.url, '/v1/realtime?model=gpt-realtime-2.1-mini');
+      assert.equal(request.headers.authorization, 'Bearer local-test-only');
+      const event = JSON.parse(raw.toString());
+      if (event.type === 'session.update') {
+        assert.equal(event.session.audio.output.voice, 'alloy');
+        assert.deepEqual(event.session.audio.output.format, { type: 'audio/pcm', rate: 24_000 });
+        assert.match(event.session.instructions, /gender-neutral/);
+        send({ type: 'session.updated' });
+      } else if (event.type === 'conversation.item.create') {
+        text = event.item.content[0].text;
+      } else if (event.type === 'response.create') {
+        assert.ok(text);
+        spoken.push(text);
+        // A silent one-second PCM clip exercises native decoding, scheduling, and cancellation.
+        send({ type: 'response.output_audio.delta', delta: Buffer.alloc(48_000).toString('base64') });
+        send({ type: 'response.done', response: { status: 'completed' } });
+      }
+    } catch (error) {
+      logs.push(`[voice] ${error}\n`);
+      send({ type: 'error' });
+    }
+  });
+}
+
 test.beforeAll(async ({}, testInfo) => {
-  demo = await startAgentDemo(path.join(testInfo.project.outputDir, `agent-composer-demo-${testInfo.workerIndex}`), handleModelRequest);
+  demo = await startAgentDemo(path.join(testInfo.project.outputDir, `agent-composer-demo-${testInfo.workerIndex}`), handleModelRequest, handleVoiceConnection);
 });
 
 test.afterAll(async () => {
@@ -91,6 +136,8 @@ test.afterAll(async () => {
 test.beforeEach(() => {
   scenario = undefined;
   transcriptions = 0;
+  modelRequests = 0;
+  spoken = [];
 });
 
 function promptBox(page: Page) {
@@ -590,7 +637,7 @@ test('dictation stops after silence and leaves a prompt that can be submitted', 
     const upload = performance.getEntriesByName(url, 'resource')[0];
     return upload.startTime - silence.startTime;
   }, `${api}/api/rooms/${room}/transcriptions`);
-  expect(silenceBeforeUpload).toBeGreaterThanOrEqual(350);
+  expect(silenceBeforeUpload).toBeGreaterThanOrEqual(450);
   expect(silenceBeforeUpload).toBeLessThan(1_500);
   expect(jobs).toHaveLength(0);
   await expect(editor).toContainText('LEFTRIGHT');
@@ -598,4 +645,188 @@ test('dictation stops after silence and leaves a prompt that can be submitted', 
     prompt: transcript, steps: [{ tool: insertText('DICTATED') }], answer: 'Inserted the dictated words.',
   }, { fill: false });
   await expect(editor).toContainText('LEFTDICTATEDRIGHT');
+});
+
+type VoiceFixture = {
+  recordings: MediaStreamTrack[];
+  playInput: () => void;
+  starts: number;
+  stops: number;
+};
+
+async function installVoiceFixture(page: Page) {
+  await page.addInitScript(() => {
+    const audio: VoiceFixture = { recordings: [], starts: 0, stops: 0, playInput() {} };
+    (window as Window & { voiceFixture: VoiceFixture }).voiceFixture = audio;
+    const startSource = AudioBufferSourceNode.prototype.start;
+    const stopSource = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.start = function (...args) {
+      audio.starts++;
+      return startSource.apply(this, args);
+    };
+    AudioBufferSourceNode.prototype.stop = function (...args) {
+      audio.stops++;
+      return stopSource.apply(this, args);
+    };
+    navigator.mediaDevices.getUserMedia = async () => {
+      const context = new AudioContext();
+      await context.resume();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const output = context.createMediaStreamDestination();
+      oscillator.connect(gain).connect(output);
+      gain.gain.value = 0;
+      oscillator.start();
+      const track = output.stream.getAudioTracks()[0];
+      audio.recordings.push(track);
+      const stop = track.stop.bind(track);
+      track.stop = () => {
+        if (track.readyState === 'ended') return;
+        stop();
+        void context.close();
+      };
+      audio.playInput = () => {
+        const start = context.currentTime + 0.05;
+        gain.gain.setValueAtTime(0.15, start);
+        gain.gain.setValueAtTime(0, start + 0.4);
+      };
+      return output.stream;
+    };
+  });
+}
+
+test('the butterfly is the only progress indicator and stays below the streamed reply', async ({ page }, testInfo) => {
+  const { room } = await openAtCaret(page);
+  const first = 'The opening gets to the point quickly.';
+  const answer = `${first} The scope could be clearer.`;
+  let startReply = () => {};
+  let finish = () => {};
+  const startAfter = new Promise<void>((resolve) => { startReply = resolve; });
+  const continueAfter = new Promise<void>((resolve) => { finish = resolve; });
+  const submission = submit(page, room, {
+    prompt: 'Review the opening paragraph.', steps: [], answer,
+    streamReply: { first, startAfter, continueAfter },
+  });
+  const reply = page.locator('.message-turn .message.assistant');
+  const status = reply.getByRole('status');
+  const wing = status.locator('.agent-butterfly-wing').first();
+  try {
+    await expect(status).toBeVisible();
+    await expect(reply.locator('.message-markdown')).toHaveCount(0);
+    await expect(wing).toHaveCSS('animation-name', 'agent-butterfly-flap');
+
+    startReply();
+    await expect(reply.getByText(first, { exact: true })).toBeVisible();
+    await expect(reply.locator('.message-markdown + .agent-working')).toBeVisible();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(wing).toHaveCSS('animation-name', 'none');
+    await reply.screenshot({ path: testInfo.outputPath('working-butterfly.png') });
+  } finally {
+    startReply();
+    finish();
+  }
+  await submission;
+  expect(modelRequests).toBe(1);
+  await expect(page.locator('.agent-working')).toHaveCount(0);
+});
+
+test('voice mode sends after a pause, speaks while the job runs, and listens again', async ({ page }) => {
+  await installVoiceFixture(page);
+  const { room, editor } = await openAtCaret(page);
+  const firstSentence = 'I inserted the dictated words.';
+  const answer = `${firstSentence} They’re between the original words.`;
+  let releaseReply = () => {};
+  const continueAfter = new Promise<void>((resolve) => { releaseReply = resolve; });
+  scenario = {
+    prompt: transcript, steps: [{ tool: insertText('DICTATED') }], answer,
+    streamReply: { first: `${firstSentence} `, continueAfter },
+  };
+  const voice = page.getByRole('button', { name: 'Voice mode' });
+  const tracks = () => page.evaluate(() => (window as Window & { voiceFixture: VoiceFixture }).voiceFixture
+    .recordings.map((track) => track.readyState));
+  try {
+    await expect(voice).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await promptBox(page).fill('Keep this draft');
+    const sent = page.waitForResponse((result) =>
+      result.url() === `${api}/api/rooms/${room}/jobs` && result.request().method() === 'POST');
+    await voice.click();
+    await expect(voice).toHaveAttribute('aria-pressed', 'true');
+    await page.mouse.move(0, 0);
+    await expect(voice).toHaveCSS('background-color', 'rgb(41, 100, 192)');
+    await expect(voice).toHaveCSS('color', 'rgb(255, 255, 255)');
+    await expect(page.getByRole('status').filter({ hasText: /^Listening…$/ })).toBeVisible();
+    await page.evaluate(() => (window as Window & { voiceFixture: VoiceFixture }).voiceFixture.playInput());
+    const accepted = await sent;
+    expect(accepted.status()).toBe(202);
+    const job = await accepted.json() as Job;
+    const speechUrl = `${api}/api/rooms/${room}/jobs/${job.id}/speech`;
+    const body = JSON.stringify({ text: firstSentence });
+    expect((await fetch(speechUrl, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })).status).toBe(401);
+    expect((await fetch(speechUrl, { method: 'POST', body, headers: {
+      'Content-Type': 'application/json', Authorization: 'Bearer 00000000-0000-4000-8000-000000000000',
+    } })).status).toBe(404);
+    await expect.poll(() => spoken).toEqual([firstSentence]);
+    await expect(page.getByText('Working on it…', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+    expect(await tracks()).toEqual(['ended']);
+    expect(transcriptions).toBe(1);
+    await expect(editor).toContainText('LEFTDICTATEDRIGHT');
+    releaseReply();
+
+    await expect(page.locator('.message.assistant').filter({ hasText: answer })).toBeVisible();
+    await expect.poll(() => spoken).toEqual([firstSentence, 'They’re between the original words.']);
+    expect(await tracks()).toEqual(['ended']);
+    await expect(page.getByRole('status').filter({ hasText: 'is speaking' })).toBeVisible();
+    await expect(page.getByRole('status').filter({ hasText: 'Listening' })).toBeVisible();
+    expect(await tracks()).toEqual(['ended', 'live']);
+    await voice.click();
+    await expect(voice).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(tracks).toEqual(['ended', 'ended']);
+    await expect(promptBox(page)).toHaveValue('Keep this draft');
+    await expect(page.locator('.message.user').filter({ hasText: transcript })).toBeVisible();
+    await expect(page.locator('.message.assistant').filter({ hasText: answer })).toBeVisible();
+    await submit(page, room, {
+      prompt: 'Keep this draft', steps: [], answer: 'The draft is still here.',
+    }, { fill: false });
+    expect(spoken).toEqual([firstSentence, 'They’re between the original words.']);
+    await page.reload();
+    await expect(page.locator('.message.assistant').filter({ hasText: answer })).toBeVisible();
+  } finally {
+    releaseReply();
+  }
+});
+
+test('turning off voice mode stops playback and keeps the reply in chat', async ({ page }) => {
+  await installVoiceFixture(page);
+  const { room } = await openAtCaret(page);
+  const voice = page.getByRole('button', { name: 'Voice mode' });
+  await voice.click();
+  await expect(page.getByRole('status').filter({ hasText: 'Listening' })).toBeVisible();
+  const answer = 'Here’s what I found.';
+  let finish = () => {};
+  const continueAfter = new Promise<void>((resolve) => { finish = resolve; });
+  const submission = submit(page, room, {
+    prompt: 'Review my document', steps: [], answer,
+    streamReply: { first: '', continueAfter },
+  });
+  try {
+    const reply = page.locator('.message-turn .message.assistant');
+    await expect(reply.locator('.agent-working')).toBeVisible();
+    await expect(reply.locator('.message-markdown')).toHaveCount(0);
+    expect(spoken).toEqual([]);
+  } finally {
+    finish();
+  }
+  await submission;
+  const audioState = () => page.evaluate(() => {
+    const { recordings, starts, stops } = (window as Window & { voiceFixture: VoiceFixture }).voiceFixture;
+    return { tracks: recordings.map((track) => track.readyState), starts, stops };
+  });
+  await expect.poll(audioState).toEqual({ tracks: ['ended'], starts: 1, stops: 0 });
+  await voice.click();
+  await expect(voice).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(audioState).toEqual({ tracks: ['ended'], starts: 1, stops: 1 });
+  await expect(page.locator('.message.assistant').filter({ hasText: answer })).toBeVisible();
+  expect(spoken).toEqual([answer]);
+  expect(transcriptions).toBe(0);
 });

@@ -148,6 +148,15 @@ export class ApiClient {
     return this.request(`${this.roomPath(roomId)}/transcriptions`, { method: 'POST', headers: this.agentHeaders(), body, signal });
   }
 
+  synthesizeReply(roomId: string, jobId: string, text: string, signal: AbortSignal): Promise<ArrayBuffer> {
+    return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}/speech`, {
+      method: 'POST',
+      headers: { ...this.agentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal,
+    }, (response) => response.arrayBuffer());
+  }
+
   getJob(roomId: string, jobId: string, signal?: AbortSignal): Promise<Job> {
     return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`, { headers: this.agentHeaders(), signal });
   }

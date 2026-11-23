@@ -4,11 +4,11 @@ const plantNames = [
   'Alder', 'Aloe', 'Aspen', 'Aster', 'Azalea', 'Basil', 'Begonia', 'Birch',
   'Bluebell', 'Camellia', 'Cedar', 'Chamomile', 'Chrysanthemum', 'Clover', 'Cypress', 'Dahlia',
   'Daisy', 'Dogwood', 'Elderberry', 'Elm', 'Fern', 'Fig', 'Fir', 'Gardenia',
-  'Ginkgo', 'Hawthorn', 'Hazel', 'Hibiscus', 'Holly', 'Honeysuckle', 'Iris', 'Ivy',
-  'Jasmine', 'Juniper', 'Larch', 'Lavender', 'Lilac', 'Linden', 'Lotus', 'Magnolia',
-  'Maple', 'Marigold', 'Mimosa', 'Mint', 'Myrtle', 'Oak', 'Olive', 'Orchid',
-  'Peony', 'Pine', 'Poppy', 'Redwood', 'Rose', 'Rosemary', 'Sage', 'Sequoia',
-  'Spruce', 'Sycamore', 'Thyme', 'Tulip', 'Verbena', 'Violet', 'Willow', 'Wisteria',
+  'Ginkgo', 'Hawthorn', 'Hazel', 'Hibiscus', 'Holly', 'Iris', 'Ivy', 'Jasmine',
+  'Juniper', 'Larch', 'Lavender', 'Lilac', 'Linden', 'Lotus', 'Magnolia', 'Maple',
+  'Marigold', 'Myrtle', 'Oak', 'Olive', 'Orchid', 'Peony', 'Pine', 'Poppy',
+  'Redwood', 'Rose', 'Rosemary', 'Sage', 'Sequoia', 'Spruce', 'Sycamore', 'Thyme',
+  'Tulip', 'Verbena', 'Violet', 'Willow', 'Wisteria',
 ];
 
 export function chooseAgentName(used) {

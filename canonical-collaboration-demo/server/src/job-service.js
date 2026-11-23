@@ -75,6 +75,12 @@ export class JobService {
     return this.#agent.transcribe(bytes, filename);
   }
 
+  synthesize(roomId, sessionId, jobId, text, signal) {
+    this.#rooms.require(roomId);
+    this.get(roomId, sessionId, jobId);
+    return this.#agent.synthesize(text, signal);
+  }
+
   get(roomId, sessionId, jobId) {
     const record = this.#records.get(jobId);
     if (!record || record.room_id !== roomId || record[jobOwner] !== sessionId) {

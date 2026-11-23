@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { bibliographyInput } from '../reference-integration/native/bibliography-input.js';
 // The route registration table is at the end of this file.
 import { jobBodyLimit } from '../agent-input.js';
+import { maximumSpeechCharacters } from '../agent-speech.js';
 import { config } from '../config.js';
 
 export const roomPath = '/api/rooms/:roomId';
@@ -276,6 +277,28 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     return reply.header('Cache-Control', 'no-store, private').send(record);
   }
 
+  async function synthesize(request, reply) {
+    const sessionId = agentSession(request);
+    const { roomId, jobId } = request.params;
+    const text = typeof request.body?.text === 'string' ? request.body.text.trim() : '';
+    if (!text || text.length > maximumSpeechCharacters) {
+      throw app.httpErrors.badRequest(`Speech text must contain between 1 and ${maximumSpeechCharacters} characters.`);
+    }
+    const controller = new AbortController();
+    const disconnect = () => controller.abort();
+    reply.raw.once('close', disconnect);
+    try {
+      const audio = await jobService.synthesize(roomId, sessionId, jobId, text, controller.signal);
+      return reply.type('audio/wav').header('Cache-Control', 'no-store, private').send(audio);
+    } catch (error) {
+      if (controller.signal.aborted) return reply;
+      if (error.statusCode) throw error;
+      throw Object.assign(new Error('OpenAI voice playback is temporarily unavailable.'), { statusCode: 502 });
+    } finally {
+      reply.raw.off('close', disconnect);
+    }
+  }
+
   function streamJob(request, reply) {
     const { roomId, jobId } = request.params;
     const sessionId = agentSession(request);
@@ -335,6 +358,7 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     // Enqueue an agent job for the room's current document.
     { url: `${roomPath}/jobs`, method: 'POST', bodyLimit: jobBodyLimit, handler: createJob },
     { url: `${roomPath}/transcriptions`, method: 'POST', handler: transcribe },
+    { url: `${roomPath}/jobs/:jobId/speech`, method: 'POST', bodyLimit: 4096, handler: synthesize },
     // Read the current status and result of an agent job.
     { url: `${roomPath}/jobs/:jobId`, method: 'GET', handler: getJob },
     // Cancel an active agent job.

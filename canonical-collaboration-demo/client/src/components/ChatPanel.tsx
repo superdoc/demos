@@ -1,5 +1,5 @@
 const demoMetric = (action: string, capability = 'document') => { try { window.dispatchEvent(new CustomEvent('superdoc:demo', { detail: { action, capability } })); } catch { /* Analytics must not affect the demo. */ } };
-import { FormEvent, KeyboardEvent, PointerEvent, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, PointerEvent, useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
 import type { SuperDoc } from 'superdoc';
 import type { SelectionSlice, SelectionTarget } from 'superdoc/ui';
@@ -7,6 +7,7 @@ import { api } from '../api';
 import type { AttachmentPreview, ChatMessage, Job, PromptDocumentTarget } from '../types';
 import { AgentAttachment, encodeAttachment, type DraftAttachment } from './AgentAttachment';
 import { AgentSelectionPreview } from './AgentSelectionPreview';
+import { useAgentSpeech } from './useAgentSpeech';
 import { usePromptDictation } from './usePromptDictation';
 
 type ChatPanelProps = {
@@ -70,33 +71,40 @@ function AttachmentThumbnail({ attachment }: { attachment: AttachmentPreview }) 
   );
 }
 
-function ChatMessageBubble({ role, content, attachmentPreview, agentName = DEFAULT_AGENT_NAME }: ChatMessage & { agentName?: string }) {
+function ChatMessageBubble({ role, content, attachmentPreview, agentName = DEFAULT_AGENT_NAME, working }: ChatMessage & { agentName?: string; working?: boolean }) {
   return (
     <article className={`message ${role}`}>
-      <CopyMessageButton content={content} />
+      {content && <CopyMessageButton content={content} />}
       <span className="message-role">{role === 'user' ? 'You' : agentName}</span>
       {attachmentPreview && <AttachmentThumbnail attachment={attachmentPreview} />}
-      <MarkdownMessage content={content} />
+      {content && <MarkdownMessage content={content} />}
+      {working && <div className="agent-working" role="status">
+        <span className="visually-hidden">{agentName} is working.</span>
+        <span className="agent-butterfly" aria-hidden="true">
+          <span className="agent-butterfly-wing" />
+          <span className="agent-butterfly-wing agent-butterfly-wing-right" />
+          <span className="agent-butterfly-body" />
+        </span>
+      </div>}
     </article>
   );
 }
 
-function JobReply({ job, agentName }: { job: Job; agentName: string }) {
+function jobReply(job: Job) {
   if (job.status === 'failed') {
-    const message = job.error && /^(Could not read the attachment|The attachment )/.test(job.error)
+    return job.error && /^(Could not read the attachment|The attachment )/.test(job.error)
       ? job.error : 'I couldn’t finish that request. Please try again.';
-    return <ChatMessageBubble role="assistant" agentName={agentName} content={message} />;
   }
   if (job.status === 'cancelled') {
-    return <ChatMessageBubble role="assistant" agentName={agentName} content={job.answer
-      ? `${job.answer}\n\nI stopped here.` : 'I stopped working on that request.'} />;
+    return job.answer ? `${job.answer}\n\nI stopped here.` : 'I stopped working on that request.';
   }
-  if (job.answer) return <ChatMessageBubble role="assistant" agentName={agentName} content={job.answer} />;
+  return job.answer;
+}
+
+function JobReply({ job, agentName }: { job: Job; agentName: string }) {
   return (
-    <article className="message assistant" role="status">
-      <span className="message-role">{agentName}</span>
-      <p className="message-pending">Working on it…</p>
-    </article>
+    <ChatMessageBubble role="assistant" agentName={agentName} content={jobReply(job) ?? ''}
+      working={!TERMINAL.has(job.status)} />
   );
 }
 
@@ -104,6 +112,9 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
   const [prompt, setPrompt] = useState('');
   const [attachment, setAttachment] = useState<DraftAttachment>();
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const voiceModeRef = useRef(false);
   const cursorRef = useRef<SelectionTarget | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<Pick<SelectionSlice, 'quotedText' | 'tableSelection' | 'selectionTarget'>>();
@@ -121,17 +132,54 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
   const activeJob = jobs.find((job) => !TERMINAL.has(job.status));
   const reservedSpace = DOCUMENT_RESIZE_SPACE + reservedWidth;
 
-  const dictation = usePromptDictation(roomId, documentKey, (text) => {
+  const speech = useAgentSpeech(roomId);
+  const dictation = usePromptDictation(roomId, documentKey, (text, handsFree) => {
+    if (handsFree) {
+      if (voiceModeRef.current) void sendPrompt(text, true);
+      return;
+    }
     promptNavigationRef.current = null;
     setPrompt((current) => current.trim() ? `${current.trimEnd()} ${text}` : text);
     promptRef.current?.focus();
-  }, setError);
+  }, (message, handsFree) => {
+    if (handsFree) stopVoiceMode();
+    setError(message);
+  });
+  const cancelDictation = dictation.cancel;
+  const stopSpeech = speech.stop;
+  const stopVoiceMode = useCallback(() => {
+    voiceModeRef.current = false;
+    setVoiceMode(false);
+    cancelDictation();
+    stopSpeech();
+  }, [cancelDictation, stopSpeech]);
+
   const composerBusy = disabled || submitting || Boolean(activeJob);
   const canRecord = !composerBusy && !unavailableReason;
+  const canStartVoice = canRecord && dictation.status === 'idle';
   const micLabel = {
     idle: 'Dictate prompt', requesting: 'Cancel microphone request',
     listening: 'Stop recording', transcribing: 'Transcribing prompt',
   }[dictation.status];
+  const recordingStatus = {
+    idle: undefined, requesting: 'Waiting for microphone access…', listening: 'Listening…', transcribing: 'Transcribing…',
+  }[dictation.status];
+  const voiceStatus = voiceMode && (speech.speaking ? `${agentName ?? DEFAULT_AGENT_NAME} is speaking…`
+    : recordingStatus ?? (composerBusy ? 'Voice mode on' : 'Getting ready to listen…'));
+
+  useLayoutEffect(() => { stopVoiceMode(); }, [roomId, documentKey, hidden, unavailableReason, stopVoiceMode]);
+
+  const startVoiceRecording = useEffectEvent(() => { void dictation.start(true); });
+  useEffect(() => {
+    if (!voiceMode) return;
+    if (disabled && dictation.status !== 'idle') cancelDictation();
+    if (canRecord && !speech.speaking && dictation.status === 'idle') startVoiceRecording();
+  }, [voiceMode, disabled, canRecord, speech.speaking, dictation.status, cancelDictation]);
+
+  function voiceError() {
+    stopVoiceMode();
+    setError('OpenAI voice playback is unavailable. You can keep chatting here.');
+  }
 
   useEffect(() => {
     setAttachment(undefined);
@@ -233,15 +281,29 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   async function watchJob(initialJob: Job) {
     let job = initialJob;
+    let spokenPrefix = '';
     const controller = new AbortController();
     const { signal } = controller;
     streamRef.current = controller;
+    function readReply(reply: string | null | undefined, final: boolean) {
+      if (!voiceModeRef.current || !reply) return;
+      const offset = reply.startsWith(spokenPrefix) ? spokenPrefix.length : 0;
+      const unread = reply.slice(offset);
+      // Play whole sentences as they arrive and read any remaining text at completion.
+      const sentence = final ? undefined : [...unread.matchAll(/[.!?][”’"')\]]*(?=\s)/g)].at(-1);
+      const boundary = final ? unread.length : sentence && sentence.index + sentence[0].length;
+      if (!boundary) return;
+      spokenPrefix = reply.slice(0, offset + boundary);
+      speech.speak(job.id, unread.slice(0, boundary), voiceError);
+    }
     function update(next: Job) {
       job = next;
       setJobs((current) => current.map((candidate) => (candidate.id === job.id ? job : candidate)));
+      if (!TERMINAL.has(job.status)) readReply(job.answer, false);
     }
 
     try {
+      update(initialJob);
       if (!TERMINAL.has(job.status)) {
         try {
           await api.watchJob(roomId, job.id, update, signal);
@@ -253,7 +315,10 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
         await new Promise((resolve) => window.setTimeout(resolve, 1_000));
         if (!signal.aborted) update(await api.getJob(roomId, job.id, signal));
       }
-      if (!signal.aborted) await finishJob(job, signal);
+      if (!signal.aborted) {
+        readReply(jobReply(job), true);
+        await finishJob(job, signal);
+      }
     } catch (error) {
       if (!signal.aborted) throw error;
     } finally {
@@ -294,10 +359,19 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
       }
       return;
     }
-    const message = prompt.trim();
-    if (composerBusy || unavailableReason || !message || dictation.status !== 'idle') return;
+    if (!voiceMode && dictation.status !== 'idle') return;
+    await sendPrompt(prompt.trim());
+  }
+
+  async function sendPrompt(message: string, handsFree = false) {
+    if (composerBusy || submittingRef.current || unavailableReason || !message) return;
+    submittingRef.current = true;
     setError(undefined);
     setSubmitting(true);
+    if (voiceModeRef.current) {
+      cancelDictation();
+      speech.clear();
+    }
     let job: Job;
     try {
       const [target, encoded] = await Promise.all([captureDocumentTarget(), attachment && encodeAttachment(attachment)]);
@@ -314,14 +388,19 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
       submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
       submittedPromptsRef.current.push(message);
       promptNavigationRef.current = null;
-      setPrompt('');
+      if (!handsFree) setPrompt('');
       setAttachment(undefined);
       setJobs((current) => [...current, job]);
     } catch (caught) {
       demoMetric('ai_failed', 'collaboration');
+      if (handsFree) {
+        stopVoiceMode();
+        setPrompt((current) => current.trim() ? `${current.trimEnd()} ${message}` : message);
+      }
       setError(caught instanceof Error ? caught.message : String(caught));
       return;
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
     try {
@@ -421,22 +500,38 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
           <div className="agent-composer-actions">
             <AgentAttachment disabled={composerBusy} onChoose={(value) => { setAttachment(value); setError(undefined); }} onError={setError} />
             <button className={activeJob ? 'stop-agent' : undefined}
-              disabled={disabled || (!activeJob && (submitting || Boolean(unavailableReason) || !prompt.trim() || dictation.status !== 'idle'))}>
+              disabled={disabled || (!activeJob && (submitting || Boolean(unavailableReason) || !prompt.trim() || (!voiceMode && dictation.status !== 'idle')))}>
               {activeJob ? 'Stop' : 'Send'}
             </button>
-            <button type="button" className="agent-composer-icon agent-mic" aria-label={micLabel} title={micLabel}
-              aria-pressed={dictation.status === 'listening'} disabled={!canRecord || dictation.status === 'transcribing'}
-              onClick={() => { setError(undefined); void dictation.toggle(); }}>
-              <svg aria-hidden="true" viewBox="0 0 24 24">
-                <rect x="9" y="3" width="6" height="12" rx="3" />
-                <path d="M5 11v1a7 7 0 0 0 14 0v-1m-7 8v3" />
-              </svg>
-            </button>
+            <div className="agent-audio-actions">
+              <button type="button" className="agent-composer-icon agent-mic" aria-label={voiceMode ? 'Dictate prompt' : micLabel}
+                title={voiceMode ? 'Dictate prompt' : micLabel} aria-pressed={!voiceMode && dictation.status === 'listening'}
+                disabled={voiceMode || !canRecord || dictation.status === 'transcribing'}
+                onClick={() => { setError(undefined); dictation.toggle(); }}>
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <rect x="9" y="3" width="6" height="12" rx="3" />
+                  <path d="M5 11v1a7 7 0 0 0 14 0v-1m-7 8v3" />
+                </svg>
+              </button>
+              <button type="button" className="agent-composer-icon agent-voice" aria-label="Voice mode"
+                title={voiceMode ? 'Turn off voice mode' : 'Turn on voice mode with synthesized OpenAI speech'} aria-pressed={voiceMode}
+                disabled={!voiceMode && !canStartVoice} data-speaking={voiceMode && speech.speaking}
+                onClick={() => {
+                  if (voiceMode) return stopVoiceMode();
+                  if (!speech.supported) return setError('This browser does not support voice playback. You can still dictate a prompt.');
+                  setError(undefined);
+                  if (!speech.start(voiceError)) return;
+                  voiceModeRef.current = true;
+                  setVoiceMode(true);
+                }}>
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M4 10v4M8 6.5v11M12 3v18M16 7.5v9M20 10v4" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-        {dictation.status !== 'idle' && <p className="agent-dictation-status" role="status">{{
-          requesting: 'Waiting for microphone access…', listening: 'Listening…', transcribing: 'Transcribing…',
-        }[dictation.status]}</p>}
+        {(voiceStatus || recordingStatus) && <p className="agent-dictation-status" role="status">{voiceStatus || recordingStatus}</p>}
         {error && <p className="error" role="alert">{error}</p>}
       </form>
     </aside>

@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,7 +22,7 @@ export async function until(read, accepts, description) {
   throw new Error(`Timed out waiting for ${description}: ${JSON.stringify(value)}`);
 }
 
-export async function startAgentDemo(artifacts, handleModelRequest) {
+export async function startAgentDemo(artifacts, handleModelRequest, handleVoiceConnection) {
   await fs.mkdir(artifacts, { recursive: true });
   const children = [];
   const logs = [];
@@ -35,6 +36,8 @@ export async function startAgentDemo(artifacts, handleModelRequest) {
       response.end(JSON.stringify({ error: { message: error.message } }));
     }
   });
+  const voice = handleVoiceConnection && new (createRequire(new URL('../server/package.json', import.meta.url))('ws').WebSocketServer)({ server: model });
+  voice?.on('connection', (socket, request) => handleVoiceConnection(socket, request, logs));
   model.listen(0, '127.0.0.1');
   await once(model, 'listening');
 
@@ -49,6 +52,8 @@ export async function startAgentDemo(artifacts, handleModelRequest) {
   }
 
   async function stop() {
+    for (const socket of voice?.clients ?? []) socket.terminate();
+    voice?.close();
     model.closeAllConnections();
     await new Promise((resolve) => model.close(resolve));
     await Promise.all(children.map(async (child) => {
