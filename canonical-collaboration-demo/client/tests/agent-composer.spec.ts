@@ -458,6 +458,36 @@ test('an image insertion prompt embeds the attached bytes inline at the caret', 
   expect(await media[0].async('nodebuffer')).toEqual(png);
 });
 
+test('an image placement follow-up embeds the original image at the document start', async ({ page }) => {
+  const { room } = await openAtCaret(page, 'suggestion');
+  await attach(page, 'Image', image);
+  await submit(page, room, {
+    prompt: 'Insert this image.', checkInput: checkImage, steps: [],
+    answer: 'Where should I insert the image?',
+  });
+  expect((await exportDocument(room)).archive.file(/^word\/media\/[^/]+$/)).toHaveLength(0);
+
+  const request = await submit(page, room, {
+    prompt: 'At the very top.', checkInput: checkImage,
+    steps: [{ tool: { name: 'insert_attached_image', args: { placement: 'documentStart', alt: 'Blue tile' } } }],
+    answer: 'Inserted the image at the top.',
+  });
+  expect(request.attachment).toBeUndefined();
+  const { archive, xml } = await exportDocument(room);
+  expect(xml).toMatch(/<w:ins\b[^>]*>[\s\S]*?<w:drawing>[\s\S]*?descr="Blue tile"[\s\S]*?<\/w:drawing>[\s\S]*?<\/w:ins>[\s\S]*?LEFTRIGHT/);
+  const media = archive.file(/^word\/media\/[^/]+$/);
+  expect(media).toHaveLength(1);
+  expect(await media[0].async('nodebuffer')).toEqual(png);
+
+  await submit(page, room, {
+    prompt: 'What did you change?', steps: [], answer: 'I inserted the blue tile.',
+    checkInput(input, parts) {
+      assert.ok(!input.tools.some(({ function: tool }) => tool.name === 'insert_attached_image'));
+      assert.ok(!parts.some(({ type }) => type === 'image_url'));
+    },
+  });
+});
+
 test('the submitted thumbnail survives when the server omits attachment previews', async ({ page }) => {
   const { room } = await openAtCaret(page);
   const roomUrl = `${api}/api/rooms/${room}`;
