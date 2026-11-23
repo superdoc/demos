@@ -71,6 +71,10 @@ test('a copied toolbar includes locked-control formatting and shortcuts without 
   await page.keyboard.press('ControlOrMeta+z');
   await expect(lockedText).toHaveCSS('font-style', 'normal');
   await expect(lockedText).toHaveCSS('font-weight', '700');
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(lockedText).toHaveCSS('font-style', 'italic');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(lockedText).toHaveCSS('font-style', 'normal');
   await tool('Reject all').click();
   await expect(lockedText).toHaveCSS('font-weight', '400');
   await expect(lockedText).toHaveAttribute('data-lock-mode', 'sdtContentLocked');

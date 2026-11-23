@@ -124,15 +124,20 @@ export function useSelectionFormatting() {
     }
     await applySelectionChanges({ doc, selection: current, changes, changeMode });
     if (command === 'clear-formatting') {
-      if (!doc.invoke) throw new Error('Document operations are unavailable.');
+      if (!doc.format?.paragraph?.resetDirectFormatting || !doc.styles?.paragraph?.setStyleRef) {
+        throw new Error('Document operations are unavailable.');
+      }
       // Paragraph properties can be reset while the content lock stays in place.
       const defaultStyleId = ui.styles.getCatalog()?.defaults.paragraphStyleId ?? 'Normal';
       for (const { blockId } of current.target?.segments ?? []) {
         const paragraph = { kind: 'block', nodeType: 'paragraph', nodeId: blockId, ...(target.story ? { story: target.story } : {}) } as const;
-        checkReceipt(await doc.invoke({ operationId: 'format.paragraph.resetDirectFormatting', input: { target: paragraph }, options }));
+        checkReceipt(await doc.format.paragraph.resetDirectFormatting({ target: paragraph }, options));
         const list = await doc.lists?.getState?.({ target: paragraph });
-        if (list?.success && list.isListItem) checkReceipt(await doc.invoke({ operationId: 'lists.remove', input: { target: paragraph }, options }));
-        checkReceipt(await doc.invoke({ operationId: 'styles.paragraph.setStyleRef', input: { target: paragraph, styleId: defaultStyleId }, options }));
+        if (list?.success && list.isListItem) {
+          if (!doc.lists?.remove) throw new Error('List operations are unavailable.');
+          checkReceipt(await doc.lists.remove({ target: paragraph }, options));
+        }
+        checkReceipt(await doc.styles.paragraph.setStyleRef({ target: paragraph, styleId: defaultStyleId }, options));
       }
     }
   });

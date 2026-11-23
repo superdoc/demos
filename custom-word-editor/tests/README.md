@@ -53,6 +53,9 @@ a locked inline control, and two plain paragraphs. These cases check precise
 partial selections, nested locks, and wrapping a range across paragraphs.
 The same tests cover clicking existing locked controls, formatting shortcuts on
 partial selections, and rejecting keyboard-applied formatting in Reviewing mode.
+Two regression cases open a fresh fixture and apply tracked bold to only part
+of an imported control. They verify that accepting keeps the bold, rejecting
+reverts it, and both decisions preserve the original locks.
 
 `document-actions.spec.ts` controls delayed selection reads to verify that a
 queued worker selection must match the intended range before the action queue

@@ -14,8 +14,8 @@
     "packageDirectory": "custom-word-editor",
     "localSourceDirectory": "custom-word-editor",
     "superdocVersionException": {
-      "version": "2.29.0",
-      "reason": "SuperDoc 2.30.0 does not apply tracked formatting to untouched imported content controls. Keep the tested 2.29.0 release until a stable fix passes the editor browser suite."
+      "version": "2.34.0",
+      "reason": "Custom Word Editor is testing 2.34.0 separately from the gallery release. Tracked formatting in untouched imported content controls still fails."
     }
   },
   {

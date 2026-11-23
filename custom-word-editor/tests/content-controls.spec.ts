@@ -93,9 +93,9 @@ test('inline formatting, font menus, and clear formatting preserve a locked cont
   await expect(sample).toHaveCSS('background-color', 'rgb(255, 242, 0)');
   for (const [name, sign] of [['Subscript', -1], ['Superscript', 1]] as const) {
     await tool(page, name).click();
-    await expect.poll(async () => Math.sign(await sample.evaluate((el) => parseFloat(getComputedStyle(el).verticalAlign)))).toBe(sign);
+    await expect.poll(async () => Math.sign(await sample.evaluate((el) => parseFloat(getComputedStyle(el).top) || 0))).toBe(-sign);
     await tool(page, name).click();
-    await expect(sample).toHaveCSS('vertical-align', 'baseline');
+    await expect(sample).toHaveCSS('top', 'auto');
   }
   await tool(page, 'Clear All Formatting').click();
   await expect(sample).toHaveCSS('color', 'rgb(0, 0, 0)');
@@ -114,16 +114,16 @@ test('paragraph formatting and styles preserve a locked control', async ({ page 
   await tool(page, 'Align left').click();
   await expect(line).toHaveCSS('text-align', 'left');
   await tool(page, 'Increase Indent').click();
-  await expect(line).toHaveCSS('padding-left', '48px');
+  await expect(sample).toHaveCSS('margin-left', '48px');
   await tool(page, 'Increase Indent').click();
-  await expect(line).toHaveCSS('padding-left', '96px');
+  await expect(sample).toHaveCSS('margin-left', '96px');
   await tool(page, 'Decrease Indent').click();
-  await expect(line).toHaveCSS('padding-left', '48px');
+  await expect(sample).toHaveCSS('margin-left', '48px');
   await tool(page, 'Line and Paragraph Spacing').click();
   await menuItem(page, '2').click();
   await expect(line).toHaveCSS('line-height', /[34]\d\./);
   await tool(page, 'Apply heading 1').click();
-  await expect(sample).toHaveAttribute('styleid', 'Heading1');
+  await expect(sample.locator('xpath=ancestor::*[@data-block-id][1]')).toHaveAttribute('data-style-id', 'Heading1');
   await expect(sample).toHaveAttribute('data-lock-mode', 'sdtContentLocked');
   await expect(page.getByRole('status')).toHaveCount(0);
 });
@@ -277,6 +277,45 @@ test('keyboard formatting uses the same planner on a locked partial selection', 
   }
   await expect(page.getByRole('status')).toHaveCount(0);
 });
+
+for (const [decision, expectedWeight] of [['Accept all', '700'], ['Reject all', '400']] as const) {
+  test(`tracked bold on a partial imported control selection preserves the locks after ${decision}`, async ({ page }) => {
+    await openControlFixture(page);
+    await page.getByLabel('Document mode').selectOption('suggesting');
+    const original = sampleRun(page, 'alpha beta');
+    const controlId = await original.getAttribute('data-sdt-id');
+    await expect(original).toHaveCSS('font-weight', '400');
+    await expect(original).toHaveAttribute('data-lock-mode', 'contentLocked');
+
+    const bounds = (await original.boundingBox())!;
+    await original.dblclick({ position: { x: bounds.width - 6, y: bounds.height / 2 } });
+    await expect(page.getByRole('button', { name: 'Add comment', exact: true })).toBeVisible();
+    await tool(page, 'Bold').click();
+
+    const selected = sampleRun(page, 'beta');
+    const unselected = sampleRun(page, 'alpha ');
+    const neighbor = sampleRun(page, 'neighbor');
+    await expect(selected).toHaveCSS('font-weight', '700');
+    await expect(unselected).toHaveCSS('font-weight', '400');
+    await tool(page, decision).click();
+
+    await expect(page.getByRole('group', { name: 'Tracked changes' })).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByRole('status')).toHaveCount(0);
+    const originalControlRuns = page.locator(`.superdoc-text-run[data-sdt-id="${controlId}"]`);
+    await expect(originalControlRuns.first()).toHaveAttribute('data-lock-mode', 'contentLocked');
+    await expect(originalControlRuns.last()).toHaveAttribute('data-lock-mode', 'contentLocked');
+    if (decision === 'Accept all') {
+      await expect(originalControlRuns.filter({ hasText: /^beta$/ })).toHaveCSS('font-weight', expectedWeight);
+      await expect(originalControlRuns.filter({ hasText: /^alpha $/ })).toHaveCSS('font-weight', '400');
+    } else {
+      // The renderer may keep the original run split after rejecting formatting.
+      await expect(originalControlRuns.filter({ hasText: /beta$/ })).toHaveCSS('font-weight', expectedWeight);
+      await expect(originalControlRuns.filter({ hasText: /^alpha/ })).toHaveCSS('font-weight', '400');
+    }
+    await expect(neighbor).toHaveCSS('font-weight', '400');
+    await expect(neighbor).toHaveAttribute('data-lock-mode', 'sdtContentLocked');
+  });
+}
 
 test('keyboard formatting in review mode preserves the lock through rejection', async ({ page }) => {
   await openControlFixture(page);

@@ -114,12 +114,10 @@ The gallery badge and release marker continue to describe the shared stable
 version. `versioned: false` is an older gallery-badge setting and does not provide
 this release/update exception.
 
-Custom Word Editor is temporarily held on 2.29.0 because 2.30.0 fails tracked
-formatting in untouched imported content controls. The other demos use the shared
-stable version. Each gallery card shows its own SuperDoc version, while the header
-shows the shared latest version. Once the editor browser suite passes on a newer
-stable release, update its dependency and lockfile and remove
-`superdocVersionException` to restore normal checks/updates.
+Custom Word Editor was held on 2.29.0 after 2.30.0 failed to apply tracked
+formatting inside untouched imported content controls. This branch tests 2.34.0
+under the version exception while the regression is still reproducible. Remove
+the exception when the editor browser suite passes on the shared stable release.
 
 ### Release workflow
 

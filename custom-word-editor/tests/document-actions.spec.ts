@@ -75,3 +75,17 @@ test('worker selection failures are surfaced to the action caller', async () => 
   const doc = documentWithSelection(async () => { throw new Error('Document closed'); });
   await expect(waitForDocumentSelection(doc, target)).rejects.toThrow('Document closed');
 });
+
+test('a newer gesture cancels a pending selection acknowledgement and releases document actions', async () => {
+  const reading = deferred<void>();
+  const pending = deferred<SelectionInfo>();
+  const doc = documentWithSelection(() => { reading.resolve(); return pending.promise; });
+  const controller = new AbortController();
+  const action = runDocumentAction(doc, () => waitForDocumentSelection(doc, target, 5000, controller.signal));
+  const cancelled = expect(action).rejects.toThrow('new gesture');
+  await reading.promise;
+  controller.abort(new Error('new gesture'));
+  await cancelled;
+  await waitForDocumentAction(doc);
+  pending.resolve(info(target));
+});
