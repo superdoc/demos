@@ -4,7 +4,7 @@ import { createDocumentAgent } from './agent.js';
 import { createReferenceToolkit } from './reference-integration/reference-document.js';
 import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
 
-function harness(responses) {
+function harness(responses, { client: responsesClient, model = 'gpt-5-mini' } = {}) {
   const requests = [];
   const dispatches = [];
   const sources = [];
@@ -39,10 +39,51 @@ function harness(responses) {
   } } } };
   const agent = createDocumentAgent({ getToolkit: () => createReferenceToolkit({ systemPrompt: 'Use the supplied SDK tools.',
     tools: ['superdoc_inspect', 'superdoc_perform_action', 'superdoc_api_search', 'superdoc_api_call']
-      .map((name) => ({ type: 'function', function: { name } })) }) }, { client });
+      .map((name) => ({ type: 'function', function: { name } })) }) }, { client: responsesClient ?? client, model });
   return { agent, document, requests, dispatches };
 }
 let id = 0;
+
+test('GPT-5.5 uses medium reasoning with image input and preserves reasoning across streamed document tool calls', async () => {
+  const requests = [];
+  const reasoning = { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'encrypted-test-context' };
+  const commentary = { type: 'message', role: 'assistant', phase: 'commentary', content: [] };
+  const toolCall = { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'superdoc_inspect', arguments: '{}' };
+  const client = { responses: { async *create(request) {
+    requests.push(request);
+    if (requests.length === 1) {
+      yield { type: 'response.output_item.added', output_index: 1, item: commentary };
+      yield { type: 'response.output_text.delta', output_index: 1, delta: 'I’ll inspect the document.' };
+      yield { type: 'response.output_item.added', output_index: 2, item: { ...toolCall, arguments: '' } };
+      yield { type: 'response.function_call_arguments.delta', output_index: 2, delta: '{' };
+      yield { type: 'response.output_item.done', output_index: 2, item: toolCall };
+      yield { type: 'response.completed', response: { output: [reasoning, commentary, toolCall] } };
+    } else {
+      yield { type: 'response.output_text.delta', output_index: 0, delta: 'Here’s the comparison.' };
+      yield { type: 'response.completed', response: { output: [] } };
+    }
+  } } };
+  const h = harness([], { client, model: 'gpt-5.5' });
+  const image = 'data:image/png;base64,dGVzdA==';
+  const history = [];
+  const deltas = [];
+  await h.agent.run(h.document, 'Compare the image with the document.', history, false, new AbortController().signal, {
+    attachment: { kind: 'image', src: image, name: 'image.png' },
+    onTextDelta: (delta) => deltas.push(delta),
+  });
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[0].reasoning, { effort: 'medium' });
+  assert.equal(requests[0].store, false);
+  assert.deepEqual(requests[0].include, ['reasoning.encrypted_content']);
+  assert.ok(requests[0].tools.some((tool) => tool.type === 'function' && tool.name === 'superdoc_inspect'));
+  assert.deepEqual(requests[0].input.at(-1).content.at(-1), { type: 'input_image', image_url: image, detail: 'auto' });
+  assert.deepEqual(requests[1].input.slice(-4, -1), [reasoning, commentary, toolCall]);
+  assert.equal(requests[1].input.at(-1).type, 'function_call_output');
+  assert.equal(requests[1].input.at(-1).call_id, toolCall.call_id);
+  assert.deepEqual(h.dispatches.map(({ tool }) => tool), ['superdoc_inspect']);
+  assert.deepEqual(deltas, ['Here’s the comparison.']);
+  assert.equal(history.at(-1).content, 'Here’s the comparison.');
+});
 
 test('selected text scopes the model request while keeping prompt history readable', async () => {
   const h = harness([{ role: 'assistant', content: 'Updated the selected passage.' }]);

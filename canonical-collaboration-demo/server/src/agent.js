@@ -1,13 +1,18 @@
 import OpenAI, { toFile } from 'openai';
 import { createComposerContext } from './agent-composer.js';
+import { createResponsesChatClient } from './agent-responses.js';
 import { synthesizeAgentSpeech } from './agent-speech.js';
 import { config } from './config.js';
 import { logEvent } from './logging.js';
 import { createReferenceAgent } from './reference-integration/index.js';
 
-export function createDocumentAgent(documents, { client = new OpenAI() } = {}) {
-  const agent = createReferenceAgent(documents, { client, model: config.openaiModel, logEvent, showToolDiagnostics: false,
-    verbosity: /^gpt-5(?:[.-]|$)/.test(config.openaiModel) ? 'low' : undefined,
+export function createDocumentAgent(documents, { client = new OpenAI(), model = config.openaiModel } = {}) {
+  const usesResponses = /^gpt-5\.5(?:-|$)/.test(model);
+  const agent = createReferenceAgent(documents, {
+    client: usesResponses ? createResponsesChatClient(client) : client,
+    model, logEvent, showToolDiagnostics: false,
+    reasoningEffort: usesResponses ? 'medium' : 'low',
+    verbosity: /^gpt-5(?:[.-]|$)/.test(model) ? 'low' : undefined,
     async createRunContext(input) {
       const context = await createComposerContext(input);
       return {
@@ -21,7 +26,7 @@ export function createDocumentAgent(documents, { client = new OpenAI() } = {}) {
         ].filter(Boolean).join('\n\n'),
       };
     },
-    editingModeHint: 'Select Editing in the chat panel’s Agent edit mode dropdown and retry the remaining bibliography operation.' });
+    editingModeHint: 'Select “Agent is editing” in the chat panel and retry the remaining bibliography operation.' });
   return {
     ...agent,
     synthesize(text, signal) {

@@ -10,7 +10,7 @@ Open the same room URL in two browser sessions. Each session gets a private chat
 
 With `COLLABORATION_AGENT=on` and `COLLABORATION_AGENT_PRESENCE=on`, the server opens a dedicated SuperDoc SDK handle when an agent first works on the document. The handle joins the shared Hocuspocus room and publishes the agent’s name on a purple cursor. Native presence follows edits, including incremental streamed text. Closing the chat releases its handle once its work finishes. The room’s primary SDK handle owns the shared document lifecycle. Turning off cursor presence leaves private chat and its connection count available.
 
-`npm run test:browser --prefix client` tests the built frontend and real demo backend in Chromium with a local OpenAI-compatible stub. The suite covers separate chats, named cursors and connection counts during collaborative edits, selection and caret prompts, image and file attachments, microphone dictation, and voice mode. Run `make install` first. The tests use ports 18000 and 18173 and need no model key. Run `npm run test:browser --prefix client -- agent-composer.spec.ts` to run only the composer scenarios.
+`npm run test:browser --prefix client` tests the built frontend and real demo backend in Chromium with a local OpenAI-compatible stub. The suite covers separate chats, named cursors and connection counts during collaborative edits, selection and caret prompts, image and file attachments, and hands-free voice mode. Run `make install` first. The tests use ports 18000 and 18173 and need no model key. Run `npm run test:browser --prefix client -- agent-composer.spec.ts` to run only the composer scenarios.
 
 To preview the agent panel without a model key, run `COLLABORATION_AGENT=off VITE_COLLABORATION_AGENT=on make dev`. You can compose a prompt; Send remains disabled with a configuration message until the backend agent is enabled.
 
@@ -158,20 +158,22 @@ The first run installs the Node dependencies. Open [http://localhost:15173](http
 The client creates a random room ID and adds it to the URL as `?room=...`. Share that URL to collaborate on the document. To try both agents yourself, open the URL in a second browser session or a private window. Each session gets its own greeting, prompts, attachments, and replies, while document edits appear in both windows.
 
 1. Open a new room to load the bundled `server/assets/contract.docx` sample automatically.
-2. Use the four file buttons, left to right: **New Document**, **Replace document**, **Save As**, and **Delete document**. New Document creates a blank document; Replace document imports a `.docx` file.
+2. Choose **New document**, then **Start blank** or **Upload DOCX…** to replace the document in this room.
 3. Edit the document directly in SuperDoc.
 4. Enter an instruction in the agent panel and select **Send**. Enter submits; Shift+Enter adds a new line.
    Select document text first to target a passage. The panel previews selected paragraphs and tables in a scrollable area and includes the selection as target context with the prompt. The selection remains available while typing the prompt; choose **Clear** to remove the target and work with the whole document again.
 5. While a job is running, select **Stop** to cancel remaining work. Edits already applied before cancellation are not rolled back.
-6. Use **+** to attach an image or a supported file. Use the microphone to dictate into the prompt, then select **Send** when it’s ready.
+6. Use **+** to attach an image or a supported file. Choose **Agent is reviewing** for suggestions or **Agent is editing** for direct edits. The configured agent model appears beside **Send**.
 7. Select the waveform to turn on **Voice mode** and allow microphone access. The waveform turns white on blue while active. Pause for about half a second to transcribe and send your prompt. A butterfly shows while your collaborator works. The collaborator speaks its reply in Alloy, an AI-generated OpenAI voice, then listens again. Select the waveform again to stop listening and speaking while keeping the chat and document in place. Voice mode uses the server’s existing OpenAI API key.
-8. Use **Save As** to export the collaborative document, or **Delete Document** to remove it.
+8. Use **Save As** to export the collaborative document.
 
-The agent uses OpenAI streaming. Ordinary prose and rewrites use the streaming tool. Cursor insertions and verbatim attachment copies use their dedicated operations. For generated prose, alternative paragraph insertion, heading insertion, text replacement, block rewriting and placeholder replacement actions are removed from the agent’s tool schema and rejected by the host if called. No special prompt is needed. Plain-text rewrites and new paragraphs appear progressively in the editor through the existing collaboration connection, and the agent’s chat reply streams into the panel. Streaming handles one paragraph per tool call, including new paragraphs before or after existing passages. Headings and styled prose stream their words first and apply formatting afterward. Structured edits (including tables, lists, citations and footnotes) apply through their dedicated tools after their arguments finish generating. Stopping or losing a stream preserves text already applied. Each chunk uses the host’s Reviewing/Editing mode and verifies its current document target before insertion.
+The agent uses OpenAI streaming. Ordinary prose and rewrites use the streaming tool. Cursor insertions and verbatim attachment copies use their dedicated operations. For generated body prose, alternative paragraph insertion, heading insertion, text replacement, block rewriting and placeholder replacement actions are removed from the agent’s tool schema and rejected by the host if called. No special prompt is needed. Plain-text rewrites and new paragraphs appear progressively in the editor through the existing collaboration connection, and the agent’s chat reply streams into the panel. Streaming handles one paragraph per tool call, including new paragraphs before or after existing passages. Headings and styled prose stream their words first and apply formatting afterward. Structured edits (including tables, lists, citations and footnotes) apply through their dedicated tools after their arguments finish generating. Stopping or losing a stream preserves text already applied. Each chunk uses the host’s Reviewing/Editing mode and verifies its current document target before insertion.
+
+Header and footer text streams into the resolved part. In Reviewing mode, text edits in an existing header or footer appear as tracked changes. Creating and linking a missing header or footer requires Editing mode.
 
 Set `DEFAULT_DOCUMENT_PATH` in the local `.env` file to override the bundled room template. Initialization preserves an existing room and coalesces simultaneous requests for the same new room.
 
-In the agent panel's **Reviewing** mode, the system prompt instructs the agent to add an **Agent** comment immediately after each suggested edit, with a brief rationale anchored to the affected passage or paragraph. This includes streamed paragraphs once they finish. Editing mode does not include this instruction. Comment creation uses the existing native comment tools; compliance is guided by the prompt rather than enforced by the host.
+When **Agent is reviewing** is selected, the system prompt instructs the agent to add an **Agent** comment immediately after each suggested edit, with a brief rationale anchored to the affected passage or paragraph. This includes streamed paragraphs once they finish. Comment creation uses the existing native comment tools and is guided by the prompt.
 
 A room contains one document with one stable document ID. Creating or uploading another document calls the Node SDK's `replaceFile()` on the existing backend document session. This atomically resets the shared content without replacing the collaboration identity. Replacement starts a new metadata generation and clears the conversations for the previous document generation.
 
@@ -227,7 +229,7 @@ Requests such as "for each paragraph, create citations, but don't insert anythin
 
 The agent manages bibliographies through `doc.citations.bibliography.insert/get/configure/rebuild/remove` using `superdoc_api_call`. `superdoc_api_search` supplies their schemas. Native mutations execute through the SDK, with app-side APA/Chicago/MLA formatting afterwards. The app internally normalizes complex rendered fields when the native mutation requires an independent simple field, then restores formatting. Bibliography mutations currently require Editing mode; reads work in either mode. Saved sources and in-text citations survive bibliography removal.
 
-Prompts such as "add a bibliography to the last page" select native API discovery first; the agent uses the native bibliography operation with the current style and document-end position without asking for approval. Generic text insertion and style-repair fallbacks are blocked for these creation requests. If the native tool reports a mode restriction, select Editing in the chat panel's **Agent edit mode** dropdown and retry; the document toolbar's mode selector is separate.
+Prompts such as "add a bibliography to the last page" select native API discovery first; the agent uses the native bibliography operation with the current style and document-end position without asking for approval. Generic text insertion and style-repair fallbacks are blocked for these creation requests. If the native tool reports a mode restriction, select **Agent is editing** in the chat panel and retry; the document toolbar's mode selector is separate.
 
 Bibliography discovery filters returned Word fields by their actual instruction, since SDK 2.15 does not accept a field-type filter. Existing citations therefore do not count as bibliographies. Failed bibliography calls return the actual tool error directly, without asking for approval or offering plain-text alternatives; only the explicit mode-restriction error suggests changing Agent edit mode.
 
@@ -272,7 +274,7 @@ Document content travels through Hocuspocus. The browser posts to the room statu
 | `COLLABORATION_DOCX_DIR` | `./data/collaboration-docx` | Latest autosaved DOCX directory. |
 | `COLLABORATION_DOCX_IDLE_MS` | `10000` | Debounce delay before exporting a changed room. |
 | `OPENAI_API_KEY` | required with agent enabled | Credential sent directly to OpenAI. |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model used by the document agent |
+| `OPENAI_MODEL` | `gpt-5.5` | Model used by the document agent. GPT-5.5 uses medium reasoning through the Responses API. |
 | `ROOM_TTL_SECONDS` | `3600` | Room expiry period since its last recorded activity |
 | `COMPLETED_JOB_TTL_SECONDS` | `600` | Retention period for terminal job records |
 | `CLIENT_ORIGINS` | Local client URLs and `https://demos.superdoc.dev` | Comma-separated browser origins allowed by CORS |

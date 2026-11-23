@@ -8,7 +8,7 @@ function userMessage(content, selectedText) {
     : content };
 }
 
-export function createReferenceAgent(documents, { client, model = 'gpt-5-mini', verbosity, logEvent = () => {}, createRunContext = async () => ({}), showToolDiagnostics = true, editingModeHint = 'Select Editing in your application and retry the remaining bibliography operation.' } = {}) {
+export function createReferenceAgent(documents, { client, model = 'gpt-5-mini', reasoningEffort = 'low', verbosity, logEvent = () => {}, createRunContext = async () => ({}), showToolDiagnostics = true, editingModeHint = 'Select Editing in your application and retry the remaining bibliography operation.' } = {}) {
   if (!client?.chat?.completions?.create) throw new Error('Provide a chat completions client.');
   const openai = client;
   const toolkit = documents.getToolkit();
@@ -39,7 +39,7 @@ ${context.instructions ?? ''}` },
     for (let turn = 1; turn <= maximumTurns; turn += 1) {
       const modelStarted = performance.now();
       const streamed = await streamCompletion(openai,
-        { model, reasoning_effort: 'low', ...(verbosity ? { verbosity } : {}), messages, tools: [...adapter.tools, ...(context.tools ?? [])],
+        { model, reasoning_effort: reasoningEffort, ...(verbosity ? { verbosity } : {}), messages, tools: [...adapter.tools, ...(context.tools ?? [])],
           ...(adapter.initialToolChoice && turn === 1 ? { tool_choice: adapter.initialToolChoice } : {}) },
         { signal, document, changeMode, onTextDelta, onToolCall, streamTextEnabled: adapter.streamTextEnabled },
       );

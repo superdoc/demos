@@ -21,7 +21,6 @@ type TopbarProps = {
   onNewDocument: () => void;
   onUpload: (file: File) => void;
   onDownload: () => void;
-  onDelete: () => void;
   onModeChange: (mode: DocumentMode) => void;
   metadataHighlighted: boolean;
   onMetadataHighlightToggle: () => void;
@@ -42,13 +41,13 @@ export function Topbar({
   onNewDocument,
   onUpload,
   onDownload,
-  onDelete,
   onModeChange,
   metadataHighlighted,
   onMetadataHighlightToggle,
   references,
 }: TopbarProps) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const newDocumentDialog = useRef<HTMLDialogElement>(null);
   const buildDialog = useRef<HTMLDialogElement>(null);
   const [importError, setImportError] = useState('');
   const [referencesActive, setReferencesActive] = useState(false);
@@ -64,29 +63,19 @@ export function Topbar({
       setImportError('Choose a .docx file.');
       return;
     }
-    setImportError('');
+    newDocumentDialog.current?.close();
     onUpload(file);
-    if (fileInput.current) fileInput.current.value = '';
   }
 
   return (
     <header className="topbar">
       <div className="ribbon-tabs-row">
-        <input
-          ref={fileInput}
-          className="visually-hidden"
-          type="file"
-          accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          onChange={(event) => uploadDocument(event.target.files?.[0])}
-        />
-
-        <div className="file-actions" role="group" aria-label="File actions" title={importError || undefined}>
-          <button type="button" className="file-action" disabled={busy || !roomId} onClick={onNewDocument}>New Document</button>
-          <button type="button" className="file-action" disabled={busy || !roomId} onClick={() => fileInput.current?.click()}>
-            {room ? 'Replace document…' : 'Upload document…'}
+        <div className="file-actions" role="group" aria-label="File actions">
+          <button type="button" className="file-action" disabled={busy || !roomId} aria-haspopup="dialog"
+            onClick={() => newDocumentDialog.current?.showModal()}>
+            New document
           </button>
           <button type="button" className="file-action" disabled={busy || !roomId || !room} onClick={onDownload}>Save As…</button>
-          <button type="button" className="file-action file-action-delete" disabled={busy || !roomId || !room} onClick={onDelete}>Delete document</button>
           <a className="build-app-button more-demos-button" href="/">More demos</a>
         </div>
 
@@ -121,6 +110,33 @@ export function Topbar({
           </span>}
         </div>
       </div>
+
+      <dialog ref={newDocumentDialog} className="new-document-dialog" aria-labelledby="new-document-title"
+        onClose={() => setImportError('')} onClick={(event) => {
+          if (event.target === event.currentTarget) newDocumentDialog.current?.close();
+        }}>
+        <div className="new-document-dialog-content">
+          <button type="button" className="build-dialog-close" aria-label="Close" onClick={() => newDocumentDialog.current?.close()}>×</button>
+          <h2 id="new-document-title">New document</h2>
+          {room && <p>This replaces the current document in the room.</p>}
+          <div className="new-document-choices">
+            <button type="button" className="file-action" disabled={busy} onClick={() => {
+              newDocumentDialog.current?.close();
+              onNewDocument();
+            }}>Start blank</button>
+            <button type="button" className="file-action" disabled={busy}
+              onClick={() => fileInput.current?.click()}>Upload DOCX…</button>
+          </div>
+          <input ref={fileInput} hidden type="file"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              uploadDocument(file);
+            }} />
+          {importError && <p className="error" role="alert">{importError}</p>}
+        </div>
+      </dialog>
 
       <dialog ref={buildDialog} className="build-dialog" aria-labelledby="build-dialog-title"
         onClose={() => setBuildCommandCopied(false)} onClick={(event) => {

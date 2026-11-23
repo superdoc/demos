@@ -13,6 +13,7 @@ import { usePromptDictation } from './usePromptDictation';
 type ChatPanelProps = {
   hidden?: boolean;
   agentName?: string;
+  agentModel?: string;
   roomId: string;
   disabled: boolean;
   unavailableReason?: string;
@@ -108,7 +109,7 @@ function JobReply({ job, agentName }: { job: Job; agentName: string }) {
   );
 }
 
-export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false, agentName, superdoc, documentTarget, documentKey }: ChatPanelProps) {
+export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthChange, reservedWidth = 0, onDocumentUpdated, hidden = false, agentName, agentModel, superdoc, documentTarget, documentKey }: ChatPanelProps) {
   const [prompt, setPrompt] = useState('');
   const [attachment, setAttachment] = useState<DraftAttachment>();
   const [submitting, setSubmitting] = useState(false);
@@ -116,9 +117,8 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
   const [voiceMode, setVoiceMode] = useState(false);
   const voiceModeRef = useRef(false);
   const cursorRef = useRef<SelectionTarget | null>(null);
-  const promptRef = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<Pick<SelectionSlice, 'quotedText' | 'tableSelection' | 'selectionTarget'>>();
-  const [isSuggesting, setIsSuggesting] = useState(true);
+  const [isSuggesting, setIsSuggesting] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, AttachmentPreview>>({});
@@ -133,16 +133,10 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
   const reservedSpace = DOCUMENT_RESIZE_SPACE + reservedWidth;
 
   const speech = useAgentSpeech(roomId);
-  const dictation = usePromptDictation(roomId, documentKey, (text, handsFree) => {
-    if (handsFree) {
-      if (voiceModeRef.current) void sendPrompt(text, true);
-      return;
-    }
-    promptNavigationRef.current = null;
-    setPrompt((current) => current.trim() ? `${current.trimEnd()} ${text}` : text);
-    promptRef.current?.focus();
-  }, (message, handsFree) => {
-    if (handsFree) stopVoiceMode();
+  const dictation = usePromptDictation(roomId, documentKey, (text) => {
+    if (voiceModeRef.current) void sendPrompt(text, true);
+  }, (message) => {
+    stopVoiceMode();
     setError(message);
   });
   const cancelDictation = dictation.cancel;
@@ -156,11 +150,6 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   const composerBusy = disabled || submitting || Boolean(activeJob);
   const canRecord = !composerBusy && !unavailableReason;
-  const canStartVoice = canRecord && dictation.status === 'idle';
-  const micLabel = {
-    idle: 'Dictate prompt', requesting: 'Cancel microphone request',
-    listening: 'Stop recording', transcribing: 'Transcribing prompt',
-  }[dictation.status];
   const recordingStatus = {
     idle: undefined, requesting: 'Waiting for microphone access…', listening: 'Listening…', transcribing: 'Transcribing…',
   }[dictation.status];
@@ -169,7 +158,7 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   useLayoutEffect(() => { stopVoiceMode(); }, [roomId, documentKey, hidden, unavailableReason, stopVoiceMode]);
 
-  const startVoiceRecording = useEffectEvent(() => { void dictation.start(true); });
+  const startVoiceRecording = useEffectEvent(() => { void dictation.start(); });
   useEffect(() => {
     if (!voiceMode) return;
     if (disabled && dictation.status !== 'idle') cancelDictation();
@@ -359,11 +348,10 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
       }
       return;
     }
-    if (!voiceMode && dictation.status !== 'idle') return;
     await sendPrompt(prompt.trim());
   }
 
-  async function sendPrompt(message: string, handsFree = false) {
+  async function sendPrompt(message: string, fromVoice = false) {
     if (composerBusy || submittingRef.current || unavailableReason || !message) return;
     submittingRef.current = true;
     setError(undefined);
@@ -388,12 +376,12 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
       submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
       submittedPromptsRef.current.push(message);
       promptNavigationRef.current = null;
-      if (!handsFree) setPrompt('');
+      if (!fromVoice) setPrompt('');
       setAttachment(undefined);
       setJobs((current) => [...current, job]);
     } catch (caught) {
       demoMetric('ai_failed', 'collaboration');
-      if (handsFree) {
+      if (fromVoice) {
         stopVoiceMode();
         setPrompt((current) => current.trim() ? `${current.trimEnd()} ${message}` : message);
       }
@@ -470,15 +458,17 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
         {selection && <AgentSelectionPreview doc={superdoc?.activeEditor?.doc} text={selection.quotedText}
           table={selection.tableSelection} target={selection.selectionTarget} onClear={() => setSelection(undefined)} />}
         <div className="prompt-options">
-          <select
-            aria-label="Agent edit mode"
-            value={isSuggesting ? 'suggestion' : 'direct'}
-            disabled={composerBusy}
-            onChange={(event) => setIsSuggesting(event.target.value === 'suggestion')}
-          >
-            <option value="suggestion">Reviewing</option>
-            <option value="direct">Editing</option>
-          </select>
+          <div className="agent-mode-select">
+            <select
+              aria-label="Agent edit mode"
+              value={isSuggesting ? 'suggestion' : 'direct'}
+              disabled={composerBusy}
+              onChange={(event) => setIsSuggesting(event.target.value === 'suggestion')}
+            >
+              <option value="suggestion">Agent is reviewing</option>
+              <option value="direct">Agent is editing</option>
+            </select>
+          </div>
         </div>
         <div className="agent-composer">
           {attachment && <div className="agent-attachment-chip">
@@ -486,7 +476,6 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
             <button type="button" aria-label="Remove attachment" disabled={composerBusy} onClick={() => setAttachment(undefined)}>×</button>
           </div>}
           <textarea
-            ref={promptRef}
             aria-label="Prompt"
             value={prompt}
             onChange={(event) => { promptNavigationRef.current = null; setPrompt(event.target.value); }}
@@ -500,25 +489,17 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
           <div className="agent-composer-actions">
             <AgentAttachment disabled={composerBusy} onChoose={(value) => { setAttachment(value); setError(undefined); }} onError={setError} />
             <button className={activeJob ? 'stop-agent' : undefined}
-              disabled={disabled || (!activeJob && (submitting || Boolean(unavailableReason) || !prompt.trim() || (!voiceMode && dictation.status !== 'idle')))}>
+              disabled={disabled || (!activeJob && (submitting || Boolean(unavailableReason) || !prompt.trim()))}>
               {activeJob ? 'Stop' : 'Send'}
             </button>
-            <div className="agent-audio-actions">
-              <button type="button" className="agent-composer-icon agent-mic" aria-label={voiceMode ? 'Dictate prompt' : micLabel}
-                title={voiceMode ? 'Dictate prompt' : micLabel} aria-pressed={!voiceMode && dictation.status === 'listening'}
-                disabled={voiceMode || !canRecord || dictation.status === 'transcribing'}
-                onClick={() => { setError(undefined); dictation.toggle(); }}>
-                <svg aria-hidden="true" viewBox="0 0 24 24">
-                  <rect x="9" y="3" width="6" height="12" rx="3" />
-                  <path d="M5 11v1a7 7 0 0 0 14 0v-1m-7 8v3" />
-                </svg>
-              </button>
+            <div className="agent-composer-trailing">
+              {agentModel && <span className="agent-model" title={agentModel}>{agentModel}</span>}
               <button type="button" className="agent-composer-icon agent-voice" aria-label="Voice mode"
                 title={voiceMode ? 'Turn off voice mode' : 'Turn on voice mode with synthesized OpenAI speech'} aria-pressed={voiceMode}
-                disabled={!voiceMode && !canStartVoice} data-speaking={voiceMode && speech.speaking}
+                disabled={!voiceMode && !canRecord} data-speaking={voiceMode && speech.speaking}
                 onClick={() => {
                   if (voiceMode) return stopVoiceMode();
-                  if (!speech.supported) return setError('This browser does not support voice playback. You can still dictate a prompt.');
+                  if (!speech.supported) return setError('This browser does not support voice playback. You can still type a prompt.');
                   setError(undefined);
                   if (!speech.start(voiceError)) return;
                   voiceModeRef.current = true;
@@ -531,7 +512,7 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
             </div>
           </div>
         </div>
-        {(voiceStatus || recordingStatus) && <p className="agent-dictation-status" role="status">{voiceStatus || recordingStatus}</p>}
+        {voiceStatus && <p className="agent-dictation-status" role="status">{voiceStatus}</p>}
         {error && <p className="error" role="alert">{error}</p>}
       </form>
     </aside>

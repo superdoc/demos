@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import JSZip from 'jszip';
-import { api, clientUrl, startAgentDemo } from '../../tests/agent-browser-demo.mjs';
+import { agentModel, api, clientUrl, startAgentDemo } from '../../tests/agent-browser-demo.mjs';
 import type { ChatMessage, Job } from '../src/types';
 
 type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
@@ -51,8 +51,9 @@ async function handleModelRequest(request: IncomingMessage, response: ServerResp
   }
   assert.equal(request.url, '/v1/chat/completions');
   modelRequests++;
-  const input = JSON.parse(body.toString()) as ModelInput & { stream?: boolean };
+  const input = JSON.parse(body.toString()) as ModelInput & { stream?: boolean; model: string };
   assert.equal(input.stream, true);
+  assert.equal(input.model, agentModel);
   assert.ok(scenario, 'The browser submitted an unexpected prompt.');
   const userIndex = input.messages.findLastIndex(({ role }) => role === 'user');
   const content = input.messages[userIndex].content;
@@ -602,49 +603,39 @@ test('a cursor prompt leaves the document alone when the captured paragraph has 
   await expect(editor).not.toContainText('STALE');
 });
 
-test('dictation stops after silence and leaves a prompt that can be submitted', async ({ page }) => {
-  await page.addInitScript(() => {
-    // Feed a real MediaStream with a short pause and a final silence into the recorder.
-    navigator.mediaDevices.getUserMedia = async () => {
-      const context = new AudioContext();
-      await context.resume();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const output = context.createMediaStreamDestination();
-      oscillator.connect(gain).connect(output);
-      const start = context.currentTime + 0.1;
-      gain.gain.setValueAtTime(0, 0);
-      gain.gain.setValueAtTime(0.15, start);
-      gain.gain.setValueAtTime(0, start + 0.35);
-      gain.gain.setValueAtTime(0.15, start + 0.55);
-      gain.gain.setValueAtTime(0, start + 0.95);
-      oscillator.start();
-      oscillator.stop(start + 0.95);
-      performance.mark('final-mic-silence', { startTime: performance.now() + (start + 0.95 - context.currentTime) * 1000 });
-      return output.stream;
-    };
-  });
-  const { room, editor } = await openAtCaret(page);
-  const jobs: string[] = [];
-  page.on('request', (request) => { if (request.url().endsWith('/jobs') && request.method() === 'POST') jobs.push(request.url()); });
-  await page.getByRole('button', { name: 'Dictate prompt' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Listening' })).toBeVisible();
-  await expect(promptBox(page)).toHaveValue(transcript, { timeout: 8_000 });
-  await expect(page.getByRole('button', { name: 'Dictate prompt' })).toBeEnabled();
-  expect(transcriptions).toBe(1);
-  const silenceBeforeUpload = await page.evaluate((url) => {
-    const silence = performance.getEntriesByName('final-mic-silence', 'mark')[0];
-    const upload = performance.getEntriesByName(url, 'resource')[0];
-    return upload.startTime - silence.startTime;
-  }, `${api}/api/rooms/${room}/transcriptions`);
-  expect(silenceBeforeUpload).toBeGreaterThanOrEqual(450);
-  expect(silenceBeforeUpload).toBeLessThan(1_500);
-  expect(jobs).toHaveLength(0);
+test('New document offers blank and DOCX choices and the composer shows the configured model', async ({ page }) => {
+  const { editor } = await openAtCaret(page);
+  const mode = page.getByRole('combobox', { name: 'Agent edit mode' });
+  await expect(mode).toHaveValue('direct');
+  await expect(mode.getByRole('option', { name: 'Agent is reviewing' })).toHaveCount(1);
+  await expect(mode.getByRole('option', { name: 'Agent is editing' })).toHaveCount(1);
+  await expect(page.locator('.agent-composer-actions > button + .agent-composer-trailing > .agent-model')).toHaveText(agentModel);
+  await expect(page.getByRole('button', { name: 'Dictate prompt' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Voice mode' })).toBeVisible();
+
+  const files = page.getByRole('group', { name: 'File actions' });
+  const newDocument = files.getByRole('button', { name: 'New document' });
+  await expect(files.getByRole('button', { name: /delete document|replace document/i })).toHaveCount(0);
+  await newDocument.click();
+  const choices = page.getByRole('dialog', { name: 'New document' });
+  await expect(choices.getByRole('button', { name: 'Start blank' })).toBeVisible();
+  await expect(choices.getByRole('button', { name: 'Upload DOCX…' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(choices).toBeHidden();
+  await expect(newDocument).toBeFocused();
   await expect(editor).toContainText('LEFTRIGHT');
-  await submit(page, room, {
-    prompt: transcript, steps: [{ tool: insertText('DICTATED') }], answer: 'Inserted the dictated words.',
-  }, { fill: false });
-  await expect(editor).toContainText('LEFTDICTATEDRIGHT');
+
+  await newDocument.click();
+  await choices.getByRole('button', { name: 'Start blank' }).click();
+  await expect(editor).not.toContainText('LEFTRIGHT');
+
+  await newDocument.click();
+  const picker = page.waitForEvent('filechooser');
+  await choices.getByRole('button', { name: 'Upload DOCX…' }).click();
+  await (await picker).setFiles(await wordAttachment());
+  await expect(choices).toBeHidden();
+  await expect(page.locator('.file-name')).toHaveText('draft.docx');
+  await expect(editor).toContainText('Budget in the draft is 90.');
 });
 
 type VoiceFixture = {
@@ -688,7 +679,10 @@ async function installVoiceFixture(page: Page) {
       audio.playInput = () => {
         const start = context.currentTime + 0.05;
         gain.gain.setValueAtTime(0.15, start);
-        gain.gain.setValueAtTime(0, start + 0.4);
+        gain.gain.setValueAtTime(0, start + 0.35);
+        gain.gain.setValueAtTime(0.15, start + 0.55);
+        gain.gain.setValueAtTime(0, start + 0.95);
+        performance.mark('final-mic-silence', { startTime: performance.now() + (start + 0.95 - context.currentTime) * 1000 });
       };
       return output.stream;
     };
@@ -758,6 +752,13 @@ test('voice mode sends after a pause, speaks while the job runs, and listens aga
     await page.evaluate(() => (window as Window & { voiceFixture: VoiceFixture }).voiceFixture.playInput());
     const accepted = await sent;
     expect(accepted.status()).toBe(202);
+    const silenceBeforeUpload = await page.evaluate((url) => {
+      const silence = performance.getEntriesByName('final-mic-silence', 'mark')[0];
+      const upload = performance.getEntriesByName(url, 'resource')[0];
+      return upload.startTime - silence.startTime;
+    }, `${api}/api/rooms/${room}/transcriptions`);
+    expect(silenceBeforeUpload).toBeGreaterThanOrEqual(450);
+    expect(silenceBeforeUpload).toBeLessThan(1_500);
     const job = await accepted.json() as Job;
     const speechUrl = `${api}/api/rooms/${room}/jobs/${job.id}/speech`;
     const body = JSON.stringify({ text: firstSentence });

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const api = 'http://localhost:18000';
 export const clientUrl = 'http://localhost:18173';
+export const agentModel = 'gpt-5-mini-fixture';
 
 export async function until(read, accepts, description) {
   const deadline = Date.now() + 15_000;
@@ -79,6 +80,7 @@ export async function startAgentDemo(artifacts, handleModelRequest, handleVoiceC
       PORT: new URL(api).port, PUBLIC_ORIGIN: api, DOCUMENT_ROOT: path.join(artifacts, 'documents'),
       CLIENT_ORIGINS: clientUrl, DEFAULT_DOCUMENT_PATH: path.join(root, 'server/assets/blank.docx'),
       OPENAI_API_KEY: 'local-test-only', OPENAI_BASE_URL: `http://127.0.0.1:${model.address().port}/v1`,
+      OPENAI_MODEL: agentModel,
       COLLABORATION_API: 'on', COLLABORATION_CLIENT: 'on', COLLABORATION_AGENT: 'on',
       COLLABORATION_AGENT_PRESENCE: 'on', COLLABORATION_AUTH: 'none', COLLABORATION_STORAGE: 'memory', COLLABORATION_DOCX: 'off',
     });

@@ -32,7 +32,7 @@ export const config = Object.freeze({
   defaultDocumentPath: path.resolve(process.env.DEFAULT_DOCUMENT_PATH || path.join(serverRoot, 'assets', 'contract.docx')),
   roomTtlMs: Number(process.env.ROOM_TTL_SECONDS ?? 3600) * 1000,
   completedJobTtlMs: Number(process.env.COMPLETED_JOB_TTL_SECONDS ?? 600) * 1000,
-  openaiModel: process.env.OPENAI_MODEL ?? 'gpt-5-mini',
+  openaiModel: process.env.OPENAI_MODEL ?? 'gpt-5.5',
   clientOrigins: (process.env.CLIENT_ORIGINS ?? defaultClientOrigins.join(','))
     .split(',')
     .map((origin) => origin.trim())

@@ -379,6 +379,7 @@ export class RoomStore {
       filename: room.document.filename,
       field_codes: room.document.fieldCodes,
       private_agent_chats: config.collaborationAgent === 'on',
+      agent_model: config.collaborationAgent === 'on' ? config.openaiModel : undefined,
       last_activity_at: room.lastActivityAt.toISOString(),
       collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };

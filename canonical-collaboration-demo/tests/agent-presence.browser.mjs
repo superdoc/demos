@@ -25,7 +25,7 @@ export default async function ({ browser, artifacts }) {
         promptRequests.push(input.messages);
         const gate = new Promise((resolve) => { release = resolve; });
         send({ tool_calls: [{ index: 0, id: `call_${generation}`, type: 'function', function: {
-          name: 'superdoc_stream_text', arguments: `{"mode":"append","anchor":null,"text":"Agent begins here ${generation}`,
+          name: 'superdoc_stream_text', arguments: `{"mode":"append","anchor":null,"story":null,"text":"Agent begins here ${generation}`,
         } }] });
         await gate;
         send({ tool_calls: [{ index: 0, function: { arguments: ' and keeps typing."}' } }] });

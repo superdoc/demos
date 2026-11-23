@@ -104,10 +104,6 @@ export class ApiClient {
     return this.documentRequest(roomId, 'POST');
   }
 
-  deleteDocument(roomId: string): Promise<void> {
-    return this.documentRequest(roomId, 'DELETE');
-  }
-
   documentDownloadUrl(roomId: string): string {
     return `${this.baseUrl}${this.roomPath(roomId)}/document`;
   }

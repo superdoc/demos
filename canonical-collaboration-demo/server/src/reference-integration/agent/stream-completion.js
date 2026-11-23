@@ -1,4 +1,4 @@
-import { streamTextTool } from '../tools/stream-text-tool.js';
+import { streamTextInput, streamTextTool } from '../tools/stream-text-tool.js';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const charactersPerUpdate = 5;
@@ -47,8 +47,8 @@ function bufferUpdates(writer, signal) {
   };
 }
 
-// The streamed tool has flat scalar arguments. Read only complete metadata and
-// a safely decoded prefix of text; incomplete escapes stay buffered.
+// Read complete target metadata before publishing a safely decoded text prefix.
+// Older calls without a story can still commit after all arguments are available.
 export function partialTextArguments(source) {
   let index = 0;
   const skip = () => { while (/\s/.test(source[index] ?? '') && index < source.length) index++; };
@@ -75,6 +75,16 @@ export function partialTextArguments(source) {
     if (/[\uD800-\uDBFF]$/.test(value)) value = value.slice(0, -1);
     return { value, complete: false };
   }
+  function story() {
+    const start = index++;
+    while (index < source.length) {
+      if (source[index] === '"') {
+        if (!string().complete) return;
+      } else if (source[index++] === '}') {
+        return { value: JSON.parse(source.slice(start, index)), complete: true };
+      }
+    }
+  }
   try {
     skip();
     if (source[index++] !== '{') return;
@@ -82,16 +92,18 @@ export function partialTextArguments(source) {
     while (index < source.length) {
       skip();
       const key = string();
-      if (!key.complete || !['mode', 'anchor', 'text'].includes(key.value) || key.value in result) return;
+      if (!key.complete || !['mode', 'anchor', 'story', 'text'].includes(key.value) || key.value in result) return;
       skip();
       if (source[index++] !== ':') return;
       skip();
       let parsed;
       if (source[index] === '"') parsed = string();
       else if (source.slice(index, index + 4) === 'null') { parsed = { value: null, complete: true }; index += 4; }
+      else if (key.value === 'story' && source[index] === '{') parsed = story();
       else return;
+      if (!parsed) return;
       result[key.value] = !parsed.complete && typeof parsed.value === 'string' ? parsed.value.replace(/[\uD800-\uDBFF]$/, '') : parsed.value;
-      if (key.value === 'text') return typeof result.mode === 'string' && 'anchor' in result ? result : undefined;
+      if (key.value === 'text') return 'story' in result ? streamTextInput(result) : undefined;
       if (!parsed.complete) return;
       skip();
       if (source[index++] !== ',') return;

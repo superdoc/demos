@@ -24,6 +24,7 @@ function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room |
     && currentRoom.filename === nextRoom.filename
     && currentRoom.collaboration_url === nextRoom.collaboration_url
     && currentRoom.field_codes === nextRoom.field_codes
+    && currentRoom.agent_model === nextRoom.agent_model
     && currentRoom.private_agent_chats === nextRoom.private_agent_chats;
 }
 
@@ -242,12 +243,6 @@ export default function App() {
     }
   }
 
-  async function remove() {
-    if (!room) return;
-    await api.deleteDocument(room.room_id);
-    setRoom(undefined);
-  }
-
   return (
     <main className={citationInsertionBusy || renderingBusy ? 'is-loading-references' : undefined}>
       <Topbar
@@ -262,7 +257,6 @@ export default function App() {
         onDownload={() => {
           if (room) window.location.assign(api.documentDownloadUrl(room.room_id));
         }}
-        onDelete={() => void remove()}
         onModeChange={setMode}
         metadataHighlighted={metadataHighlighted}
         onMetadataHighlightToggle={() => setMetadataHighlighted((current) => !current)}
@@ -317,13 +311,14 @@ export default function App() {
           ) : (
             <div className="welcome">
               <h2>No document in this room</h2>
-              <p>Create a new document or upload a DOCX using the buttons above.</p>
+              <p>Use New document to start blank or upload a DOCX.</p>
             </div>
           )}
         </div>
         {agentEnabled && <ChatPanel
           hidden={!agentOpen}
           agentName={agentPresence?.name}
+          agentModel={agentAvailable ? room?.agent_model : undefined}
           roomId={roomId}
           superdoc={superdoc}
           documentTarget={room ? { id: room.document_id, generation: room.generation } : undefined}

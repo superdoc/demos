@@ -7,6 +7,7 @@ export type Room = {
   filename: string;
   field_codes?: boolean;
   private_agent_chats?: boolean;
+  agent_model?: string;
   last_activity_at: string;
   collaboration_url: string;
 };

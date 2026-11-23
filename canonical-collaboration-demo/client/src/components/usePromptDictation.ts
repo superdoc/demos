@@ -3,14 +3,13 @@ import { api } from '../api';
 
 type Status = 'idle' | 'requesting' | 'listening' | 'transcribing';
 const silenceMs = 500;
-const initialWaitMs = 8_000;
 const maximumRecordingMs = 60_000;
 const formats = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus'];
 
 export function usePromptDictation(roomId: string, documentKey: string | undefined,
-  onText: (text: string, handsFree: boolean) => void, onError: (message: string, handsFree: boolean) => void) {
+  onText: (text: string) => void, onError: (message: string) => void) {
   const [status, setStatus] = useState<Status>('idle');
-  const session = useRef<{ cancel: () => void; stop: () => void } | null>(null);
+  const session = useRef<{ cancel: () => void } | null>(null);
   const handlers = useRef({ onText, onError });
 
   useLayoutEffect(() => { handlers.current = { onText, onError }; }, [onText, onError]);
@@ -25,9 +24,9 @@ export function usePromptDictation(roomId: string, documentKey: string | undefin
     setStatus('idle');
   }, []);
 
-  async function start(handsFree: boolean) {
+  async function start() {
     if (session.current) return;
-    const report = (message: string) => handlers.current.onError(message, handsFree);
+    const report = (message: string) => handlers.current.onError(message);
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined' || typeof AudioContext === 'undefined') {
       report('Microphone dictation requires a browser with audio recording enabled.');
       return;
@@ -66,16 +65,6 @@ export function usePromptDictation(roomId: string, documentKey: string | undefin
         if (recorder?.state === 'recording') recorder.stop();
         finish();
       },
-      stop() {
-        if (recorder?.state === 'recording') {
-          recorder.stop();
-          release();
-          setStatus('transcribing');
-        } else if (!recorder) {
-          active.cancel();
-          setStatus('idle');
-        }
-      },
     };
 
     session.current = active;
@@ -100,18 +89,10 @@ export function usePromptDictation(roomId: string, documentKey: string | undefin
       };
       recorder.onstop = async () => {
         try {
-          if (controller.signal.aborted) return;
-          if (handsFree && !heardSpeech) return;
-          if (!heardSpeech || !chunks.length) {
-            report('No speech detected. Try the microphone again.');
-            return;
-          }
+          if (controller.signal.aborted || !heardSpeech || !chunks.length) return;
           const format = mimeType.split(';')[0];
           const { text } = await api.transcribePrompt(roomId, new Blob(chunks, { type: format }), controller.signal);
-          if (!controller.signal.aborted) {
-            if (text.trim()) handlers.current.onText(text.trim(), handsFree);
-            else if (!handsFree) report('No speech was transcribed. Try the microphone again.');
-          }
+          if (!controller.signal.aborted && text.trim()) handlers.current.onText(text.trim());
         } catch (caught) {
           if (!controller.signal.aborted) report(caught instanceof Error ? caught.message : String(caught));
         } finally {
@@ -130,9 +111,12 @@ export function usePromptDictation(roomId: string, documentKey: string | undefin
           heardSpeech = true;
           lastSpeech = now;
         }
-        if ((heardSpeech && now - lastSpeech >= silenceMs)
-          || (!handsFree && !heardSpeech && now - started >= initialWaitMs)
-          || now - started >= maximumRecordingMs) active.stop();
+        if ((heardSpeech && now - lastSpeech >= silenceMs) || now - started >= maximumRecordingMs) {
+          if (recorder?.state !== 'recording') return;
+          recorder.stop();
+          release();
+          setStatus('transcribing');
+        }
       }, 20);
     } catch (caught) {
       if (!controller.signal.aborted) report(caught instanceof Error ? caught.message : String(caught));
@@ -142,10 +126,5 @@ export function usePromptDictation(roomId: string, documentKey: string | undefin
     }
   }
 
-  function toggle() {
-    if (session.current) session.current.stop();
-    else void start(false);
-  }
-
-  return { status, start, toggle, cancel };
+  return { status, start, cancel };
 }

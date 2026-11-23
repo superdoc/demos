@@ -33,22 +33,34 @@ h2, p { margin-top: 0; }
 .file-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
 .file-action { min-height: 34px; padding: 5px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 7px; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .file-action:hover:not(:disabled) { background: #e8edf5; }
-.file-action-delete { color: #b91c1c; }
 .file-title { display: flex; flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center; }
 .file-name { max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
 .build-app-button { display: inline-flex; flex: 0 0 auto; align-items: center; margin-left: auto; min-height: 34px; padding: 6px 12px; border: 0; border-radius: 7px; color: #fff; background: #2563eb; font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .build-app-button:hover { background: #1d4ed8; }
 .more-demos-button { margin-left: 0; }
 .mode-select { display: flex; align-items: center; }
+.mode-select, .agent-mode-select { position: relative; color: #303640; }
+:is(.mode-select, .agent-mode-select) select { appearance: none; color: inherit; }
+:is(.mode-select, .agent-mode-select)::after { content: ""; position: absolute; inset-inline-end: 12px; top: 50%; width: 6px; height: 6px; border-right: 1px solid; border-bottom: 1px solid; transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+:is(.mode-select, .agent-mode-select):has(select:disabled)::after { opacity: .5; }
 .connected-participants { display: grid; gap: 3px; min-width: 132px; padding: 0 8px; color: #666; font-size: 12px; line-height: 1.2; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .connected-participants > span { display: flex; align-items: center; gap: 6px; }
 .presence-dot { width: 7px; height: 7px; border-radius: 50%; background: #a1a1aa; }
 .presence-dot.active { background: #00853d; }
 .presence-dot.agent { background: #8b5cf6; }
-.mode-select select { min-width: 122px; padding: 8px 30px 8px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 8px; outline: none; font-size: 12px; font-weight: 700; }
+.mode-select select { min-width: 122px; padding: 8px 30px 8px 10px; background: #fff; border: 1px solid #cfd4db; border-radius: 8px; outline: none; font-size: 12px; font-weight: 700; }
 .mode-select select:focus, .file-action:focus-visible, .build-app-button:focus-visible { border-color: #3b82f6; outline: 0; box-shadow: 0 0 0 3px #3b82f61c; }
-.build-dialog { width: min(720px, calc(100vw - 40px)); padding: 0; color: #1f2937; background: #fff; border: 1px solid #d1d5db; border-radius: 14px; box-shadow: 0 24px 80px #0f172a40; }
-.build-dialog::backdrop { background: #0f172a66; }
+.build-dialog, .new-document-dialog { padding: 0; color: #1f2937; background: #fff; border: 1px solid #d1d5db; border-radius: 14px; box-shadow: 0 24px 80px #0f172a40; }
+.build-dialog { width: min(720px, calc(100vw - 40px)); }
+.build-dialog::backdrop, .new-document-dialog::backdrop { background: #0f172a66; }
+.new-document-dialog { width: min(370px, calc(100vw - 40px)); }
+.new-document-dialog-content { position: relative; padding: 22px; }
+.new-document-dialog-content > h2 { margin: 0 28px 8px 0; font-size: 20px; }
+.new-document-dialog-content > p { margin: 0; color: #526176; font-size: 13px; }
+.new-document-dialog-content > .error { margin-top: 10px; color: #a02e2e; }
+.new-document-dialog-content > .build-dialog-close { position: absolute; top: 12px; right: 12px; }
+.new-document-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+.new-document-choices > .file-action { min-height: 40px; font-size: 13px; font-weight: 650; }
 .build-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px 18px; border-bottom: 1px solid #e5e7eb; }
 .build-dialog-header h2 { margin-bottom: 6px; font-size: 20px; }
 .build-dialog-header p { max-width: 580px; margin: 0; color: #64748b; font-size: 13px; line-height: 1.5; }
@@ -331,7 +343,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .selection-preview-table { width: 100%; border-collapse: collapse; background: #fff; text-align: left; }
 .selection-preview-table :is(th, td) { min-width: 64px; padding: 4px 7px; border: 1px solid #dbe3ee; vertical-align: top; }
 .selection-preview-table th { background: #eaf0f7; color: #334155; font-weight: 700; }
-.prompt-options select { padding: 5px 26px 5px 8px; color: #303640; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
+.agent-mode-select select { display: block; padding: 5px 28px 5px 8px; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; }
 .agent-composer { display: grid; gap: 6px; min-width: 0; padding: 8px; border: 1px solid #dbe2ea; border-radius: 18px; background: #fff; }
 .agent-composer:focus-within { border-color: #9ab6df; }
 .chat-panel .agent-composer textarea { width: 100%; min-height: 82px; resize: vertical; padding: 7px 8px; border: 0; outline: 0; background: transparent; }
@@ -339,9 +351,9 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .agent-composer-actions > button:not(.agent-composer-icon) { min-height: 36px; border-radius: 999px; }
 .agent-composer .agent-composer-icon { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #263344; }
 .agent-composer .agent-composer-icon:not(:disabled):hover, .agent-composer .agent-composer-icon[aria-expanded="true"] { background: #edf2f8; }
-.agent-composer .agent-mic[aria-pressed="true"] { background: #ffebeb; color: #a02e2e; }
 .agent-composer-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
-.agent-audio-actions { display: flex; align-items: center; gap: 6px; }
+.agent-composer-trailing { display: flex; align-items: center; gap: 6px; }
+.agent-model { max-width: 112px; overflow: hidden; color: #53637a; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .agent-composer .agent-voice[aria-pressed="true"] { background: #2964c0; color: #fff; }
 .agent-composer .agent-voice[aria-pressed="true"]:hover { background: #1e52a6; }
 @media (prefers-reduced-motion: no-preference) {
