@@ -155,14 +155,16 @@ export class ReferenceDocument {
 
   async insertAgentImage(src, alt, placement, cursor, changeMode) {
     this.#requireOpen();
-    let at = { kind: 'documentEnd' };
+    let at;
     let expectedRevision;
     if (placement === 'cursor') {
       const { address, revision } = await this.inspectAgentCursor(cursor);
       at = { kind: 'inParagraph', target: address, offset: cursor.offset };
       expectedRevision = revision;
-    } else if (placement !== 'documentEnd') {
-      throw new Error('Choose cursor or documentEnd.');
+    } else if (placement === 'documentStart' || placement === 'documentEnd') {
+      at = { kind: placement };
+    } else {
+      throw new Error('Choose cursor, documentStart, or documentEnd.');
     }
     return this.#handle.create.image({ src, alt, at, changeMode, expectedRevision }, { changeMode });
   }
