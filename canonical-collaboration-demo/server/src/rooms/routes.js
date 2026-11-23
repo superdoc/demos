@@ -1,8 +1,37 @@
+import { createHash } from 'node:crypto';
 import { bibliographyInput } from '../reference-integration/native/bibliography-input.js';
 // The route registration table is at the end of this file.
+import { jobBodyLimit } from '../agent-input.js';
 import { config } from '../config.js';
 
 export const roomPath = '/api/rooms/:roomId';
+
+function agentSession(request) {
+  const token = /^Bearer ([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/.exec(request.headers.authorization ?? '')?.[1];
+  if (!token) throw Object.assign(new Error('A private agent session is required.'), { statusCode: 401 });
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function openAgentEvents(reply, connect) {
+  reply.hijack();
+  const socket = reply.raw;
+  socket.writeHead(200, {
+    ...reply.getHeaders(), 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, private', Connection: 'keep-alive',
+  });
+  const send = (data) => {
+    if (!socket.destroyed && !socket.writableEnded) socket.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  const close = () => { if (!socket.writableEnded) socket.end(); };
+  const disconnect = connect(send, close);
+  const heartbeat = setInterval(() => {
+    if (!socket.destroyed && !socket.writableEnded) socket.write(': keep-alive\n\n');
+  }, 15_000);
+  heartbeat.unref();
+  const cleanup = () => { disconnect(); clearInterval(heartbeat); };
+  socket.once('close', cleanup);
+  socket.once('error', cleanup);
+  return reply;
+}
 
 export function registerRoomRoutes(app, { rooms, jobService, createCollaborationToken }) {
   async function initializeRoom(request) {
@@ -201,8 +230,17 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     return rooms.status(request.params.roomId, request.body?.generation);
   }
 
-  async function getChat(request) {
-    return { messages: rooms.require(request.params.roomId).conversation };
+  async function getChat(request, reply) {
+    const sessionId = agentSession(request);
+    return reply.header('Cache-Control', 'no-store, private').send({
+      messages: rooms.require(request.params.roomId).conversationFor(sessionId, false),
+    });
+  }
+
+  function streamAgentPresence(request, reply) {
+    const sessionId = agentSession(request);
+    const room = rooms.require(request.params.roomId);
+    return openAgentEvents(reply, (send, close) => room.connectAgentPresence(sessionId, request.query?.active === '1', send, close));
   }
 
   async function collaborationToken(request) {
@@ -214,46 +252,47 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
 
   async function createJob(request, reply) {
     if (rooms.require(request.params.roomId).document.referenceBusy) throw app.httpErrors.badRequest('Wait for reference formatting to finish before running the agent.');
-    const record = jobService.create(request.params.roomId, request.body);
+    const record = jobService.create(request.params.roomId, agentSession(request), request.body);
     return reply
       .code(202)
       .header('Location', `/api/rooms/${encodeURIComponent(request.params.roomId)}/jobs/${record.id}`)
       .send(record);
   }
 
-  async function getJob(request) {
-    return jobService.get(request.params.roomId, request.params.jobId);
+  async function transcribe(request) {
+    agentSession(request);
+    rooms.require(request.params.roomId);
+    const audio = await request.file({ limits: { fileSize: 5 * 1024 * 1024 } });
+    const extension = { 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg' }[audio?.mimetype];
+    if (!extension) throw app.httpErrors.badRequest('Choose a supported microphone recording.');
+    const bytes = await audio.toBuffer();
+    if (!bytes.length) throw app.httpErrors.badRequest('The recording was empty.');
+    const text = await jobService.transcribe(request.params.roomId, bytes, `prompt.${extension}`);
+    return { text };
+  }
+
+  async function getJob(request, reply) {
+    const record = jobService.get(request.params.roomId, agentSession(request), request.params.jobId);
+    return reply.header('Cache-Control', 'no-store, private').send(record);
   }
 
   function streamJob(request, reply) {
     const { roomId, jobId } = request.params;
-    const job = jobService.get(roomId, jobId);
-    reply.hijack();
-    reply.raw.writeHead(200, {
-      ...reply.getHeaders(),
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+    const sessionId = agentSession(request);
+    const job = jobService.get(roomId, sessionId, jobId);
+    return openAgentEvents(reply, (send, close) => {
+      const publish = (record) => {
+        send(record);
+        if (['completed', 'failed', 'cancelled'].includes(record.status)) close();
+      };
+      const unsubscribe = jobService.subscribe(roomId, sessionId, jobId, publish);
+      publish(job);
+      return unsubscribe;
     });
-    const send = (record) => {
-      if (reply.raw.destroyed || reply.raw.writableEnded) return;
-      reply.raw.write(`data: ${JSON.stringify(record)}\n\n`);
-      if (['completed', 'failed', 'cancelled'].includes(record.status)) reply.raw.end();
-    };
-    const unsubscribe = jobService.subscribe(roomId, jobId, send);
-    const heartbeat = setInterval(() => {
-      if (!reply.raw.destroyed && !reply.raw.writableEnded) reply.raw.write(': keep-alive\n\n');
-    }, 15_000);
-    heartbeat.unref();
-    const cleanup = () => { unsubscribe(); clearInterval(heartbeat); };
-    reply.raw.on('close', cleanup);
-    reply.raw.on('error', cleanup);
-    send(job);
-    return reply;
   }
 
   async function cancelJob(request) {
-    return jobService.cancel(request.params.roomId, request.params.jobId);
+    return jobService.cancel(request.params.roomId, agentSession(request), request.params.jobId);
   }
 
   const routes = [
@@ -285,16 +324,17 @@ export function registerRoomRoutes(app, { rooms, jobService, createCollaboration
     { url: `${roomPath}/document`, method: 'DELETE', handler: deleteDocument },
     // Refresh room activity and reconcile document generation metadata.
     { url: `${roomPath}/status`, method: 'POST', handler: getRoomStatus },
-    // Read the current document's completed agent conversation.
-    { url: `${roomPath}/chat`, method: 'GET', handler: getChat },
     // Issue a short-lived token scoped to this room's collaboration document.
     { url: `${roomPath}/collaboration-token`, method: 'POST', handler: collaborationToken },
   ];
 
   if (jobService) routes.push(
+    { url: `${roomPath}/chat`, method: 'GET', handler: getChat },
+    { url: `${roomPath}/agent-presence`, method: 'GET', handler: streamAgentPresence },
     { url: `${roomPath}/jobs/:jobId/events`, method: 'GET', handler: streamJob },
     // Enqueue an agent job for the room's current document.
-    { url: `${roomPath}/jobs`, method: 'POST', handler: createJob },
+    { url: `${roomPath}/jobs`, method: 'POST', bodyLimit: jobBodyLimit, handler: createJob },
+    { url: `${roomPath}/transcriptions`, method: 'POST', handler: transcribe },
     // Read the current status and result of an agent job.
     { url: `${roomPath}/jobs/:jobId`, method: 'GET', handler: getJob },
     // Cancel an active agent job.

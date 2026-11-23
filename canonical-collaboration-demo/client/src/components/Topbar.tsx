@@ -14,6 +14,7 @@ type TopbarProps = {
   mode: DocumentMode;
   superdoc?: SuperDoc;
   connectedUsers: number | null;
+  connectedAgents: number;
   agentOpen: boolean;
   agentEnabled: boolean;
   onAgentToggle: () => void;
@@ -34,6 +35,7 @@ export function Topbar({
   mode,
   superdoc,
   connectedUsers,
+  connectedAgents,
   agentOpen,
   agentEnabled,
   onAgentToggle,
@@ -108,10 +110,16 @@ export function Topbar({
             <option value="viewing">Viewing</option>
           </select>
         </label>
-        <span className="connected-users" role="status" title="Browser participants in this document, including you">
-          <span className={`presence-dot${connectedUsers ? ' active' : ''}`} aria-hidden="true" />
-          {connectedUsers === null ? 'Connecting…' : `${connectedUsers} ${connectedUsers === 1 ? 'user' : 'users'} connected`}
-        </span>
+        <div className="connected-participants" role="status">
+          <span title="Browser participants in this document, including you">
+            <span className={`presence-dot${connectedUsers ? ' active' : ''}`} aria-hidden="true" />
+            {connectedUsers === null ? 'Connecting…' : `${connectedUsers} ${connectedUsers === 1 ? 'user' : 'users'} connected`}
+          </span>
+          {connectedAgents > 0 && <span title="Document agents in this session">
+            <span className="presence-dot agent" aria-hidden="true" />
+            {`${connectedAgents} ${connectedAgents === 1 ? 'agent' : 'agents'} connected`}
+          </span>}
+        </div>
       </div>
 
       <dialog ref={buildDialog} className="build-dialog" aria-labelledby="build-dialog-title"

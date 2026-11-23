@@ -3,21 +3,109 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import { logEvent } from '../logging.js';
+import { chooseAgentName } from './agent-names.js';
 
 const roomIdPattern = /^[A-Za-z0-9_-]{1,100}$/;
 
 export class Room {
-  constructor({ roomId, document }) {
+  #conversations = new Map();
+  #agentConnections = new Set();
+  #agents = new Map();
+  #openAgentHandle;
+  #closed = false;
+
+  constructor({ roomId, document, openAgentHandle }) {
+    this.#openAgentHandle = openAgentHandle;
     this.roomId = roomId;
     this.document = document;
     this.lastActivityAt = new Date();
     this.activeJobs = 0;
-    this.conversation = [];
   }
 
   documentReplaced() {
-    this.conversation = [];
+    this.#conversations.clear();
     this.updateLastActivityAt();
+  }
+
+  conversationFor(sessionId, create = true) {
+    let conversation = this.#conversations.get(sessionId);
+    if (!conversation && create) {
+      conversation = [];
+      this.#conversations.set(sessionId, conversation);
+    }
+    return conversation ?? [];
+  }
+
+  #agentFor(sessionId) {
+    let agent = this.#agents.get(sessionId);
+    if (!agent) {
+      const used = new Set([...this.#agents.values()].map(({ name }) => name));
+      agent = { name: chooseAgentName(used), jobs: 0, connections: 0 };
+      this.#agents.set(sessionId, agent);
+    }
+    return agent;
+  }
+
+  connectAgentPresence(sessionId, active, send, close) {
+    const agent = this.#agentFor(sessionId);
+    const connection = { agent, send, close };
+    this.#agentConnections.add(connection);
+    if (active) agent.connections++;
+    this.#publishAgentCount();
+    return () => {
+      if (!this.#agentConnections.delete(connection)) return;
+      if (active) agent.connections--;
+      this.#publishAgentCount();
+      void this.#releaseAgentHandle(agent);
+    };
+  }
+
+  #publishAgentCount() {
+    const agents = [...this.#agents.values()].filter((agent) => agent.jobs || agent.connections).length;
+    for (const connection of this.#agentConnections) connection.send({ agents, name: connection.agent.name });
+  }
+
+  async #releaseAgentHandle(agent, force = false) {
+    if (!force && (agent.jobs || agent.connections)) return;
+    const opened = agent.handle;
+    if (!opened) return agent.closing;
+    agent.handle = undefined;
+    agent.closing = opened.then((handle) => handle.close({ discard: true })).catch((error) => {
+      logEvent('rooms', 'agent.handle_cleanup', { roomId: this.roomId, error: error.message });
+    });
+    await agent.closing;
+  }
+
+  async withAgent(sessionId, run) {
+    const agent = this.#agentFor(sessionId);
+    agent.jobs++;
+    this.#publishAgentCount();
+    try {
+      if (!this.#openAgentHandle) return await run(agent.name);
+      await agent.closing;
+      if (this.#closed) throw new Error('This room is closed.');
+      agent.handle ??= this.#openAgentHandle(agent.name);
+      let handle;
+      try { handle = await agent.handle; }
+      catch (error) { agent.handle = undefined; throw error; }
+      return await this.document.withAgentHandle(handle, () => run(agent.name));
+    } finally {
+      agent.jobs--;
+      this.#publishAgentCount();
+      await this.#releaseAgentHandle(agent);
+    }
+  }
+
+  async resetAgentHandles() {
+    await Promise.all([...this.#agents.values()].map((agent) => this.#releaseAgentHandle(agent, true)));
+  }
+
+  async closeAgentPresence() {
+    this.#closed = true;
+    const connections = [...this.#agentConnections];
+    this.#agentConnections.clear();
+    for (const connection of connections) connection.close();
+    await this.resetAgentHandles();
   }
 
   updateLastActivityAt() {
@@ -153,6 +241,7 @@ export class RoomStore {
         throw error;
       }
       existingRoom.documentReplaced();
+      await existingRoom.resetAgentHandles();
       logEvent('rooms', 'room.replaced', {
         roomId,
         documentId: existingRoom.document.id,
@@ -178,9 +267,6 @@ export class RoomStore {
           documentId,
           roomMode,
           syncTimeoutMs: 90_000,
-          ...(config.collaborationAgent === 'on' && config.collaborationAgentPresence === 'on'
-            ? { presence: { name: 'Agent', userId: 'document-service@demo.local', color: '#8B5CF6' } }
-            : {}),
         },
         collaborationAuth: { type: 'token', token: this.#createServiceToken(documentId) },
       });
@@ -200,7 +286,17 @@ export class RoomStore {
           }
         }
       }
-      const room = new Room({ roomId, document });
+      const room = new Room({
+        roomId, document,
+        openAgentHandle: config.collaborationAgent === 'on' && config.collaborationAgentPresence === 'on'
+          ? (name) => this.#documents.openAgentHandle({
+            document,
+            name,
+            url: `ws://127.0.0.1:${config.port}/collaboration`,
+            token: this.#createServiceToken(document.id),
+          })
+          : undefined,
+      });
       this.#rooms.set(roomId, room);
       logEvent('rooms', 'room.created', { roomId, documentId, documentBytes: content.length, activeRooms: this.#rooms.size });
       return room;
@@ -269,6 +365,7 @@ export class RoomStore {
   }
 
   async #close(room, { deleteState }) {
+    await room.closeAgentPresence();
     if (deleteState) await this.#collaboration.prepareDelete?.(room.document.id);
     await room.document.close().catch(() => {});
     await this.#collaboration.unload(room.document.id, { deleteState }).catch(() => {});
@@ -281,6 +378,7 @@ export class RoomStore {
       generation: room.document.generation,
       filename: room.document.filename,
       field_codes: room.document.fieldCodes,
+      private_agent_chats: config.collaborationAgent === 'on',
       last_activity_at: room.lastActivityAt.toISOString(),
       collaboration_url: config.publicOrigin.replace(/^http/, 'ws') + '/collaboration',
     };

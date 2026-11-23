@@ -116,12 +116,10 @@ test('repeated failed SDK calls stop across inspections and report only successf
   const history = [];
   const answer = await h.agent.run(h.document, 'Save sources and insert both citations.', history, false, new AbortController().signal);
   assert.equal(h.requests.length, 6);
-  assert.match(answer, /same tool error occurred twice/);
+  assert.match(answer, /I couldn’t finish this request/);
   assert.match(answer, /Saved reference "First report"/);
   assert.match(answer, /Saved reference "Second report"/);
-  assert.match(answer, /superdoc_api_call: 1/);
-  assert.match(answer, /Last failed operation: doc.citations.insert/);
-  assert.match(answer, /Citation target is required/);
+  assert.doesNotMatch(answer, /superdoc_api_call|doc\.citations\.insert|Citation target is required/);
   assert.doesNotMatch(answer, /Everything is done|placement verified/);
   assert.equal(history[1].content, answer);
   const error = JSON.parse(h.requests[4].messages.at(-1).content);
@@ -144,7 +142,7 @@ test('turn-limit output ignores intermediate completion claims and preserves suc
   const h = harness([createSource('Saved report'), ...Array.from({ length: 11 }, () => call('superdoc_inspect', {}, 'All done.'))]);
   const answer = await h.agent.run(h.document, 'A multi-step request.', [], true, new AbortController().signal);
   assert.equal(h.requests.length, 12);
-  assert.match(answer, /Stopped at the agent turn limit/);
+  assert.match(answer, /I couldn’t finish this request/);
   assert.match(answer, /Saved reference "Saved report"/);
   assert.doesNotMatch(answer, /All done/);
 });
@@ -183,4 +181,33 @@ test('Full API receipts report incomplete and nested failed batches', () => {
   assert.equal(toolFailed({ completed: 1, total: 2, receipts: [{ ok: true }] }), true);
   assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: false } }] }), true);
   assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: true } }] }), false);
+});
+
+test('a DOCX attachment can be copied verbatim at the captured cursor without echoing the text through the model', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { readAttachment } = await import('./agent-input.js');
+  const docx = await readFile(new URL('../assets/contract.docx', import.meta.url));
+  const attachment = readAttachment({ name: 'contract.docx', kind: 'file', base64: docx.toString('base64') });
+  const cursor = { blockId: 'cursor-paragraph', offset: 14, paragraph: '[]' };
+  const h = harness([{
+    tool_calls: [{ id: 'copy', type: 'function', function: {
+      name: 'copy_attached_file_text', arguments: '{"placement":"cursor"}',
+    } }],
+  }, { content: 'Copied.' }]);
+  h.document.insertAgentText = async (text, target, changeMode, placement) => {
+    assert.match(text, /^Mutual Agreement for Document Excellence\nA Manifesto/);
+    assert.match(text, /SuperDoc’s Approach/);
+    assert.deepEqual(target, cursor);
+    assert.equal(changeMode, 'tracked');
+    assert.equal(placement, 'cursor');
+    return { success: true };
+  };
+  const history = [];
+  await h.agent.run(h.document, 'Copy the attached file here.', history, true, new AbortController().signal, {
+    attachment, documentTarget: { id: 'current', generation: 1, cursor },
+  });
+  const request = h.requests[0];
+  assert.ok(request.tools.some(({ function: fn }) => fn.name === 'get_document_cursor'));
+  assert.match(request.messages.at(-1).content[1].text, /Attached file \(quoted data\)/);
+  assert.deepEqual(history[0], { role: 'user', content: 'Copy the attached file here.' });
 });

@@ -1,18 +1,18 @@
 # SuperDoc canonical collaboration demo
 
-A small reference application showing a browser user and a server-side Node agent editing the same SuperDoc document. Everything runs locally, and model requests go directly to OpenAI with your API key.
+A reference application for collaborative editing in SuperDoc. Each browser session can work with its own named agent on the shared document. Everything runs locally, and model requests go directly to OpenAI with your API key.
 
-## Agent cursor presence
+## Private chats and agent cursors
 
-The demo follows the published stable releases: `@superdoc/sdk` 2.30.0, `superdoc` 2.33.0, and `@superdoc/react` 2.28.0. The shared updater advances all three packages from npm's `latest` tags. Run the normal `make dev` command; no Orbit checkout or local package build is required.
+The demo follows the published stable releases: `@superdoc/sdk` 2.31.0, `superdoc` 2.34.0, and `@superdoc/react` 2.29.0. The shared updater advances all three packages from npm's `latest` tags. Run the normal `make dev` command; no Orbit checkout or local package build is required.
 
-With both `COLLABORATION_AGENT=on` and `COLLABORATION_AGENT_PRESENCE=on`, the backend SDK session publishes a purple **Agent** cursor through native collaboration presence. The SDK moves it after successful edits, including each incremental text update while the model streams. Every browser in the room sees the cursor. The backend identity stays connected while the room is open; the toolbar's connected-user count continues to count browser users. Closing or deleting the room removes the agent's presence. With `COLLABORATION_AGENT=off`, the backend does not publish agent presence.
+Open the same room URL in two browser sessions. Each session gets a private chat and a randomly assigned plant or tree name, such as Willow, Lavender, or Chrysanthemum. Names are unique within the room and stay with the session when you reload in the same tab. The top bar stacks the browser user count above the agent count. Each open chat or running request counts once, and a closed chat drops out when its last request finishes.
 
-Presence is configured in `server/src/rooms/store.js` through the SDK's `collaboration.presence` option. The reference integration receives that configuration through its existing document-open boundary.
+With `COLLABORATION_AGENT=on` and `COLLABORATION_AGENT_PRESENCE=on`, the server opens a dedicated SuperDoc SDK handle when an agent first works on the document. The handle joins the shared Hocuspocus room and publishes the agent’s name on a purple cursor. Native presence follows edits, including incremental streamed text. Closing the chat releases its handle once its work finishes. The room’s primary SDK handle owns the shared document lifecycle. Turning off cursor presence leaves private chat and its connection count available.
 
-`npm run test:browser --prefix client` starts the real demo backend and a built frontend with a local OpenAI-compatible stream. It checks cursor movement during direct/tracked streaming in two browser clients, human-user counts, and presence removal after document deletion. Run `make install` and `npm exec --prefix client -- playwright install chromium` first. The scenario builds its own frontend in the test output directory and needs no model key. It uses ports 18000 and 18173; the normal development server can keep running.
+`npm run test:browser --prefix client` tests the built frontend and real demo backend in Chromium with a local OpenAI-compatible stub. The suite covers separate chats, named cursors and connection counts during collaborative edits, selection and caret prompts, image and file attachments, and microphone dictation. Run `make install` first. The tests use ports 18000 and 18173 and need no model key. Run `npm run test:browser --prefix client -- agent-composer.spec.ts` to run only the composer scenarios.
 
-To preview the agent panel without a model key, run `COLLABORATION_AGENT=off VITE_COLLABORATION_AGENT=on make dev`. You can compose a prompt; Run agent remains disabled with a configuration message until the backend agent is enabled.
+To preview the agent panel without a model key, run `COLLABORATION_AGENT=off VITE_COLLABORATION_AGENT=on make dev`. You can compose a prompt; Send remains disabled with a configuration message until the backend agent is enabled.
 
 ## Architecture
 
@@ -41,11 +41,11 @@ flowchart TB
         end
 
         subgraph Api["Existing demo application layer (optional)"]
-            Routes["Room, document, reference,<br/>token, and job routes<br/>COLLABORATION_API=on"]
-            RoomStore["Application RoomStore<br/>metadata + active rooms"]
+            Routes["Room, document, reference,<br/>private chat, presence, and job routes<br/>COLLABORATION_API=on"]
+            RoomStore["Application RoomStore<br/>documents + authenticated chat sessions"]
             DocumentService["DocumentService"]
             SDK["Shared SuperDocClient"]
-            Jobs["JobService + OpenAI agent<br/>OPTIONAL: COLLABORATION_AGENT=on"]
+            Jobs["JobService + OpenAI agent<br/>per-session conversations and SDK cursors<br/>OPTIONAL: COLLABORATION_AGENT=on"]
 
             Routes --> RoomStore
             Routes --> Jobs
@@ -68,7 +68,7 @@ flowchart TB
 
 Orange dashed blocks are optional. The Fastify host and Hocuspocus collaboration core are always present. The bundled React client, HTTP application layer, agent worker, JWT gate, file-backed Yjs persistence, and DOCX autosave can be included or excluded with the flags shown. The room-state adapter is always present, using either memory or file storage; the two storage blocks are alternatives rather than simultaneous destinations.
 
-The browser owns the UI and interactive editor. When enabled, the HTTP application layer owns room metadata, uploads/downloads, references, chat, expiry, token issuance, and jobs. Each application room owns one document object, while `DocumentService` owns the shared SDK client. Browser and backend SDK sessions edit through the same Hocuspocus document. The collaboration layer, adapted from the SuperDoc collaboration server template, owns WebSocket authorization, Yjs room-state storage, and optional debounced DOCX snapshots; it can also run without the bundled client and HTTP application layer.
+The browser owns the UI and interactive editor. When enabled, the HTTP application layer owns room metadata, uploads/downloads, references, chat, expiry, token issuance, and jobs. Each application room owns one document object, while `DocumentService` owns the shared SDK client. Browser and backend SDK sessions edit through the same Hocuspocus document. Each room keeps its conversations and agent identities by browser session. A browser generates a random session credential and keeps it in session storage. The HTTP agent endpoints use that credential to scope conversations, job access, and presence, independently of the WebSocket token used to join the document. The collaboration layer, adapted from the SuperDoc collaboration server template, owns WebSocket authorization, Yjs room-state storage, and optional debounced DOCX snapshots; it can also run without the bundled client and HTTP application layer.
 
 ### Document Upload/Room Creation
 
@@ -90,18 +90,13 @@ After initialization, live document edits travel through Hocuspocus. The source 
 
 Submitting a prompt creates an asynchronous agent job. The agent applies document edits during its tool-call loop rather than waiting until the job is complete:
 
-1. The client posts the prompt and Reviewing/Editing mode to the API.
-2. `JobService` validates the room, creates and queues a server-generated job record, and immediately returns `202 Accepted` with its job ID.
-3. When the job reaches the front of the queue, `JobService` calls the shared agent's `run()` method with the room's `Document`.
-4. The agent runs its OpenAI tool-call loop.
-5. For each document tool call, the agent calls `Document.dispatch()`.
-6. The `Document` applies the operation through its SDK handle.
-7. The SDK sends the change through Hocuspocus, which synchronizes it to connected browsers.
-8. While this work runs, the client polls the job endpoint and observes `queued`, `running`, and eventually a terminal status.
-9. When the agent finishes, it returns its textual answer to `JobService` and appends the prompt and answer to the room's conversation.
-10. `JobService` marks the job complete, updates the room activity timestamp, and decrements the room's active-job count.
+1. The client sends the prompt and Reviewing or Editing mode with its session credential.
+2. `JobService` validates the room and queues a job under that session. The API replies with `202 Accepted` and the job ID.
+3. The worker runs the model with only that session’s conversation. When native cursor presence is enabled, it uses the session’s named SDK handle for document operations through the shared reference adapter.
+4. Document edits travel through Hocuspocus to all collaborators. The worker serializes jobs so their writes go through the existing document safeguards.
+5. Job status and reply text stream to the requesting session. The client polls job status if the stream drops.
+6. The completed prompt, reply, and attachment preview are saved in that session’s conversation.
 
-The agent does not communicate with `RoomStore` directly. Document edits go through the room's `Document`; `JobService` manages room access, job status, cancellation, and completion.
 
 ## Quick start
 
@@ -160,23 +155,24 @@ The first run installs the Node dependencies. Open [http://localhost:15173](http
 
 ## Use the browser application
 
-The client creates a random room ID and adds it to the URL as `?room=...`. Keep or share that URL to reconnect to the same room while the local services remain running.
+The client creates a random room ID and adds it to the URL as `?room=...`. Share that URL to collaborate on the document. To try both agents yourself, open the URL in a second browser session or a private window. Each session gets its own greeting, prompts, attachments, and replies, while document edits appear in both windows.
 
 1. Open a new room to load the bundled `server/assets/contract.docx` sample automatically.
 2. Use the four file buttons, left to right: **New Document**, **Replace document**, **Save As**, and **Delete document**. New Document creates a blank document; Replace document imports a `.docx` file.
 3. Edit the document directly in SuperDoc.
-4. Enter an instruction in the agent panel and select **Run agent**. Enter submits; Shift+Enter adds a new line.
-   Select document text first to target a passage. The panel previews its plain text in a scrollable area up to 160px tall and includes it as target context with the prompt. The selection remains available while typing the prompt; choose **Clear** to remove the target and work with the whole document again.
-5. While a job is running, select **Stop agent** to cancel remaining work. Edits already applied before cancellation are not rolled back.
-6. Use **Save As** to export the collaborative document, or **Delete Document** to remove it.
+4. Enter an instruction in the agent panel and select **Send**. Enter submits; Shift+Enter adds a new line.
+   Select document text first to target a passage. The panel previews selected paragraphs and tables in a scrollable area and includes the selection as target context with the prompt. The selection remains available while typing the prompt; choose **Clear** to remove the target and work with the whole document again.
+5. While a job is running, select **Stop** to cancel remaining work. Edits already applied before cancellation are not rolled back.
+6. Use **+** to attach an image or a supported file, or use the microphone to dictate a prompt.
+7. Use **Save As** to export the collaborative document, or **Delete Document** to remove it.
 
-The agent uses OpenAI streaming. Ordinary text writes always use the streaming tool: alternative paragraph insertion, heading insertion, text replacement, block rewriting and placeholder replacement actions are removed from the agent’s tool schema and rejected by the host if called. No special prompt is needed. Plain-text rewrites and new paragraphs appear progressively in the editor through the existing collaboration connection, and the agent’s chat reply streams into the panel. Streaming handles one paragraph per tool call, including new paragraphs before or after existing passages. Headings and styled prose stream their words first and apply formatting afterward. Structured edits (including tables, lists, citations and footnotes) apply through their dedicated tools after their arguments finish generating. Stopping or losing a stream preserves text already applied. Each chunk uses the host’s Reviewing/Editing mode and verifies its current document target before insertion.
+The agent uses OpenAI streaming. Ordinary prose and rewrites use the streaming tool. Cursor insertions and verbatim attachment copies use their dedicated operations. For generated prose, alternative paragraph insertion, heading insertion, text replacement, block rewriting and placeholder replacement actions are removed from the agent’s tool schema and rejected by the host if called. No special prompt is needed. Plain-text rewrites and new paragraphs appear progressively in the editor through the existing collaboration connection, and the agent’s chat reply streams into the panel. Streaming handles one paragraph per tool call, including new paragraphs before or after existing passages. Headings and styled prose stream their words first and apply formatting afterward. Structured edits (including tables, lists, citations and footnotes) apply through their dedicated tools after their arguments finish generating. Stopping or losing a stream preserves text already applied. Each chunk uses the host’s Reviewing/Editing mode and verifies its current document target before insertion.
 
 Set `DEFAULT_DOCUMENT_PATH` in the local `.env` file to override the bundled room template. Initialization preserves an existing room and coalesces simultaneous requests for the same new room.
 
 In the agent panel's **Reviewing** mode, the system prompt instructs the agent to add an **Agent** comment immediately after each suggested edit, with a brief rationale anchored to the affected passage or paragraph. This includes streamed paragraphs once they finish. Editing mode does not include this instruction. Comment creation uses the existing native comment tools; compliance is guided by the prompt rather than enforced by the host.
 
-A room contains one document with one stable document ID. Creating or uploading another document calls the Node SDK's `replaceFile()` on the existing backend document session. This atomically resets the shared content without replacing the collaboration identity. Replacement starts a new metadata generation and clears the previous chat history.
+A room contains one document with one stable document ID. Creating or uploading another document calls the Node SDK's `replaceFile()` on the existing backend document session. This atomically resets the shared content without replacing the collaboration identity. Replacement starts a new metadata generation and clears the conversations for the previous document generation.
 
 The chat panel is isolated in `client/src/components/ChatPanel.tsx`. It communicates only through the public HTTP API and can be replaced with another agent interface.
 
@@ -236,7 +232,7 @@ Bibliography discovery filters returned Word fields by their actual instruction,
 
 Toolbar bibliography creation retains its revision-checked snapshot path. Agent bibliography creation uses the native API and then renders cached entries. This avoids SDK paragraph-style resolution and collaboration style-metadata writes during insertion. Generated bibliography entries retain the field paragraph’s style or use the document default; they do not reference an absent Bibliography style. Updates use the same renderer.
 
-Agent tool calls stream live in a separate bubble between the user prompt and the agent response, showing running, completed, or failed status and elapsed tool time. Each saved agent reply retains its own tool-call bubble, newest first. The collapsed bubble shows four complete calls and fades the fifth; clicking expands the full list, and clicking again collapses it. Expanded state is retained when the active job becomes a saved reply. Replies created before tool-call recording was enabled have no recorded trace.
+The chat shows the named agent’s reply under each submitted prompt. Image thumbnails and file cards are saved with their prompt. Job records and the terminal logs retain tool diagnostics.
 
 Reviewing-mode typing includes an isolated selection workaround for replacements following earlier tracked deletions in a paragraph. Before native typing begins, it reapplies the selected range in visible coordinates using the public selection API, preventing replacement letters from splitting around deleted text. The implementation lives in `client/src/reference-integration/workarounds/tracked-replacement-caret.ts`, with portable React lifecycle wiring in `client/src/reference-integration/components/TrackedReplacementCaret.tsx`. Native typing retains revision creation and undo. Verify the guards with `node --test tests/tracked-replacement-caret.test.mjs`.
 
@@ -257,7 +253,7 @@ The Full toolkit integration, remaining custom tools, and compatibility fixes ar
 
 The Fastify process owns the ephemeral room registry, source files, activity timestamps, conversation history, agent-job queue, job records, and one shared `SuperDocClient`. Each room owns a `Document` object containing its metadata and SDK handle. `DocumentService` creates these objects and owns shared SDK startup and shutdown. `RoomStore` may request `Document.close()` during deletion or expiry, but it does not perform SDK operations itself.
 
-Document content travels through Hocuspocus. The browser posts to the room status endpoint every 30 seconds to refresh activity and reconcile lifecycle metadata. Replacement content still arrives immediately through collaboration; metadata changes and deletion are detected by the next status request. Job status is polled separately while a submitted job is active because it is an asynchronous task status API.
+Document content travels through Hocuspocus. The browser posts to the room status endpoint every 30 seconds to refresh activity and reconcile lifecycle metadata. Replacement content still arrives immediately through collaboration; metadata changes and deletion are detected by the next status request. Private agent presence and job replies stream over separate authenticated HTTP event streams. A job uses status polling as a fallback.
 
 ## Configuration
 
@@ -266,7 +262,7 @@ Document content travels through Hocuspocus. The browser posts to the room statu
 | `COLLABORATION_API` | `on` | Set to `off` to run only the collaboration WebSocket, persistence, auth, and optional DOCX autosave. |
 | `COLLABORATION_CLIENT` | `on` | Set to `off` to skip the bundled React client in `make dev` and the root build. |
 | `COLLABORATION_AGENT` | `on` | Set to `off` to omit the OpenAI agent worker and its job routes/UI. Requires the API when enabled. |
-| `COLLABORATION_AGENT_PRESENCE` | `on` | Set to `off` to hide the agent cursor. Requires the agent to be enabled. |
+| `COLLABORATION_AGENT_PRESENCE` | `on` | Set to `off` to skip per-agent SDK cursor handles. Private chats and their connection count remain available. |
 | `COLLABORATION_AUTH` | `none` | Set to `example-token` to require signed WebSocket credentials. This gates the WebSocket but is not application login: the demo token endpoint trusts its submitted user ID. |
 | `COLLABORATION_AUTH_SECRET` | none | JWT signing secret of at least 32 characters; required for `example-token` auth. |
 | `COLLABORATION_STORAGE` | `memory` | Use `file` to persist binary Yjs room state across room expiry and process restarts. |
@@ -350,14 +346,19 @@ Room IDs must contain 1–100 letters, numbers, underscores, or hyphens.
 | `POST` | `/api/rooms/{roomId}/footnotes` | Insert a footnote beside existing fields using `{generation, input: {at, changeMode, expectedRevision}}` |
 | `DELETE` | `/api/rooms/{roomId}/document` | Delete the document and room state |
 | `POST` | `/api/rooms/{roomId}/status` | Refresh activity and return current metadata with a stale-generation indicator |
-| `GET` | `/api/rooms/{roomId}/chat` | Read completed agent conversation messages |
+| `GET` | `/api/rooms/{roomId}/chat` | Read the calling session’s completed conversation |
+| `GET` | `/api/rooms/{roomId}/agent-presence?active=1` | Connect the calling session’s agent and stream the room’s agent count and the session’s assigned name. Use `active=0` to watch the count with the panel closed. |
 | `POST` | `/api/rooms/{roomId}/collaboration-token` | Issue a five-minute JWT scoped to this room using `{userId}`; this demo endpoint trusts the caller-supplied identity |
-| `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt |
+| `POST` | `/api/rooms/{roomId}/jobs` | Enqueue an agent prompt for the calling session |
+| `POST` | `/api/rooms/{roomId}/transcriptions` | Transcribe the calling session’s uploaded recording |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}` | Read job status and result |
 | `GET` | `/api/rooms/{roomId}/jobs/{jobId}/events` | Stream job status and tool-call updates as server-sent events |
 | `DELETE` | `/api/rooms/{roomId}/jobs/{jobId}` | Cancel a queued or running job |
 
 ### End-to-end API example
+
+Agent endpoints require `Authorization: Bearer <session UUID>`. Generate a fresh UUID for each API session and reuse it across that session’s history, presence, transcription, and job requests. The browser does this automatically and retains the credential across reloads in the same tab. Use an HTTP client that can send the header for event streams.
+
 
 Create a blank document:
 
@@ -368,7 +369,9 @@ curl -X POST http://localhost:8000/api/rooms/demo-room/document
 Add an agent job:
 
 ```bash
+agent_session=$(node -p "require('node:crypto').randomUUID()")
 curl -i -X POST http://localhost:8000/api/rooms/demo-room/jobs \
+  -H "Authorization: Bearer $agent_session" \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"Add a heading named Project Overview followed by a short introductory paragraph.","isSuggesting":true}'
 ```
@@ -378,7 +381,8 @@ The response is `202 Accepted`. Copy the generated `id` from the response body o
 Read the job status:
 
 ```bash
-curl http://localhost:8000/api/rooms/demo-room/jobs/job_RETURNED_ID
+curl -H "Authorization: Bearer $agent_session" \
+  http://localhost:8000/api/rooms/demo-room/jobs/job_RETURNED_ID
 ```
 
 Repeat until `status` is `completed`, `failed`, or `cancelled`. Then download the modified document:
@@ -407,7 +411,7 @@ curl -X PATCH http://localhost:8000/api/rooms/demo-room/document \
   -d '{"tool":"superdoc_perform_action","arguments":{"action":"insert_heading","text":"Executive Summary","level":1,"placement":{"at":"document_start"}}}'
 ```
 
-Set `isSuggesting` to `true` for tracked agent changes or `false` for direct edits. Prompts use the completed conversation history for the current document. Job IDs are generated by the server and cannot be supplied by clients.
+Set `isSuggesting` to `true` for tracked agent changes or `false` for direct edits. Prompts use the completed conversation for the calling session and current document generation. Job IDs are generated by the server and cannot be supplied by clients.
 
 ## Verify collaboration
 
@@ -416,14 +420,15 @@ Set `isSuggesting` to `true` for tracked agent changes or `false` for direct edi
 3. Ask the agent to make a distinct edit and confirm it appears in the editor.
 4. Replace the document through `curl` and confirm the open editor resets without changing the document ID or reloading the page.
 5. Choose **Save As** and confirm the exported DOCX includes subsequent browser and agent edits.
-6. Close the browser, enqueue another job through the API, then reopen the same room URL and confirm the backend edit is present.
+6. Open the same room URL in a second browser session. Check for two names, two purple cursors after both agents edit, and two chat histories containing only their own prompts and replies.
+7. Close one Agent panel to drop its connection count. The browser user count remains the same until the tab disconnects.
 
 Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`, `[worker]`, `[agent]`, `[document-service]`, `[collab]`, and `[dev]` prefixes.
 
 ## Ephemeral state and expiry
 
-- A room holds one document and one conversation.
-- Replacement retains the document ID, increments its generation, and clears its conversation.
+- A room holds one shared document and separate conversations for its agent sessions. Names are reserved within the room for the life of each session.
+- Replacement retains the document ID, increments its generation, and clears the previous generation’s conversations and cursors.
 - Terminal job records expire after 10 minutes by default.
 - Rooms unload from the API after one hour without recorded activity from a status heartbeat, a room/document/chat request that resolves the room, a collaboration change, or agent execution by default. Job-status polling alone does not refresh room activity.
 - The browser checks room status every 30 seconds, including while the room is empty; an existing room records that check as activity.
@@ -452,6 +457,6 @@ Structured diagnostics appear in the `make dev` terminal with `[api]`, `[rooms]`
 
 This demo packages a runnable local collaboration topology; it is not a production deployment template. Its default example profile disables WebSocket authentication and persistence for a zero-configuration quick start. The optional token endpoint is still demo infrastructure rather than application login: it trusts the submitted demo user ID, so a production owner must authenticate its HTTP API caller and authorize room access before issuing a token. File-backed Yjs state alone does not restore API room metadata or reopen SDK documents after restart. Production also needs durable room metadata and job storage, queue recovery, multi-process collaboration coordination, rate limits, observability, backups, TLS, and deployment-specific CORS and public URLs.
 
-Integrators can replace the chat component and agent orchestration while retaining the HTTP document surface and SuperDoc collaboration connection. They would operate this Node service or an equivalent implementation preserving the synchronization and state contracts.
+Integrators can replace the chat component and agent orchestration while retaining the HTTP document surface and SuperDoc collaboration connection. Integrators can use their existing authenticated user or session identity in place of the demo’s bearer credential. They would operate this Node service or an equivalent implementation preserving the synchronization and state contracts.
 
 The model-facing tool set is the four Full-preset tools (`superdoc_inspect`, `superdoc_perform_action`, `superdoc_api_search`, `superdoc_api_call`) plus `superdoc_stream_text`. The [integration inventory](docs/reference-integration.md) describes the app-side policies and remaining compatibility paths.

@@ -5,7 +5,7 @@ import { api } from './api';
 import { ChatPanel } from './components/ChatPanel';
 import { DocumentEditor } from './components/DocumentEditor';
 import { Topbar, type DocumentMode } from './components/Topbar';
-import type { Room } from './types';
+import type { AgentPresence, Room } from './types';
 import type { BibliographyStyle } from './references';
 import { CitationsPanel } from './components/CitationsPanel';
 import { CitationHighlights } from './components/CitationHighlights';
@@ -23,7 +23,8 @@ function hasSameDocumentMetadata(currentRoom: Room | undefined, nextRoom: Room |
     && currentRoom.generation === nextRoom.generation
     && currentRoom.filename === nextRoom.filename
     && currentRoom.collaboration_url === nextRoom.collaboration_url
-    && currentRoom.field_codes === nextRoom.field_codes;
+    && currentRoom.field_codes === nextRoom.field_codes
+    && currentRoom.private_agent_chats === nextRoom.private_agent_chats;
 }
 
 const params = new URLSearchParams(window.location.search);
@@ -44,9 +45,32 @@ export default function App() {
   const [initialized, setInitialized] = useState(false);
   const initialization = useRef<Promise<Room | undefined> | null>(null);
   const [mode, setMode] = useState<DocumentMode>('editing');
-  const [chatWidth, setChatWidth] = useState(360);
+  const [chatWidth, setChatWidth] = useState(480);
   const [agentOpen, setAgentOpen] = useState(agentEnabled);
   const [connectedUsers, setConnectedUsers] = useState<number | null>(null);
+  const [agentPresence, setAgentPresence] = useState<AgentPresence>();
+  const privateChat = agentAvailable && room?.private_agent_chats === true;
+  const documentId = room?.document_id;
+  const collaborationReady = connectedUsers !== null;
+
+  useEffect(() => {
+    if (!agentEnabled || !privateChat || !documentId || !collaborationReady) {
+      setAgentPresence(undefined);
+      return;
+    }
+    const controller = new AbortController();
+    let retry: number;
+    async function watch() {
+      try {
+        await api.watchAgentPresence(roomId, agentOpen, setAgentPresence, controller.signal);
+      } catch { /* Reconnect if the presence stream drops. */ }
+      if (controller.signal.aborted) return;
+      setAgentPresence(undefined);
+      retry = window.setTimeout(() => void watch(), 1_000);
+    }
+    void watch();
+    return () => { controller.abort(); window.clearTimeout(retry); };
+  }, [roomId, documentId, privateChat, agentOpen, collaborationReady]);
   const [superdoc, setSuperdoc] = useState<SuperDoc>();
   const [citationsOpen, setCitationsOpen] = useState(false);
   const [bibliographyStyle, setBibliographyStyle] = useState<BibliographyStyle>('APA');
@@ -232,6 +256,7 @@ export default function App() {
         busy={busy || referenceBusy}
         mode={mode}
         connectedUsers={room && !busy ? connectedUsers : 0}
+        connectedAgents={room && !busy ? agentPresence?.agents ?? 0 : 0}
         onNewDocument={() => void createBlank()}
         onUpload={(file) => void upload(file)}
         onDownload={() => {
@@ -298,11 +323,14 @@ export default function App() {
         </div>
         {agentEnabled && <ChatPanel
           hidden={!agentOpen}
+          agentName={agentPresence?.name}
           roomId={roomId}
           superdoc={superdoc}
+          documentTarget={room ? { id: room.document_id, generation: room.generation } : undefined}
           documentKey={room ? `${room.document_id}:${room.generation}` : undefined}
-          disabled={!room || busy || referenceBusy}
-          unavailableReason={agentAvailable ? undefined : 'Configure an OpenAI API key in the demo’s .env file and restart to run the agent.'}
+          disabled={!privateChat || busy || referenceBusy}
+          unavailableReason={!agentAvailable ? 'Configure an OpenAI API key in the demo’s .env file and restart to run the agent.'
+            : room && !privateChat ? 'Private agent chats require the updated demo server.' : undefined}
           width={chatWidth}
           onWidthChange={setChatWidth}
           onDocumentUpdated={refreshReferences}

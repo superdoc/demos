@@ -54,7 +54,7 @@ function guardedHandle(handle, onBibliographyFallback) {
 }
 
 export function createReferenceApi({ handle, toolkit, withMutation, onChanged, onBibliographyFallback }) {
-  return async (args, options) => {
+  return async (args, options, activeHandle = handle) => {
     const calls = nativeCalls(args);
     const hasSources = calls.some(call => sourceMutations.has(nativeOperationId(call?.operationId)));
     const hasCitations = calls.some(call => citationMutations.has(nativeOperationId(call?.operationId)));
@@ -63,7 +63,7 @@ export function createReferenceApi({ handle, toolkit, withMutation, onChanged, o
       const unsupported = calls.find(call => unverifiedTrackedInsertions.has(nativeOperationId(call?.operationId)));
       if (unsupported) throw new Error(`${nativeOperationId(unsupported.operationId)} is refused under enforceChangeMode: "tracked". Nothing was changed.`);
     }
-    if (!hasSources && !hasBibliographies && !hasCitations) return toolkit.dispatch(handle, 'superdoc_api_call', args, options);
+    if (!hasSources && !hasBibliographies && !hasCitations) return toolkit.dispatch(activeHandle, 'superdoc_api_call', args, options);
     return withMutation(async () => {
       let governed = structuredClone(args);
       let policy = options;
@@ -79,7 +79,7 @@ export function createReferenceApi({ handle, toolkit, withMutation, onChanged, o
           // the SDK catalog; other direct-only operations must still be refused.
           for (const call of calls) {
             const operationId = nativeOperationId(call?.operationId);
-            const { operation } = await toolkit.dispatch(handle, 'superdoc_api_search', { operationId });
+            const { operation } = await toolkit.dispatch(activeHandle, 'superdoc_api_search', { operationId });
             if (!operation) throw new Error(`Unknown native operation: ${operationId}`);
             if (operation.mutates && !operation.supportsTrackedMode && !sourceMutations.has(operationId)) {
               throw new Error(`${operationId} is refused under enforceChangeMode: "tracked". Nothing was changed.`);
@@ -88,7 +88,7 @@ export function createReferenceApi({ handle, toolkit, withMutation, onChanged, o
           policy = { ...options, allowDirectActions: ['*'] };
         }
       }
-      const guarded = hasSources || hasBibliographies ? guardedHandle(handle, onBibliographyFallback) : handle;
+      const guarded = hasSources || hasBibliographies ? guardedHandle(activeHandle, onBibliographyFallback) : activeHandle;
       const result = await toolkit.dispatch(guarded, 'superdoc_api_call', governed, policy);
       const changes = Array.isArray(result?.receipts)
         ? result.receipts.filter(receipt => receipt.ok && !toolFailed(receipt.result)).map(receipt => nativeCalls(governed)[receipt.index])
