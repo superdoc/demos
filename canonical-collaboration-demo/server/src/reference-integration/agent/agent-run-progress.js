@@ -21,7 +21,7 @@ function stableArguments(value) {
 }
 
 // Agent policy only: no document reads, mutations, or reference-specific rules.
-export function createRunProgress(describeCall = ({ tool }) => ({ operation: tool })) {
+export function createRunProgress(describeCall = ({ tool }) => ({ operation: tool }), { showToolDiagnostics = true } = {}) {
   const failures = new Map();
   const completed = [];
   const otherSuccesses = new Map();
@@ -47,6 +47,12 @@ export function createRunProgress(describeCall = ({ tool }) => ({ operation: too
   }
 
   function interruptionReport(reason, message) {
+    if (!showToolDiagnostics) {
+      const reply = message ?? 'I couldn’t finish this request.';
+      const summary = completed.map((item) => `- ${item}`).join('\n');
+      return summary ? `${reply} Here’s what I got done.\n\n${summary}`
+        : `${reply} Any edits I made are still in the document.`;
+    }
     const lines = [reason === 'repeated_failure'
       ? 'Stopped after the same tool error occurred twice.'
       : reason === 'turn_limit' ? 'Stopped at the agent turn limit before the full request could be verified.'

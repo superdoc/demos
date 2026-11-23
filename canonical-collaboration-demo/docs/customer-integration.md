@@ -92,7 +92,7 @@ const adapter = await createReferenceAgentAdapter({
 });
 ```
 
-The adapter does not call a model or own chat history. Bind its outputs to the existing
+The host owns model calls, conversation history, and cursor presence. The demo gives each browser session a private conversation and a named purple cursor while sharing document edits across the room. An integration can use its own authenticated user and collaboration session. Use the adapter’s outputs in the existing
 agent framework:
 
 | Adapter output | Host wiring |

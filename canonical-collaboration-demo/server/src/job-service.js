@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { readAttachment, readDocumentContext } from './agent-input.js';
 import { config } from './config.js';
 import { logEvent } from './logging.js';
 
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
+const jobInput = Symbol('jobInput');
+const jobOwner = Symbol('jobOwner');
 const maximumPromptCharacters = 20_000;
 const maximumSelectedTextCharacters = 100_000;
 
@@ -21,8 +24,8 @@ export class JobService {
     this.#agent = agent;
   }
 
-  create(roomId, input) {
-    this.#rooms.require(roomId);
+  create(roomId, sessionId, input) {
+    const room = this.#rooms.require(roomId);
     const prompt = typeof input?.prompt === 'string' ? input.prompt.trim() : '';
     if (!prompt || prompt.length > maximumPromptCharacters) {
       const error = new Error(`Prompt must contain between 1 and ${maximumPromptCharacters} characters.`);
@@ -42,6 +45,7 @@ export class JobService {
       error.statusCode = 400;
       throw error;
     }
+    const attachment = readAttachment(input.attachment);
     const timestamp = new Date().toISOString();
     const record = {
       id: `job_${randomUUID().replaceAll('-', '')}`,
@@ -55,6 +59,9 @@ export class JobService {
       answer: null,
       error: null,
       toolCalls: [],
+      [jobOwner]: sessionId,
+      attachmentPreview: attachment && { name: attachment.name, kind: attachment.kind, thumbnail: attachment.thumbnail },
+      [jobInput]: { documentTarget: readDocumentContext(input, room?.document), attachment },
     };
     this.#records.set(record.id, record);
     this.#queue.push(record.id);
@@ -63,9 +70,14 @@ export class JobService {
     return record;
   }
 
-  get(roomId, jobId) {
+  transcribe(roomId, bytes, filename) {
+    this.#rooms.require(roomId);
+    return this.#agent.transcribe(bytes, filename);
+  }
+
+  get(roomId, sessionId, jobId) {
     const record = this.#records.get(jobId);
-    if (!record || record.room_id !== roomId) {
+    if (!record || record.room_id !== roomId || record[jobOwner] !== sessionId) {
       const error = new Error('Job not found.');
       error.name = 'HttpError';
       error.statusCode = 404;
@@ -74,8 +86,8 @@ export class JobService {
     return record;
   }
 
-  subscribe(roomId, jobId, listener) {
-    this.get(roomId, jobId);
+  subscribe(roomId, sessionId, jobId, listener) {
+    this.get(roomId, sessionId, jobId);
     this.#events.on(jobId, listener);
     return () => this.#events.off(jobId, listener);
   }
@@ -84,12 +96,13 @@ export class JobService {
     this.#events.emit(record.id, record);
   }
 
-  cancel(roomId, jobId) {
-    const record = this.get(roomId, jobId);
+  cancel(roomId, sessionId, jobId) {
+    const record = this.get(roomId, sessionId, jobId);
     if (terminalStatuses.has(record.status)) return record;
     record.status = 'cancelled';
     for (const call of record.toolCalls) if (['generating', 'running'].includes(call.status)) call.status = 'failed';
     record.updated_at = new Date().toISOString();
+    delete record[jobInput];
     if (this.#active?.record.id === jobId) this.#active.controller.abort(new Error('Agent job cancelled.'));
     this.#publish(record);
     logEvent('worker', 'job.cancelled', { jobId, roomId });
@@ -120,25 +133,36 @@ export class JobService {
         const jobId = this.#queue.shift();
         const record = this.#records.get(jobId);
         if (!record || record.status === 'cancelled') continue;
+        const { documentTarget, attachment } = record[jobInput];
+        delete record[jobInput];
         let room;
+        let started = false;
         const controller = new AbortController();
         this.#active = { record, controller };
         try {
           room = this.#rooms.require(record.room_id);
+          if (documentTarget && (documentTarget.id !== room.document.id || documentTarget.generation !== room.document.generation)) {
+            throw new Error('The document changed while the prompt was queued. Submit it again.');
+          }
           room.startJob();
+          started = true;
           record.status = 'running';
           record.updated_at = new Date().toISOString();
           this.#publish(record);
           logEvent('worker', 'job.running', { jobId, roomId: record.room_id, queueSize: this.#queue.length });
-          record.answer = await this.#agent.run(
+          record.answer = await room.withAgent(record[jobOwner], (agentName) => this.#agent.run(
             room.document,
             record.prompt,
-            room.conversation,
+            room.conversationFor(record[jobOwner]),
             record.isSuggesting,
             controller.signal,
             {
               messageId: record.id,
+              agentName,
               selectedText: record.selectedText,
+              documentTarget,
+              attachment,
+              attachmentPreview: record.attachmentPreview,
               onTextDelta: (delta) => {
                 if (record.status === 'cancelled') return;
                 record.answer = (record.answer ?? '') + delta;
@@ -151,7 +175,7 @@ export class JobService {
                 this.#publish(record);
               },
             },
-          );
+          ));
           if (record.status !== 'cancelled') {
             record.status = 'applying_edit';
             record.updated_at = new Date().toISOString();
@@ -172,7 +196,7 @@ export class JobService {
           }
           record.updated_at = new Date().toISOString();
           this.#publish(record);
-          room?.finishJob();
+          if (started) room.finishJob();
           this.#active = undefined;
           logEvent('worker', 'job.finished', { jobId, roomId: record.room_id, status: record.status, queueSize: this.#queue.length });
         }
