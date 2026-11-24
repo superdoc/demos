@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { NativeReferenceSources, nativeSourceFields, requireSourceSuccess } from './native/reference-sources.js';
 import { readBibliographies } from './workarounds/bibliography-read.js';
 import fs from 'node:fs/promises';
@@ -20,7 +21,8 @@ import { createTextStream } from './native/stream-text.js';
 import { streamingTools, streamingInstructions } from './agent/streaming-policy.js';
 
 export class ReferenceDocument {
-  #handle;
+  #documentHandle;
+  #agentHandle = new AsyncLocalStorage();
   #logEvent;
   #toolkit;
   #onClose;
@@ -38,7 +40,7 @@ export class ReferenceDocument {
     this.filename = filename;
     this.path = documentPath;
     this.generation = 1;
-    this.#handle = handle;
+    this.#documentHandle = handle;
     this.#toolkit = toolkit;
     this.#onClose = onClose;
     this.#sources = new NativeReferenceSources(this.#handle, importedCitations);
@@ -68,6 +70,14 @@ export class ReferenceDocument {
         await this.#applyReferenceStyle(style);
       },
     });
+  }
+
+  get #handle() {
+    return this.#agentHandle.getStore() ?? this.#documentHandle;
+  }
+
+  withAgentHandle(handle, run) {
+    return this.#agentHandle.run(handle, run);
   }
 
   get referenceBusy() { return this.#referencePending > 0; }
@@ -103,7 +113,7 @@ export class ReferenceDocument {
     this.#requireOpen();
     if (tool === streamTextTool.function.name) return this.#streamText(args);
     return this.#sources.ready().then(() => tool === 'superdoc_api_call'
-      ? this.#dispatchApi(args, options) : this.#toolkit.dispatch(this.#handle, tool, args, options));
+      ? this.#dispatchApi(args, options, this.#handle) : this.#toolkit.dispatch(this.#handle, tool, args, options));
   }
 
   createTextStream(options) {
@@ -114,6 +124,49 @@ export class ReferenceDocument {
   async #streamText(args) {
     const stream = this.createTextStream({ tag: 'document-text', changeMode: args.changeMode });
     return stream.commit(args);
+  }
+
+  async inspectAgentCursor(cursor) {
+    this.#requireOpen();
+    if (!cursor) throw new Error('Place the caret in the document body and submit again.');
+    const { revision } = await this.#handle.blocks.list({ limit: 1 });
+    if (typeof revision !== 'string' || revision === 'unknown') throw new Error('Could not verify the current document revision.');
+    const { address, node } = await this.#handle.getNodeById({ id: cursor.blockId });
+    const paragraph = node.paragraph ?? node.heading;
+    if (!paragraph || JSON.stringify(paragraph.inlines) !== cursor.paragraph) {
+      throw new Error('The paragraph at the caret changed. Place the caret again and retry.');
+    }
+    const point = { kind: 'text', blockId: cursor.blockId, offset: cursor.offset };
+    return {
+      success: true, revision, paragraph, address,
+      target: { kind: 'selection', start: point, end: point, coordinateSpace: 'visible' },
+    };
+  }
+
+  async insertAgentText(text, cursor, changeMode, placement = 'cursor') {
+    this.#requireOpen();
+    if (placement === 'documentEnd') {
+      return this.#handle.create.paragraph({ text, at: { kind: 'documentEnd' }, changeMode }, { changeMode });
+    }
+    const { target, revision } = await this.inspectAgentCursor(cursor);
+    const result = await this.#handle.insert({ target, type: 'text', value: text, changeMode, expectedRevision: revision }, { changeMode });
+    return result.receipt ?? result;
+  }
+
+  async insertAgentImage(src, alt, placement, cursor, changeMode) {
+    this.#requireOpen();
+    let at;
+    let expectedRevision;
+    if (placement === 'cursor') {
+      const { address, revision } = await this.inspectAgentCursor(cursor);
+      at = { kind: 'inParagraph', target: address, offset: cursor.offset };
+      expectedRevision = revision;
+    } else if (placement === 'documentStart' || placement === 'documentEnd') {
+      at = { kind: placement };
+    } else {
+      throw new Error('Choose cursor, documentStart, or documentEnd.');
+    }
+    return this.#handle.create.image({ src, alt, at, changeMode, expectedRevision }, { changeMode });
   }
 
   async citationSources() {

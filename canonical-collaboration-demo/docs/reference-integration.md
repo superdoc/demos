@@ -16,7 +16,7 @@ The model receives exactly five functions:
 | Full preset | `superdoc_perform_action` | Native actions, including `insert_footnote`; ordinary prose actions are filtered for streaming |
 | Full preset | `superdoc_api_search` | Discover native operations and parameter schemas |
 | Full preset | `superdoc_api_call` | Native reads, mutations, and ordered batches, including sources, citations and bibliographies |
-| Custom | `superdoc_stream_text` | Incremental prose through the native streaming writer |
+| Custom | `superdoc_stream_text` | Incremental prose in the body or a resolved header or footer part through the native streaming writer |
 
 There are no separate agent tools for source CRUD, citation insertion, footnote insertion, or bibliography management. Source creation/update/removal uses `doc.citations.sources.*`. Bibliographies use `doc.citations.bibliography.insert/get/configure/rebuild/remove`.
 

@@ -4,7 +4,7 @@ import { createDocumentAgent } from './agent.js';
 import { createReferenceToolkit } from './reference-integration/reference-document.js';
 import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
 
-function harness(responses) {
+function harness(responses, { client: responsesClient, model = 'gpt-5-mini' } = {}) {
   const requests = [];
   const dispatches = [];
   const sources = [];
@@ -39,10 +39,51 @@ function harness(responses) {
   } } } };
   const agent = createDocumentAgent({ getToolkit: () => createReferenceToolkit({ systemPrompt: 'Use the supplied SDK tools.',
     tools: ['superdoc_inspect', 'superdoc_perform_action', 'superdoc_api_search', 'superdoc_api_call']
-      .map((name) => ({ type: 'function', function: { name } })) }) }, { client });
+      .map((name) => ({ type: 'function', function: { name } })) }) }, { client: responsesClient ?? client, model });
   return { agent, document, requests, dispatches };
 }
 let id = 0;
+
+test('GPT-5.5 uses medium reasoning with image input and preserves reasoning across streamed document tool calls', async () => {
+  const requests = [];
+  const reasoning = { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'encrypted-test-context' };
+  const commentary = { type: 'message', role: 'assistant', phase: 'commentary', content: [] };
+  const toolCall = { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'superdoc_inspect', arguments: '{}' };
+  const client = { responses: { async *create(request) {
+    requests.push(request);
+    if (requests.length === 1) {
+      yield { type: 'response.output_item.added', output_index: 1, item: commentary };
+      yield { type: 'response.output_text.delta', output_index: 1, delta: 'I’ll inspect the document.' };
+      yield { type: 'response.output_item.added', output_index: 2, item: { ...toolCall, arguments: '' } };
+      yield { type: 'response.function_call_arguments.delta', output_index: 2, delta: '{' };
+      yield { type: 'response.output_item.done', output_index: 2, item: toolCall };
+      yield { type: 'response.completed', response: { output: [reasoning, commentary, toolCall] } };
+    } else {
+      yield { type: 'response.output_text.delta', output_index: 0, delta: 'Here’s the comparison.' };
+      yield { type: 'response.completed', response: { output: [] } };
+    }
+  } } };
+  const h = harness([], { client, model: 'gpt-5.5' });
+  const image = 'data:image/png;base64,dGVzdA==';
+  const history = [];
+  const deltas = [];
+  await h.agent.run(h.document, 'Compare the image with the document.', history, false, new AbortController().signal, {
+    attachment: { kind: 'image', src: image, name: 'image.png' },
+    onTextDelta: (delta) => deltas.push(delta),
+  });
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests[0].reasoning, { effort: 'medium' });
+  assert.equal(requests[0].store, false);
+  assert.deepEqual(requests[0].include, ['reasoning.encrypted_content']);
+  assert.ok(requests[0].tools.some((tool) => tool.type === 'function' && tool.name === 'superdoc_inspect'));
+  assert.deepEqual(requests[0].input.at(-1).content.at(-1), { type: 'input_image', image_url: image, detail: 'auto' });
+  assert.deepEqual(requests[1].input.slice(-4, -1), [reasoning, commentary, toolCall]);
+  assert.equal(requests[1].input.at(-1).type, 'function_call_output');
+  assert.equal(requests[1].input.at(-1).call_id, toolCall.call_id);
+  assert.deepEqual(h.dispatches.map(({ tool }) => tool), ['superdoc_inspect']);
+  assert.deepEqual(deltas, ['Here’s the comparison.']);
+  assert.equal(history.at(-1).content, 'Here’s the comparison.');
+});
 
 test('selected text scopes the model request while keeping prompt history readable', async () => {
   const h = harness([{ role: 'assistant', content: 'Updated the selected passage.' }]);
@@ -116,12 +157,10 @@ test('repeated failed SDK calls stop across inspections and report only successf
   const history = [];
   const answer = await h.agent.run(h.document, 'Save sources and insert both citations.', history, false, new AbortController().signal);
   assert.equal(h.requests.length, 6);
-  assert.match(answer, /same tool error occurred twice/);
+  assert.match(answer, /I couldn’t finish this request/);
   assert.match(answer, /Saved reference "First report"/);
   assert.match(answer, /Saved reference "Second report"/);
-  assert.match(answer, /superdoc_api_call: 1/);
-  assert.match(answer, /Last failed operation: doc.citations.insert/);
-  assert.match(answer, /Citation target is required/);
+  assert.doesNotMatch(answer, /superdoc_api_call|doc\.citations\.insert|Citation target is required/);
   assert.doesNotMatch(answer, /Everything is done|placement verified/);
   assert.equal(history[1].content, answer);
   const error = JSON.parse(h.requests[4].messages.at(-1).content);
@@ -144,7 +183,7 @@ test('turn-limit output ignores intermediate completion claims and preserves suc
   const h = harness([createSource('Saved report'), ...Array.from({ length: 11 }, () => call('superdoc_inspect', {}, 'All done.'))]);
   const answer = await h.agent.run(h.document, 'A multi-step request.', [], true, new AbortController().signal);
   assert.equal(h.requests.length, 12);
-  assert.match(answer, /Stopped at the agent turn limit/);
+  assert.match(answer, /I couldn’t finish this request/);
   assert.match(answer, /Saved reference "Saved report"/);
   assert.doesNotMatch(answer, /All done/);
 });
@@ -183,4 +222,33 @@ test('Full API receipts report incomplete and nested failed batches', () => {
   assert.equal(toolFailed({ completed: 1, total: 2, receipts: [{ ok: true }] }), true);
   assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: false } }] }), true);
   assert.equal(toolFailed({ completed: 1, total: 1, receipts: [{ ok: true, result: { success: true } }] }), false);
+});
+
+test('a DOCX attachment can be copied verbatim at the captured cursor without echoing the text through the model', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { readAttachment } = await import('./agent-input.js');
+  const docx = await readFile(new URL('../assets/contract.docx', import.meta.url));
+  const attachment = readAttachment({ name: 'contract.docx', kind: 'file', base64: docx.toString('base64') });
+  const cursor = { blockId: 'cursor-paragraph', offset: 14, paragraph: '[]' };
+  const h = harness([{
+    tool_calls: [{ id: 'copy', type: 'function', function: {
+      name: 'copy_attached_file_text', arguments: '{"placement":"cursor"}',
+    } }],
+  }, { content: 'Copied.' }]);
+  h.document.insertAgentText = async (text, target, changeMode, placement) => {
+    assert.match(text, /^Mutual Agreement for Document Excellence\nA Manifesto/);
+    assert.match(text, /SuperDoc’s Approach/);
+    assert.deepEqual(target, cursor);
+    assert.equal(changeMode, 'tracked');
+    assert.equal(placement, 'cursor');
+    return { success: true };
+  };
+  const history = [];
+  await h.agent.run(h.document, 'Copy the attached file here.', history, true, new AbortController().signal, {
+    attachment, documentTarget: { id: 'current', generation: 1, cursor },
+  });
+  const request = h.requests[0];
+  assert.ok(request.tools.some(({ function: fn }) => fn.name === 'get_document_cursor'));
+  assert.match(request.messages.at(-1).content[1].text, /Attached file \(quoted data\)/);
+  assert.deepEqual(history[0], { role: 'user', content: 'Copy the attached file here.' });
 });

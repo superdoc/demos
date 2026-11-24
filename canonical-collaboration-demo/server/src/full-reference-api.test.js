@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import JSZip from 'jszip';
 import { DocumentService } from './document-service.js';
 import { createReferenceAgentAdapter } from './reference-integration/agent/reference-agent-adapter.js';
 
@@ -14,12 +15,92 @@ async function harness(t, changeMode = 'direct', prompt = 'Manage document refer
   await fs.copyFile(new URL('../assets/blank.docx', import.meta.url), input);
   await service.initialize();
   const document = await service.open({ id: 'api', filename: 'input.docx', path: input });
-  const adapter = await createReferenceAgentAdapter({ document, toolkit: service.getToolkit(), prompt, changeMode });
+  const toolkit = service.getToolkit();
+  const adapter = await createReferenceAgentAdapter({ document, toolkit, prompt, changeMode });
   const execute = (operationId, args = {}) => adapter.execute('superdoc_api_call', { operationId, args });
-  return { document, adapter, execute };
+  return { document, toolkit, adapter, execute };
 }
 const source = { type: 'book', fields: { title: 'Synthetic API book', year: '2026', authors: [{ first: 'Ada', last: 'Example' }] } };
 const target = sourceId => ({ kind: 'entity', entityType: 'citationSource', sourceId });
+
+test('header and footer writes are scoped to their stories while body text still streams', { timeout: 60_000 }, async t => {
+  const { document, execute, toolkit } = await harness(t);
+  const native = (operationId, args) => document.dispatch('superdoc_api_call', { operationId, args });
+  const tracked = await createReferenceAgentAdapter({ document, toolkit, prompt: 'Edit the footer.', changeMode: 'tracked' });
+  const firstSection = (await native('doc.sections.list', {})).items[0].address;
+  const slots = {};
+  await native('doc.create.paragraph', { at: { kind: 'documentEnd' }, text: 'UNCHANGED' });
+  const missing = await tracked.execute('superdoc_api_call', { operationId: 'doc.headerFooters.parts.create', args: { kind: 'footer' } });
+  assert.equal(missing.failed, true);
+  assert.match(missing.result.error, /refused under enforceChangeMode/);
+
+  for (const kind of ['header', 'footer']) {
+    const created = await execute('doc.headerFooters.parts.create', { kind });
+    assert.equal(created.failed, false, JSON.stringify(created.result));
+    const { refId, partPath } = created.result;
+    const story = { kind: 'story', storyType: 'headerFooterPart', refId };
+    const target = { kind: 'headerFooterSlot', section: firstSection, headerFooterKind: kind, variant: 'default' };
+    const linked = await execute('doc.headerFooters.refs.set', { target, refId });
+    assert.equal(linked.failed, false, JSON.stringify(linked.result));
+    const paragraph = await execute('doc.create.paragraph', { in: story, at: { kind: 'documentEnd' }, text: 'UNCHANGED' });
+    assert.equal(paragraph.failed, false, JSON.stringify(paragraph.result));
+    const match = await native('doc.query.match', { in: story, select: { type: 'text', pattern: 'UNCHANGED' }, require: 'exactlyOne' });
+    slots[kind] = { story, partPath, target: match.items[0].target };
+  }
+
+  const unscoped = await execute('doc.create.paragraph', { at: { kind: 'documentEnd' }, text: 'Rejected body write' });
+  assert.equal(unscoped.failed, true);
+  assert.match(unscoped.result.error, /Body text must stream/);
+  const conflicting = await execute('doc.replace', { target: slots.footer.target, in: { kind: 'story', storyType: 'body' }, text: 'Rejected mixed scope' });
+  assert.equal(conflicting.failed, true);
+
+  const header = slots.header.target;
+  const inserted = await execute('doc.insert', { target: { ...header, start: header.end }, value: ' Header-only text', type: 'text' });
+  assert.equal(inserted.failed, false, JSON.stringify(inserted.result));
+  const replaced = await tracked.execute('superdoc_api_call', {
+    operationId: 'doc.replace', args: { target: slots.footer.target, text: 'footer-review-123' },
+  });
+  assert.equal(replaced.failed, false, JSON.stringify(replaced.result));
+  assert.equal(replaced.result.receipt.appliedChangeMode, 'tracked');
+
+  const headerStream = document.createTextStream({ changeMode: 'direct' });
+  const headerArgs = { story: slots.header.story, mode: 'paragraphBefore', anchor: 'UNCHANGED' };
+  await headerStream.update({ ...headerArgs, text: 'Streamed header' });
+  await assert.rejects(headerStream.update({ ...headerArgs, story: slots.footer.story, text: 'Streamed header elsewhere' }), /target changed/);
+  const headerReceipt = await headerStream.commit({ ...headerArgs, text: 'Streamed header in a new paragraph' });
+  assert.equal(headerReceipt.receipt.appliedChangeMode, 'direct');
+
+  const footerStream = document.createTextStream({ changeMode: 'tracked' });
+  const footerArgs = { story: slots.footer.story, mode: 'append', anchor: null };
+  await footerStream.update({ ...footerArgs, text: 'Streamed footer' });
+  const footerReceipt = await footerStream.commit({ ...footerArgs, text: 'Streamed footer in Reviewing mode' });
+  assert.equal(footerReceipt.receipt.appliedChangeMode, 'tracked');
+
+  const footerRewrite = document.createTextStream({ changeMode: 'tracked' });
+  const rewriteArgs = { story: slots.footer.story, mode: 'replace', anchor: 'Streamed footer in Reviewing mode' };
+  await footerRewrite.update({ ...rewriteArgs, text: 'Suggested' });
+  await footerRewrite.commit({ ...rewriteArgs, text: 'Suggested footer wording' });
+  const headerSuggestion = await tracked.execute('superdoc_stream_text', {
+    story: slots.header.story, mode: 'after', anchor: 'Header-only text', text: ' with a suggestion',
+  });
+  assert.equal(headerSuggestion.failed, false, JSON.stringify(headerSuggestion.result));
+
+  const output = path.join(path.dirname(document.path), 'verified.docx');
+  await document.save(output);
+  const zip = await JSZip.loadAsync(await fs.readFile(output));
+  const bodyXml = await zip.file('word/document.xml').async('string');
+  assert.match(bodyXml, /UNCHANGED/);
+  assert.doesNotMatch(bodyXml, /Header-only text|footer-review-123|Rejected|Streamed header|Streamed footer|Suggested/);
+  const headerXml = await zip.file(slots.header.partPath).async('string');
+  assert.match(headerXml, /Streamed header in a new paragraph[\s\S]*Header-only text/);
+  assert.match(headerXml, /<w:ins\b[^>]*>[\s\S]*?with a suggestion/);
+  assert.doesNotMatch(headerXml, /Streamed footer|Suggested/);
+  const footerXml = await zip.file(slots.footer.partPath).async('string');
+  assert.match(footerXml, /<w:ins\b[^>]*>[\s\S]*?footer-review-123/);
+  assert.match(footerXml, /<w:del\b[^>]*>[\s\S]*?UNCHANGED/);
+  assert.match(footerXml, /<w:ins\b[^>]*>\s*<w:r>\s*<w:t[^>]*>Suggested footer wording/);
+
+});
 
 test('five-tool agent saves metadata in Reviewing mode and reads native lists successfully', { timeout: 60_000 }, async t => {
   const { document, adapter, execute } = await harness(t, 'tracked');

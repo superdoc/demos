@@ -37,6 +37,16 @@ export class DocumentService {
     return document;
   }
 
+  openAgentHandle({ document, name, url, token }) {
+    return this.#client.open({
+      doc: document.path,
+      collaboration: {
+        providerType: 'hocuspocus', url, documentId: document.id, roomMode: 'join', syncTimeoutMs: 90_000,
+        presence: { name, userId: `demo-agent-${encodeURIComponent(name)}`, color: '#8B5CF6' },
+      },
+    }, { timeoutMs: 150_000, collaborationAuth: { type: 'token', token } });
+  }
+
   async close() {
     await Promise.all([...this.#documents.values()].map((document) => document.close().catch(() => {})));
     await this.#client?.dispose().catch(() => {});
