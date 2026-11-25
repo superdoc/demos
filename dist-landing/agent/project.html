@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your SuperDoc demo</title><link rel="stylesheet" href="/agent/agent.css"><script type="module" src="/agent/project.js"></script></head>
+<body class="project-page">
+  <header class="project-topbar">
+    <div class="project-meta"><a class="project-brand" href="/"><img src="/superdoc-logo.png" alt="" width="32" height="36"><span>SuperDoc Demos</span></a><span id="project-id" class="project-id"></span></div>
+    <div class="project-actions"><a id="project-download" class="project-download" aria-disabled="true" download>↓ Download project</a></div>
+  </header>
+  <section class="project-description" hidden><h1 id="project-title"></h1><p id="project-summary"></p></section>
+  <section id="project-message" class="project-message" role="status" aria-live="polite">
+    <div class="project-loading-panel">
+      <svg class="project-loader" viewBox="0 0 316 126" fill="none" aria-hidden="true">
+        <defs><linearGradient id="project-wave-color" x1="16" y1="36" x2="300" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#1355ff"/><stop offset="1" stop-color="#9950df"/></linearGradient></defs>
+        <path d="M16 66 C44 66 40 36 70 36 S96 104 126 76 S154 30 184 56 S212 104 242 64 S272 34 300 64" stroke="#e4e9fb" stroke-width="3" stroke-linecap="round"/>
+        <path class="project-wave-trail" d="M16 66 C44 66 40 36 70 36 S96 104 126 76 S154 30 184 56 S212 104 242 64 S272 34 300 64" stroke="url(#project-wave-color)" stroke-width="3" stroke-linecap="round"/>
+        <g class="project-butterfly"><g class="project-butterfly-wings">
+          <path d="M0 0 C-24-27-32-14-22-2 C-31 12-10 17 0 0Z" fill="#16ade0"/>
+          <path d="M0 0 C24-27 32-14 22-2 C31 12 10 17 0 0Z" fill="#ae60d7"/>
+          <path d="M0-6 C-3 0-2 10 0 14 C2 10 3 0 0-6Z" fill="#2954a5"/>
+          <path d="M-1-5 Q-8-14-9-9 M1-5 Q8-14 9-9" stroke="#2954a5" stroke-width="1.5" stroke-linecap="round"/>
+        </g></g>
+      </svg>
+      <h2>Creating a custom demo for you</h2>
+      <p>This usually takes a minute or two. You can leave this tab open while Demo Bot works.</p>
+      <p id="project-progress" class="project-progress" aria-atomic="true"><span class="demo-bot-speaker">Demo Bot</span> <span id="project-progress-text">Preparing your demo…</span></p>
+    </div>
+  </section>
+  <iframe id="project-preview" class="project-preview" title="Generated SuperDoc demo" sandbox="allow-scripts" referrerpolicy="no-referrer" hidden></iframe>
+  <details id="project-guidance" class="project-guidance" hidden><summary>Agent guidance &amp; next steps</summary><pre id="project-notes"></pre></details>
+</body></html>

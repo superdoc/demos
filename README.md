@@ -4,6 +4,19 @@ Working demos built with [SuperDoc](https://superdoc.dev) — the document engin
 
 Live at [demos.superdoc.dev](https://demos.superdoc.dev)
 
+## Building impactful demos
+
+Use the [Demo Impact Scorecard](./DEMO_IMPACT_SCORECARD.md) when creating or
+improving a demo, and check it again before handoff. Aim for **26–30/30** across
+relevance, clarity, differentiation, reusability, actionability, and credibility,
+with evidence supporting each rating. Save the assessment as `DEMO_SCORECARD.md`
+in the demo's directory, keep measured outcomes separate, and record the next
+improvement. The [repository agent instructions](./AGENTS.md) make this part of
+the demo workflow.
+
+The scorecard evaluates demo projects, including generated examples. Demo Bot
+and its interfaces are engineering tools and do not receive impact ratings.
+
 ## Demos
 
 ### [`version-history/`](./version-history) — Version History
@@ -61,6 +74,117 @@ bun run dev
 ```
 
 See each demo's directory for specific setup instructions.
+
+## Demo agent
+
+The prompt below **SuperDoc Demos** appears only after the backend health check
+reports it is configured. It stays the same height on focus and grows with
+typed content up to a fixed maximum, with the send arrow at the bottom right. Demo Bot replies naturally,
+remembers a few recent messages, and searches the visible entries in `demos.json`
+when you need a demo. The placeholder reads "Describe the demo you’re looking for".
+Every request assumes the SuperDoc editor: "ASCII animations" means animation
+inside its document, not a separate app. If a new editor example is feasible and clear enough,
+**Build this demo** opens a new tab with a temporary
+ID. It builds one small browser example using a real SuperDoc editor. The
+top-right **Download project** button saves a ZIP with runnable source, a sample
+DOCX, `README.md`, and `AGENTS.md` for continuing with a coding agent.
+
+Every message appears in its own card, newest first below the prompt, pushing
+the gallery down. Your messages use a green **You** label; responses use a blue
+**Demo Bot** label. Public thinking/status messages stay in the full page-session log.
+Reply with "yes" or a refinement to continue from Demo Bot's last proposal.
+
+Search shows real catalog, setup-guide and matching progress. The temporary
+project page shows a centered custom-demo loading panel with an animated
+butterfly and wave, plus a single progress line while Demo Bot plans,
+writes, and styles the example. Download the source to continue with your own
+coding agent; there is no follow-up prompt box on the preview page. See
+[`agent/README.md`](agent/README.md) for the complete architecture, API, generation
+contract, safeguards, testing, and instructions for rebuilding or modifying the
+demo agent.
+
+Copy `.env.example` to `.env.local` and set `OPENAI_API_KEY` there. The key is read
+only by the server. After building the gallery, run `npm run gallery` (or use
+`npm start` for the full local gallery and collaboration service). The gallery
+is available at `http://localhost:4173`. Node.js 22.12+ is required.
+
+Defaults are deliberately small:
+
+| Limit | Default |
+| --- | --- |
+| Model / reasoning | `gpt-5-mini` / `low` for search, `high` for builds |
+| Request length | 1,200 characters |
+| AI calls | One low-reasoning call per gallery message, streaming acknowledgement + reply; one generation per explicit build; no automatic retries or tool loop |
+| Search / build output | 1,400 / 12,000 tokens, including reasoning |
+| Generated code | 64 KiB of JavaScript + CSS; fixed scaffold and guidance added by the server |
+| Daily token allowance | 150,000 tokens across all visitors; unused request reservations are released after confirmed usage |
+| Per-IP hourly limits | 20 searches, 3 builds |
+| Per-IP daily token allowance | 50,000; persists across hourly resets and restarts |
+| Capacity | 2 simultaneous builds, 20 temporary projects |
+| Lifetime | One hour per generated version, with no refresh extension or visible countdown |
+
+The daily allowance reserves maximum output plus input UTF-8 bytes and overhead
+before contacting OpenAI. After the provider reports usage, it charges actual
+input and output tokens (including reasoning) and releases the unused allowance.
+Rejected provider requests release their reservation; calls with unknown usage
+(such as interrupted connections) keep their full reservation. The ledger persists
+across restarts and resets at midnight UTC. Existing older reservations without
+usage records remain charged. Set `DEMO_AGENT_DAILY_TOKENS`,
+`DEMO_AGENT_IP_DAILY_TOKENS`, or `DEMO_AGENT_MODEL` on the server to change those
+settings. Search uses low reasoning; code generation uses high reasoning.
+The browser cannot override the model, budget, or project size.
+
+Projects are persisted in the ignored `.demo-agent/` directory. Every request
+checks expiry; the timer deletes expired files within 15 seconds, and startup
+also culls expired projects. A valid project survives a restart with its original
+expiry. Project pages, status, previews and cookie-based downloads require the
+owner session. Separately issued direct ZIP links grant download-only access
+until project expiry. Interrupted builds become failed projects. Failed builds free
+capacity immediately and are deleted after five minutes. Downloads omit the
+visitor prompt; generated guidance stays in untrusted `demo-context.json` rather
+than being interpolated into `AGENTS.md`. Preview JavaScript runs in an
+iframe with an opaque origin and a restrictive CSP; it cannot access the gallery
+or call the agent API. Generated code is syntax checked, but is an AI-generated
+starting point and may need adjustments. Backend and additional AI functionality
+are left as guidance instead of using more tokens or running generated server code.
+
+### Demo Bot in Slack
+
+DM Demo Bot or mention it in a channel to find examples and receive an explicit
+build offer. Builds share the gallery's spending and size limits. Private DMs
+contain a browser-bound preview/download link and build updates. The optional
+HTTP events app, install manifest and setup instructions are in
+[`agent/SLACK.md`](agent/SLACK.md). A Slack installation and server-only app
+credentials are required; the integration is disabled until configured. Completed
+builds return separate preview and direct ZIP links. Coding agents can also
+[prompt, build and download over HTTP](agent/API.md) without opening a browser.
+
+### Hosting the agent alongside the existing Cloudflare Pages gallery
+
+The release bundle includes the `/agent/` browser assets and extends the existing
+Pages Worker with `/agent/api/*` and `/agent/projects/*` proxies. Deploy the Node
+service separately (for example, Railway) using `agent/Dockerfile` with the repo
+root as build context, or run `npm run agent`. Run **one replica** with a persistent
+disk mounted at `DEMO_AGENT_DATA_DIR`; the spending ledger and project store are
+owned by that process.
+
+Set these server environment variables:
+
+- `OPENAI_API_KEY`: server-only OpenAI key.
+- `DEMO_AGENT_ORIGINS`: comma-separated gallery origins, e.g. `https://demos.superdoc.dev`.
+- `DEMO_AGENT_PROXY_TOKEN`: a random shared secret authenticating the Pages proxy.
+- `DEMO_AGENT_DATA_DIR`: persistent directory, e.g. `/data/demo-agent`.
+
+Set **Pages runtime** `DEMO_AGENT_BACKEND_URL` to the service's HTTPS origin and
+`DEMO_AGENT_PROXY_TOKEN` to the same shared secret. The OpenAI key stays on the
+Node service. Staging origins must be explicitly added to `DEMO_AGENT_ORIGINS`.
+Until those runtime settings exist and `/agent/api/health` reports readiness,
+the gallery keeps Demo Bot hidden. No infrastructure is provisioned by
+the build, and no secrets are included in the release bundle.
+
+Run the integration checks with `npm run test:agent`. They cover catalog matching,
+single-use offers, high reasoning, token reservations, sandbox headers, ZIP
+downloads, request validation, persistence, and server-enforced expiry.
 
 ## Build this commands
 

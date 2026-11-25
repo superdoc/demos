@@ -1,0 +1,42 @@
+name: Deploy Demo Bot backends
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Backend to deploy (same source and features)
+        type: choice
+        default: both
+        options: [both, demo-bot-ext, demo-bot-int]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-bot-backends
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test scripts/demo-agent*.test.mjs
+      - run: node scripts/package-demo-bot.mjs /tmp/demo-bot-release
+      - run: npm install -g @railway/cli@4.58.0
+      - name: Deploy customer backend
+        if: inputs.target == 'both' || inputs.target == 'demo-bot-ext'
+        working-directory: /tmp/demo-bot-release
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --project 7eebd8ca-a819-4f3d-92cb-62110a88e4fe --environment production --service d45629c3-fa1a-4465-8dfa-6d38b87e8c7c --ci
+      - name: Deploy internal backend
+        if: inputs.target == 'both' || inputs.target == 'demo-bot-int'
+        working-directory: /tmp/demo-bot-release
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --project 7eebd8ca-a819-4f3d-92cb-62110a88e4fe --environment production --service d529ef88-565d-424e-a16f-9b9c69f7f39b --ci
