@@ -130,11 +130,11 @@ export class ApiClient {
   }
 
   createJob(roomId: string, prompt: string, isSuggesting: boolean, selectedText?: string,
-    documentTarget?: PromptDocumentTarget, attachment?: PromptAttachment): Promise<Job> {
+    documentTarget?: PromptDocumentTarget, attachment?: PromptAttachment, reusablePrompt?: boolean): Promise<Job> {
     return this.request(`${this.roomPath(roomId)}/jobs`, {
       method: 'POST',
       headers: { ...this.agentHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, isSuggesting, selectedText, documentTarget, attachment }),
+      body: JSON.stringify({ prompt, isSuggesting, selectedText, documentTarget, attachment, reusablePrompt }),
     });
   }
 

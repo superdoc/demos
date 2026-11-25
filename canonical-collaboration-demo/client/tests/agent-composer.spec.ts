@@ -166,12 +166,12 @@ async function attach(page: Page, button: 'Image' | 'File', file: typeof image) 
   await expect(page.getByText(file.name, { exact: true })).toBeVisible();
 }
 
-async function submit(page: Page, room: string, plan: Scenario, { fill = true } = {}) {
+async function submit(page: Page, room: string, plan: Scenario, { fill = true, button = 'Send', expectedAnswer = plan.answer } = {}) {
   scenario = plan;
   if (fill) await promptBox(page).fill(plan.prompt);
   const response = page.waitForResponse((result) =>
     result.url() === `${api}/api/rooms/${room}/jobs` && result.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await page.getByRole('button', { name: button, exact: true }).click();
   const accepted = await response;
   expect(accepted.status()).toBe(202);
   const job = await accepted.json() as Job;
@@ -182,7 +182,7 @@ async function submit(page: Page, room: string, plan: Scenario, { fill = true } 
     return ['completed', 'failed', 'cancelled'].includes(result.status);
   }, { timeout: 15_000 }).toBe(true);
   expect(result?.status, result?.error).toBe('completed');
-  expect(result?.answer).toBe(plan.answer);
+  expect(result?.answer).toBe(expectedAnswer);
   expect(result?.toolCalls?.map(({ tool, status }) => ({ tool, status }))).toEqual(
     plan.steps.map(({ tool, status }) => ({ tool: tool.name, status: status ?? 'completed' })),
   );
@@ -283,6 +283,89 @@ test('The named collaborator greets the user and replies to the submitted prompt
   });
   expect(alignment.promptLeft).toBeGreaterThan(alignment.replyLeft);
   expect(alignment.promptRight).toBeGreaterThan(alignment.replyRight);
+});
+
+test('Create reusable prompt reads the document and preserves the draft in the composer', async ({ page }) => {
+  const { room } = await openAtCaret(page, 'suggestion');
+  const before = (await exportDocument(room)).xml;
+  await promptBox(page).fill('My unsent draft');
+  const answer = 'Use a single body paragraph.';
+  const expectedAnswer = [
+    'Recreate the full document below from scratch in the current blank editor. Use the supplied content and apply the rebuild instructions.',
+    `## Rebuild instructions\n\n${answer}`,
+    '## Document content\n\n```markdown\nLEFTRIGHT\n```',
+  ].join('\n\n');
+  const payload = await submit(page, room, {
+    prompt: 'Create a reusable prompt',
+    steps: [{ tool: { name: 'superdoc_inspect', args: {} }, checkResult(content) {
+      assert.match(content, /LEFTRIGHT/);
+    } }],
+    answer,
+  }, { fill: false, button: 'Create reusable prompt', expectedAnswer });
+  expect(payload.reusablePrompt).toBe(true);
+  expect(payload.isSuggesting).toBe(false);
+  expect(payload.documentTarget.cursor).toBeUndefined();
+  await expect(promptBox(page)).toHaveValue('My unsent draft');
+  await expect(page.getByRole('combobox', { name: 'Agent edit mode' })).toHaveValue('suggestion');
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const reply = page.locator('.message.assistant').filter({ hasText: answer });
+  await reply.getByRole('button', { name: 'Copy message' }).click();
+  await expect(reply.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(expectedAnswer);
+  await expect(reply.getByRole('button', { name: 'Copy message' })).toBeVisible({ timeout: 2_000 });
+  expect((await exportDocument(room)).xml).toEqual(before);
+});
+
+test('a writing request goes straight into the document', async ({ page }) => {
+  const room = `composer-${++roomCount}`;
+  await page.goto(`${clientUrl}/?room=${room}`);
+  await page.locator('.editor-shell[aria-busy="false"]').waitFor();
+  const paragraph = 'Moss slows runoff, holds moisture, and gives insects a place to shelter.';
+  const payload = await submit(page, room, {
+    prompt: 'Write a paragraph about moss in a rain garden.',
+    checkInput(input) {
+      assert.match(String(input.messages[0].content), /Apply requests to write, draft, add, or revise content directly to the current document by default/);
+    },
+    steps: [{ tool: { name: 'superdoc_stream_text', args: { mode: 'append', anchor: null, story: null, text: paragraph } } }],
+    answer: 'I added a paragraph about moss in rain gardens.',
+  });
+  expect(payload.documentTarget.cursor).toBeUndefined();
+  await expect(page.locator('.editor-content')).toContainText(paragraph);
+  await expect(page.locator('.chat-history')).not.toContainText(paragraph);
+  expect((await exportDocument(room)).xml).toContain(paragraph);
+});
+
+test('an explicit chat draft can be inserted into a blank document without placing the caret', async ({ page }) => {
+  const room = `composer-${++roomCount}`;
+  await page.goto(`${clientUrl}/?room=${room}`);
+  await page.locator('.editor-shell[aria-busy="false"]').waitFor();
+  const editor = page.locator('.editor-content');
+  const draft = 'Steelshod he went, Sir Someone, clank by clank through the damp dawn, with prayers and old fears knocking about in his helm. Ahead, the dragon smoked in its hill like a bad thought waiting to be spoken.';
+
+  await submit(page, room, {
+    prompt: 'Write a couple of sentences in a James Joyce style about a knight on his way to confront a dragon. Reply in chat only.',
+    checkInput(input) {
+      assert.match(String(input.messages[0].content), /Keep drafts in chat when explicitly requested/);
+    },
+    steps: [],
+    answer: draft,
+  });
+  await expect(editor).not.toContainText(draft);
+
+  const payload = await submit(page, room, {
+    prompt: 'Insert that into the document.',
+    checkInput(input) {
+      assert.ok(input.messages.some(({ role, content }) => role === 'assistant' && content === draft));
+      assert.ok(!input.tools.some(({ function: fn }) => fn.name === 'get_document_cursor' || fn.name === 'insert_text_at_document_cursor'));
+      assert.match(String(input.messages[0].content), /Use superdoc_stream_text with mode "append", anchor null, and story null/);
+    },
+    steps: [{ tool: { name: 'superdoc_stream_text', args: { mode: 'append', anchor: null, story: null, text: draft } } }],
+    answer: 'Inserted the two sentences.',
+  });
+  expect(payload.documentTarget.cursor).toBeUndefined();
+  await expect(editor).toContainText(draft);
+  const { xml } = await exportDocument(room);
+  expect(xml).toContain(draft);
 });
 
 test('the wider composer has a visible, centered drag grip', async ({ page }) => {

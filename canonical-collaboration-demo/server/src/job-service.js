@@ -26,7 +26,11 @@ export class JobService {
 
   create(roomId, sessionId, input) {
     const room = this.#rooms.require(roomId);
-    const prompt = typeof input?.prompt === 'string' ? input.prompt.trim() : '';
+    if (input?.reusablePrompt !== undefined && typeof input.reusablePrompt !== 'boolean') {
+      throw Object.assign(new Error('reusablePrompt must be a boolean.'), { statusCode: 400 });
+    }
+    const reusablePrompt = input?.reusablePrompt === true;
+    const prompt = reusablePrompt ? 'Create a reusable prompt' : typeof input?.prompt === 'string' ? input.prompt.trim() : '';
     if (!prompt || prompt.length > maximumPromptCharacters) {
       const error = new Error(`Prompt must contain between 1 and ${maximumPromptCharacters} characters.`);
       error.name = 'HttpError';
@@ -45,14 +49,14 @@ export class JobService {
       error.statusCode = 400;
       throw error;
     }
-    const attachment = readAttachment(input.attachment);
+    const attachment = reusablePrompt ? undefined : readAttachment(input.attachment);
     const timestamp = new Date().toISOString();
     const record = {
       id: `job_${randomUUID().replaceAll('-', '')}`,
       room_id: roomId,
       prompt,
-      selectedText: input.selectedText?.trim() ? input.selectedText : undefined,
-      isSuggesting: input.isSuggesting ?? true,
+      selectedText: !reusablePrompt && input.selectedText?.trim() ? input.selectedText : undefined,
+      isSuggesting: !reusablePrompt && (input.isSuggesting ?? true),
       status: 'queued',
       created_at: timestamp,
       updated_at: timestamp,
@@ -61,7 +65,7 @@ export class JobService {
       toolCalls: [],
       [jobOwner]: sessionId,
       attachmentPreview: attachment && { name: attachment.name, kind: attachment.kind, thumbnail: attachment.thumbnail },
-      [jobInput]: { documentTarget: readDocumentContext(input, room?.document), attachment },
+      [jobInput]: { documentTarget: readDocumentContext(input, room?.document), attachment, reusablePrompt },
     };
     this.#records.set(record.id, record);
     this.#queue.push(record.id);
@@ -139,7 +143,7 @@ export class JobService {
         const jobId = this.#queue.shift();
         const record = this.#records.get(jobId);
         if (!record || record.status === 'cancelled') continue;
-        const { documentTarget, attachment } = record[jobInput];
+        const { documentTarget, attachment, reusablePrompt } = record[jobInput];
         delete record[jobInput];
         let room;
         let started = false;
@@ -168,6 +172,7 @@ export class JobService {
               selectedText: record.selectedText,
               documentTarget,
               attachment,
+              reusablePrompt,
               attachmentPreview: record.attachmentPreview,
               onTextDelta: (delta) => {
                 if (record.status === 'cancelled') return;
