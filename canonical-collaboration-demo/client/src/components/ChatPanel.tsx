@@ -36,16 +36,37 @@ function MarkdownMessage({ content }: { content: string }) {
 }
 
 function CopyMessageButton({ content }: { content: string }) {
+  const [copiedAt, setCopiedAt] = useState<number>();
+  const copied = copiedAt !== undefined;
+  const label = copied ? 'Copied' : 'Copy message';
+
+  useEffect(() => {
+    if (copiedAt === undefined) return;
+    const timer = window.setTimeout(() => setCopiedAt(undefined), Math.max(0, copiedAt + 1_000 - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [copiedAt]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedAt(Date.now());
+    } catch {
+      // Show confirmation only after a successful clipboard write.
+    }
+  }
+
   return (
     <button
       className="copy-message"
       type="button"
-      aria-label="Copy message"
-      title="Copy message"
-      onClick={() => void navigator.clipboard.writeText(content)}
+      aria-label={label}
+      title={label}
+      data-copied={copied || undefined}
+      onClick={copy}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M5 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />
+        {copied ? <path d="m5 12 4 4L19 6" />
+          : <path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2M5 8h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2Z" />}
       </svg>
     </button>
   );
@@ -134,7 +155,7 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   const speech = useAgentSpeech(roomId);
   const dictation = usePromptDictation(roomId, documentKey, (text) => {
-    if (voiceModeRef.current) void sendPrompt(text, true);
+    if (voiceModeRef.current) void sendPrompt(text, { fromVoice: true });
   }, (message) => {
     stopVoiceMode();
     setError(message);
@@ -317,6 +338,18 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   async function captureDocumentTarget(): Promise<PromptDocumentTarget | undefined> {
     if (!documentTarget) return;
+    const selected = selection?.selectionTarget;
+    if (selected) {
+      const { start, end } = selected;
+      if (selected.coordinateSpace !== 'tracked' && start.kind === 'text' && end.kind === 'text'
+        && start.blockId === end.blockId && start.offset < end.offset) {
+        const story = start.story ?? end.story ?? selected.story;
+        if (!story || story.storyType === 'body') {
+          return { ...documentTarget, selection: { blockId: start.blockId, start: start.offset, end: end.offset } };
+        }
+      }
+      return documentTarget;
+    }
     const doc = superdoc?.activeEditor?.doc;
     if (!doc) return documentTarget;
     try {
@@ -351,7 +384,7 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
     await sendPrompt(prompt.trim());
   }
 
-  async function sendPrompt(message: string, fromVoice = false) {
+  async function sendPrompt(message: string, { fromVoice = false, reusablePrompt = false } = {}) {
     if (composerBusy || submittingRef.current || unavailableReason || !message) return;
     submittingRef.current = true;
     setError(undefined);
@@ -362,9 +395,14 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
     }
     let job: Job;
     try {
-      const [target, encoded] = await Promise.all([captureDocumentTarget(), attachment && encodeAttachment(attachment)]);
+      const [target, encoded] = await Promise.all([
+        reusablePrompt ? documentTarget : captureDocumentTarget(),
+        !reusablePrompt && attachment ? encodeAttachment(attachment) : undefined,
+      ]);
       demoMetric('ai_started', 'collaboration');
-      job = await api.createJob(roomId, message, isSuggesting, selection?.quotedText || undefined, target, encoded);
+      job = await (reusablePrompt
+        ? api.createJob(roomId, message, false, undefined, target, undefined, true)
+        : api.createJob(roomId, message, isSuggesting, selection?.quotedText || undefined, target, encoded));
       if (encoded && !job.attachmentPreview) {
         const { name, kind, thumbnail } = encoded;
         const previews = { ...attachmentPreviews, [job.id]: { name, kind, thumbnail } };
@@ -373,11 +411,13 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
           sessionStorage.setItem(attachmentStorageKey, JSON.stringify(previews));
         } catch { /* The preview still works in the open chat if storage is unavailable. */ }
       }
-      submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
-      submittedPromptsRef.current.push(message);
-      promptNavigationRef.current = null;
-      if (!fromVoice) setPrompt('');
-      setAttachment(undefined);
+      if (!reusablePrompt) {
+        submittedPromptsRef.current ??= messages.filter((entry) => entry.role === 'user').map((entry) => entry.content);
+        submittedPromptsRef.current.push(message);
+        promptNavigationRef.current = null;
+        if (!fromVoice) setPrompt('');
+        setAttachment(undefined);
+      }
       setJobs((current) => [...current, job]);
     } catch (caught) {
       demoMetric('ai_failed', 'collaboration');
@@ -458,6 +498,11 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
         {selection && <AgentSelectionPreview doc={superdoc?.activeEditor?.doc} text={selection.quotedText}
           table={selection.tableSelection} target={selection.selectionTarget} onClear={() => setSelection(undefined)} />}
         <div className="prompt-options">
+          <button type="button" className="reusable-prompt-button"
+            disabled={composerBusy || Boolean(unavailableReason) || !documentTarget}
+            onClick={() => void sendPrompt('Create a reusable prompt', { reusablePrompt: true })}>
+            Create reusable prompt
+          </button>
           <div className="agent-mode-select">
             <select
               aria-label="Agent edit mode"

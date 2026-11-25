@@ -23,6 +23,69 @@ async function harness(t, changeMode = 'direct', prompt = 'Manage document refer
 const source = { type: 'book', fields: { title: 'Synthetic API book', year: '2026', authors: [{ first: 'Ada', last: 'Example' }] } };
 const target = sourceId => ({ kind: 'entity', entityType: 'citationSource', sourceId });
 
+test('recent passage formatting is scoped to one duplicate and stale references fail closed', { timeout: 60_000 }, async t => {
+  const { document } = await harness(t);
+  const native = (operationId, args) => document.dispatch('superdoc_api_call', { operationId, args });
+  const text = 'The gate stays closed.';
+  const contents = `${text} / ${text}`;
+  const { paragraph } = await native('doc.create.paragraph', { text: contents });
+  const focus = await document.findAgentPassage(text, {
+    blockId: paragraph.nodeId, start: text.length + 3, end: contents.length,
+  });
+  const result = await document.editAgentPassage(focus, 'format', { inline: { bold: true }, changeMode: 'tracked' });
+  assert.equal(result.success, true, JSON.stringify(result));
+  assert.equal(result.appliedChangeMode, 'tracked');
+  const reviewed = await document.readAgentPassage(focus);
+  assert.equal(reviewed.inline.bold, true);
+  const first = await document.findAgentPassage(text, { blockId: paragraph.nodeId, start: 0, end: text.length });
+  assert.notEqual((await document.readAgentPassage(first)).inline.bold, true);
+  assert.equal((await document.editAgentPassage(focus, 'delete', { changeMode: 'direct' })).success, true);
+  await assert.rejects(document.editAgentPassage(focus, 'format', { inline: { bold: true }, changeMode: 'direct' }), /changed or is ambiguous/);
+  assert.match(await native('doc.getText', {}), /The gate stays closed\./);
+});
+
+test('saving a clause retains separate inline formatting ranges for mixed text', { timeout: 60_000 }, async t => {
+  const { document } = await harness(t);
+  const native = (operationId, args) => document.dispatch('superdoc_api_call', { operationId, args });
+  const text = 'Bold 🔑 word then plain.';
+  const { paragraph } = await native('doc.create.paragraph', { text });
+  const focus = await document.findAgentPassage(text, { blockId: paragraph.nodeId, start: 0, end: text.length });
+  const boldLength = 'Bold 🔑 word'.length;
+  const bold = await document.editAgentPassage(focus, 'format', {
+    inline: { bold: true, color: '#008000' }, range: { start: 0, end: boldLength }, changeMode: 'direct',
+  });
+  assert.equal(bold.success, true, JSON.stringify(bold));
+  const saved = await document.readAgentPassage(focus, { snapshotFormatting: true });
+  assert.equal(saved.text, text);
+  assert.deepEqual(saved.mixed, []);
+  assert.equal(saved.runs[0].end, boldLength);
+  assert.equal(saved.runs[0].inline.bold, true);
+  assert.match(String(saved.runs[0].inline.color), /008000/i);
+  assert.notEqual(saved.runs[1].inline.bold, true);
+  const inserted = await document.insertAgentText(saved.text, undefined, 'direct', 'documentEnd');
+  const copy = await document.captureAgentPassage(inserted.passage);
+  for (const { inline, start, end } of saved.runs) {
+    const restored = await document.editAgentPassage(copy, 'format', { inline, range: { start, end }, changeMode: 'direct' });
+    assert.equal(restored.success, true, JSON.stringify(restored));
+  }
+  assert.deepEqual(await document.readAgentPassage(copy, { snapshotFormatting: true }), saved);
+});
+
+test('recent table updates and deletion preserve the control table and reject a stale address', { timeout: 60_000 }, async t => {
+  const { document } = await harness(t);
+  const native = (operationId, args) => document.dispatch('superdoc_api_call', { operationId, args });
+  const { table: first } = await native('doc.create.table', { rows: 2, columns: 2, at: { kind: 'documentEnd' } });
+  const { table: last } = await native('doc.create.table', { rows: 2, columns: 2, at: { kind: 'documentEnd' } });
+  assert.equal((await document.workWithAgentTable(last, 'read', 1, 'direct')).table.rows, 2);
+  const added = await document.workWithAgentTable(last, 'addRows', 1, 'direct');
+  assert.equal(added.success, true, JSON.stringify(added));
+  assert.equal((await document.workWithAgentTable(last, 'read', 1, 'direct')).table.rows, 3);
+  assert.equal((await document.workWithAgentTable(first, 'read', 1, 'direct')).table.rows, 2);
+  assert.equal((await document.workWithAgentTable(last, 'delete', 1, 'direct')).success, true);
+  await assert.rejects(document.workWithAgentTable(last, 'addRows', 1, 'direct'), /could not be located/);
+  assert.equal((await document.workWithAgentTable(first, 'read', 1, 'direct')).table.rows, 2);
+});
+
 test('header and footer writes are scoped to their stories while body text still streams', { timeout: 60_000 }, async t => {
   const { document, execute, toolkit } = await harness(t);
   const native = (operationId, args) => document.dispatch('superdoc_api_call', { operationId, args });

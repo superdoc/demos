@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { createDocumentAgent } from './agent.js';
 import { createReferenceToolkit } from './reference-integration/reference-document.js';
 import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
+import { explicitlyReadOnly, isRelativePassageEdit } from './agent-turn-policy.js';
 
 function harness(responses, { client: responsesClient, model = 'gpt-5-mini' } = {}) {
   const requests = [];
@@ -44,6 +45,95 @@ function harness(responses, { client: responsesClient, model = 'gpt-5-mini' } = 
 }
 let id = 0;
 
+test('read-only and relative edit guards respect complete instructions and compound requests', () => {
+  for (const prompt of [
+    'Remember this clause for later.',
+    'In chat only, give me a possible rewrite.',
+    'Check whether the gate clause is bold.',
+    'What did you remember about the clause, including its formatting?',
+  ]) assert.equal(explicitlyReadOnly(prompt), true, prompt);
+  for (const prompt of [
+    'Remember this clause for later and delete it.',
+    'Check whether it is bold and fix it if needed.',
+    'Write a paragraph containing “in chat only”.',
+    'Insert this sentence: “Do not edit the document.”',
+  ]) assert.equal(explicitlyReadOnly(prompt), false, prompt);
+  for (const prompt of ['Make it bold.', 'Delete it.', 'Rewrite that clause to “The gate opens at dawn.”']) {
+    assert.equal(isRelativePassageEdit(prompt), true, prompt);
+  }
+  for (const prompt of ['Make every mention bold.', 'Make it bold and add a table.', 'Should we make it bold?']) {
+    assert.equal(isRelativePassageEdit(prompt), false, prompt);
+  }
+});
+
+test('a read-only chat request blocks streamed edits and any native batch containing a write', async () => {
+  const h = harness([
+    (request) => {
+      assert.ok(!request.tools.some(({ function: { name } }) => name === 'superdoc_stream_text' || name === 'superdoc_perform_action'));
+      return call('superdoc_api_call', { calls: [
+        { operationId: 'doc.getText', args: {} },
+        { operationId: 'doc.delete', args: {} },
+      ] });
+    },
+    call('superdoc_stream_text', { mode: 'append', anchor: null, story: null, text: 'Unrequested edit' }),
+    { content: 'Here is a possible rewrite for your review.' },
+  ]);
+  h.document.createTextStream = () => assert.fail('Read-only turns must not create a writer.');
+  const answer = await h.agent.run(h.document, 'In chat only, give me a possible rewrite.', [], false, new AbortController().signal);
+  assert.equal(answer, 'Here is a possible rewrite for your review.');
+  assert.deepEqual(h.dispatches, []);
+});
+
+test('saved passages stay private to a chat and reset when the document is replaced', async () => {
+  const save = call('document_memory', { operation: 'save', name: 'Payment', quote: null, placement: null });
+  const recall = call('document_memory', { operation: 'recall', name: null, quote: null, placement: null });
+  const checkRecall = (names) => (request) => {
+    const result = JSON.parse(request.messages.at(-1).content);
+    assert.deepEqual(result.saved.map(({ name }) => name), names);
+    return { content: names.length ? 'I saved Payment.' : 'Nothing has been saved.' };
+  };
+  const h = harness([
+    save, { content: 'Saved Payment.' },
+    recall, checkRecall([]),
+    recall, checkRecall(['Payment']),
+    recall, checkRecall([]),
+  ]);
+  h.document.generation = 1;
+  h.document.findAgentPassage = async (text, selection) => {
+    assert.equal(text, 'Pay at dusk.');
+    assert.deepEqual(selection, { blockId: 'block', start: 0, end: 12 });
+    return { text };
+  };
+  h.document.readAgentPassage = async ({ text }) => ({ text, inline: { bold: true }, mixed: [] });
+  const first = [];
+  const second = [];
+  const signal = new AbortController().signal;
+  await h.agent.run(h.document, 'Remember this clause for later.', first, false, signal, {
+    selectedText: 'Pay at dusk.',
+    documentTarget: { selection: { blockId: 'block', start: 0, end: 12 } },
+  });
+  await h.agent.run(h.document, 'What did you remember?', second, false, signal);
+  await h.agent.run(h.document, 'What did you remember?', first, false, signal);
+  h.document.generation++;
+  await h.agent.run(h.document, 'What did you remember?', first, false, signal);
+  assert.deepEqual(h.dispatches, []);
+});
+
+test('a relative revision stays in chat after a chat-only draft', async () => {
+  const h = harness([(request) => {
+    assert.match(request.messages[0].content, /Apply this follow-up to that draft in chat/);
+    assert.ok(!request.tools.some(({ function: { name } }) => name === 'superdoc_stream_text'));
+    return { content: '**Pay at dusk.**' };
+  }]);
+  const history = [
+    { role: 'user', content: 'In chat only, write a payment clause.' },
+    { role: 'assistant', content: 'Pay at dusk.' },
+  ];
+  const answer = await h.agent.run(h.document, 'Make it bold.', history, false, new AbortController().signal);
+  assert.equal(answer, '**Pay at dusk.**');
+  assert.deepEqual(h.dispatches, []);
+});
+
 test('GPT-5.5 uses medium reasoning with image input and preserves reasoning across streamed document tool calls', async () => {
   const requests = [];
   const reasoning = { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'encrypted-test-context' };
@@ -83,6 +173,86 @@ test('GPT-5.5 uses medium reasoning with image input and preserves reasoning acr
   assert.deepEqual(h.dispatches.map(({ tool }) => tool), ['superdoc_inspect']);
   assert.deepEqual(deltas, ['Here’s the comparison.']);
   assert.equal(history.at(-1).content, 'Here’s the comparison.');
+});
+
+test('a reusable prompt reads the document and cannot mutate it through a tool call', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  const { default: JSZip } = await import('jszip');
+  const snapshot = new JSZip();
+  snapshot.file('word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/><w:color w:val="008000"/></w:rPr><w:t>Dragon</w:t></w:r></w:p></w:body></w:document>');
+  const source = 'Sir Eamon walked east.\n\n| Passage | Armory |\n|---|---|\n| Dragon | Sword |\n\n1. Draw the sword.\n2. Return west.';
+  const h = harness([
+    (request) => {
+      assert.equal(request.tool_choice.function.name, 'superdoc_inspect');
+      assert.deepEqual(request.tools.map(({ function: fn }) => fn.name), [
+        'superdoc_inspect', 'superdoc_api_search', 'superdoc_api_call',
+      ]);
+      assert.ok(!request.messages.some(({ content }) => content === 'Earlier private chat.'));
+      return call('superdoc_inspect', {});
+    },
+    (request) => {
+      const inspection = JSON.parse(request.messages.at(-1).content);
+      assert.equal(inspection.markdown, source);
+      assert.deepEqual(inspection.inlineFormatting, {
+        runs: [{ part: 'document.xml', text: 'Dragon', styles: { b: true, color: '008000' } }],
+      });
+      return call('superdoc_api_call', { calls: [
+        { operationId: 'doc.blocks.list', args: {} },
+        { operationId: 'doc.tables.delete', args: {} },
+      ] });
+    },
+    call('superdoc_stream_text', { mode: 'append', anchor: null, story: null, text: 'Unrequested edit' }),
+    { content: 'Preserve the dungeon map and end at the armory choices.' },
+  ]);
+  const dispatch = h.document.dispatch;
+  h.document.dispatch = (tool, args, options) => args.operationId === 'doc.getMarkdown' ? source : dispatch(tool, args, options);
+  h.document.save = async (filename) => writeFile(filename, await snapshot.generateAsync({ type: 'nodebuffer' }));
+  h.document.createTextStream = () => assert.fail('A reusable prompt must never stream text into the document.');
+  const history = [{ role: 'user', content: 'Earlier private chat.' }];
+  const answer = await h.agent.run(h.document, 'Create a reusable prompt', history, false, new AbortController().signal, { reusablePrompt: true });
+  assert.match(answer, /^Recreate the full document below from scratch/);
+  assert.ok(answer.includes('Preserve the dungeon map and end at the armory choices.'));
+  assert.ok(answer.includes(source));
+  assert.deepEqual(h.dispatches.map(({ tool }) => tool), ['superdoc_inspect']);
+  assert.equal(history.at(-1).content, answer);
+});
+
+test('a repeated formatting rule guides later edits without repeating the completed edit', async () => {
+  const format = { action: 'format_text', targetText: 'dragon', bold: true, color: '#008000' };
+  const text = 'The dragon circled the tower.';
+  const selector = { kind: 'nodeId', nodeId: 'new-paragraph' };
+  const original = 'Make every mention of dragon bold and green.';
+  const followup = "Make sure you do that for every mention of dragon, just like you've done for Sir Eamon.";
+  const h = harness([
+    call('superdoc_perform_action', format),
+    { content: 'I made all three mentions of “dragon” bold and green.' },
+    (request) => {
+      const [system, user, assistant] = request.messages;
+      assert.match(system.content, /acknowledge it as guidance for future edits\. Do not repeat the edit/);
+      assert.match(system.content, /asks to check or verify existing formatting, inspect it and report/);
+      assert.equal(user.content, original);
+      assert.match(assistant.content, /all three mentions/);
+      return { content: 'I’ll keep future mentions of “dragon” bold and green.' };
+    },
+    (request) => {
+      assert.ok(request.messages.some(({ role, content }) => role === 'user' && content === followup));
+      assert.match(request.messages[0].content, /apply it to new or changed text/);
+      return call('superdoc_stream_text', { mode: 'append', anchor: null, text });
+    },
+    call('superdoc_perform_action', { ...format, selector }),
+    { content: 'Formatted “dragon” in the new sentence.' },
+  ]);
+  const history = [];
+  const signal = new AbortController().signal;
+  await h.agent.run(h.document, original, history, false, signal);
+  await h.agent.run(h.document, followup, history, false, signal);
+  assert.equal(h.dispatches.length, 1);
+  await h.agent.run(h.document, `Append a paragraph that says “${text}”`, history, false, signal);
+  assert.deepEqual(h.dispatches.map(({ tool }) => tool), [
+    'superdoc_perform_action', 'superdoc_stream_text', 'superdoc_perform_action',
+  ]);
+  assert.equal(h.dispatches[1].args.text, text);
+  assert.deepEqual(h.dispatches[2].args, { ...format, selector, changeMode: 'direct' });
 });
 
 test('selected text scopes the model request while keeping prompt history readable', async () => {

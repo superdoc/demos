@@ -317,7 +317,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .message-attachment figcaption { overflow: hidden; color: #334155; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .copy-message { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 5px; color: #64748b; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; opacity: 0; transition: opacity .1s; }
 .copy-message svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.message:hover .copy-message, .copy-message:focus-visible { opacity: 1; }
+.message:hover .copy-message, .copy-message:focus-visible, .copy-message[data-copied="true"] { opacity: 1; }
 .message-role { display: block; margin-bottom: 6px; color: #64748b; font-size: 11px; font-weight: 750; }
 .message p { margin-bottom: 8px; line-height: 1.45; }
 .message-markdown > :first-child { margin-top: 0; }
@@ -332,7 +332,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .chat-panel form { padding: 16px; border-top: 1px solid #e5e7eb; display: grid; gap: 8px; }
 .agent-unavailable { margin: 0; color: #64748b; font-size: 13px; line-height: 1.45; }
 .chat-panel form label { font-size: 12px; font-weight: 700; }
-.prompt-options { display: flex; justify-content: flex-end; }
+.prompt-options { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.prompt-options .agent-mode-select { margin-inline-start: auto; }
+.reusable-prompt-button { padding: 5px 8px; border: 1px solid #cbd5e1; color: #475569; background: #fff; font-size: 12px; }
+.reusable-prompt-button:hover:not(:disabled) { background: #edf2f8; color: #263344; }
 .selection-preview { min-width: 0; padding: 10px 12px; border: 1px solid #dbe3ee; border-radius: 7px; background: #f8fafc; }
 .selection-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; color: #475569; font-size: 12px; font-weight: 700; }
 .chat-panel .clear-selection { padding: 2px 4px; border: 0; background: transparent; color: #64748b; font-size: 12px; font-weight: 400; }

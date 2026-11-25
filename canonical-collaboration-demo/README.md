@@ -161,6 +161,10 @@ The client creates a random room ID and adds it to the URL as `?room=...`. Share
 2. Choose **New document**, then **Start blank** or **Upload DOCX…** to replace the document in this room.
 3. Edit the document directly in SuperDoc.
 4. Enter an instruction in the agent panel and select **Send**. Enter submits; Shift+Enter adds a new line.
+   Writing and editing requests apply to the current document by default. Ask for a draft in chat to keep it there. If you restate a formatting rule after the agent confirms the change, it follows that rule on future edits in the same chat.
+   Follow-ups such as “make it bold” can target the last passage the agent edited, and “add a row to it” can target the last table. If you discuss alternative wording for a selected passage, “use the second one” can apply that version even after you clear the selection.
+   Ask the agent to remember a selected or recently edited clause to save its wording and supported inline formatting in your private chat. You can recall it after the document text changes, or ask to insert the saved copy. Saved passages are kept for the lifetime of that chat in the current document.
+   Select **Create reusable prompt** to get copyable rebuild instructions and the current document's body content in chat for use in a fresh session.
    Select document text first to target a passage. The panel previews selected paragraphs and tables in a scrollable area and includes the selection as target context with the prompt. The selection remains available while typing the prompt; choose **Clear** to remove the target and work with the whole document again.
 5. While a job is running, select **Stop** to cancel remaining work. Edits already applied before cancellation are not rolled back.
 6. Use **+** to attach an image or a supported file. Choose **Agent is reviewing** for suggestions or **Agent is editing** for direct edits. The configured agent model appears beside **Send**.
