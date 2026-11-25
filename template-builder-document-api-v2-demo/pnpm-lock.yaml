@@ -9,21 +9,21 @@ importers:
   .:
     dependencies:
       superdoc:
-        specifier: 2.34.0
-        version: 2.34.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32)
+        specifier: 2.35.0
+        version: 2.35.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32)
       vue:
         specifier: ^3.4.0
         version: 3.5.32(typescript@5.9.3)
     devDependencies:
       '@vitejs/plugin-vue':
         specifier: ^5.2.4
-        version: 5.2.4(vite@6.4.5(@types/node@26.6.6))(vue@3.5.32(typescript@5.9.3))
+        version: 5.2.4(vite@6.4.5(@types/node@26.6.10))(vue@3.5.32(typescript@5.9.3))
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
       vite:
         specifier: ^6.4.5
-        version: 6.4.5(@types/node@26.6.6)
+        version: 6.4.5(@types/node@26.6.10)
       vue-tsc:
         specifier: ^2.0.0
         version: 2.2.12(typescript@5.9.3)
@@ -413,8 +413,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@superdoc/docx-engine@0.33.0':
-    resolution: {integrity: sha512-3XTnHUG0jQXma5GzNgfJdhpZaYsP+BUqxtY0aEbXOCAY5QS/+DR7gkFu6aeGhv9AWcIG2kCP7/N6514uDz70Mw==}
+  '@superdoc/docx-engine@0.34.0':
+    resolution: {integrity: sha512-/wSAdFk/8IleKLJa0dK93mO1N2Uiaq5ILCOtDuTYhNga7Gn7TtIit7ku0C5ds1McSRtBkZgrdA9H7EyMrLb2DA==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -435,8 +435,8 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
-  '@types/node@26.6.6':
-    resolution: {integrity: sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==}
+  '@types/node@26.6.10':
+    resolution: {integrity: sha512-WJuPHoGB8WNQuTksNF7SOQpnH02PXeDYz4iueWbBT6/hTWnShY5F3T/hoJA3fY9+uYReDZ7pyTKKx83jQa7aGg==}
 
   '@types/ws@8.18.2':
     resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
@@ -654,8 +654,8 @@ packages:
     resolution: {integrity: sha512-1POYv7uv2gXoyGFpBCmpDVSNV74IfsWlDW216UPjbWufNf+bSU6GdbDsxdcxtfwb4xlI3yxzOTKClUosxARYrQ==}
     engines: {node: '>=0.10.0'}
 
-  superdoc@2.34.0:
-    resolution: {integrity: sha512-f3CI6Hrg5LQyfZv21hMk527S4Eb5UMBF82ok8BsuMoGuOR6BUZljsMUIAXdb+qhSOxKvlrka1YbN/3PQEwyhRA==}
+  superdoc@2.35.0:
+    resolution: {integrity: sha512-5sd3ZzvazvGMjz3d5sqD8v2mXD97Ka2nsLvrHilR8e/uy+Q7RxR9u+IPI2Rh9xr4MAPJRRScsBw2iSakmKLkMg==}
     peerDependencies:
       '@hocuspocus/provider': ^2.13.6
       '@liveblocks/client': ^3.15.5
@@ -1023,7 +1023,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@superdoc/docx-engine@0.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
+  '@superdoc/docx-engine@0.34.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       vue: 3.5.32(typescript@5.9.3)
       xml-js: 1.6.11
@@ -1035,17 +1035,17 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
-  '@types/node@26.6.6':
+  '@types/node@26.6.10':
     dependencies:
       undici-types: 8.9.0
 
   '@types/ws@8.18.2':
     dependencies:
-      '@types/node': 26.6.6
+      '@types/node': 26.6.10
 
-  '@vitejs/plugin-vue@5.2.4(vite@6.4.5(@types/node@26.6.6))(vue@3.5.32(typescript@5.9.3))':
+  '@vitejs/plugin-vue@5.2.4(vite@6.4.5(@types/node@26.6.10))(vue@3.5.32(typescript@5.9.3))':
     dependencies:
-      vite: 6.4.5(@types/node@26.6.6)
+      vite: 6.4.5(@types/node@26.6.10)
       vue: 3.5.32(typescript@5.9.3)
 
   '@volar/language-core@2.4.15':
@@ -1296,10 +1296,10 @@ snapshots:
 
   speakingurl@14.0.1: {}
 
-  superdoc@2.34.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32):
+  superdoc@2.35.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(react@19.3.1)(typescript@5.9.3)(yjs@13.6.32):
     dependencies:
       '@hocuspocus/provider': 2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
-      '@superdoc/docx-engine': 0.33.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
+      '@superdoc/docx-engine': 0.34.0(@hocuspocus/provider@2.15.3(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32))(vue@3.5.32(typescript@5.9.3))(y-websocket@3.1.0(yjs@13.6.32))(yjs@13.6.32)
       '@types/ws': 8.18.2
       eventemitter3: 5.0.4
       konva: 10.11.0
@@ -1336,7 +1336,7 @@ snapshots:
 
   uuid@11.1.1: {}
 
-  vite@6.4.5(@types/node@26.6.6):
+  vite@6.4.5(@types/node@26.6.10):
     dependencies:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.7)
@@ -1345,7 +1345,7 @@ snapshots:
       rollup: 4.60.1
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 26.6.6
+      '@types/node': 26.6.10
       fsevents: 2.3.3
 
   vscode-uri@3.1.0: {}
