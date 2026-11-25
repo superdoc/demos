@@ -54,4 +54,5 @@ export type ChatMessage = {
 export type AttachmentPreview = { name: string; kind: 'image' | 'file'; thumbnail?: string };
 export type PromptAttachment = AttachmentPreview & { base64: string };
 export type PromptCursor = { blockId: string; offset: number; paragraph: string };
-export type PromptDocumentTarget = { id: string; generation: number; cursor?: PromptCursor };
+export type PromptSelection = { blockId: string; start: number; end: number };
+export type PromptDocumentTarget = { id: string; generation: number; cursor?: PromptCursor; selection?: PromptSelection };

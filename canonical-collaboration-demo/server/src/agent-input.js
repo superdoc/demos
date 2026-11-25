@@ -14,7 +14,7 @@ function badInput(message) {
 
 export function readDocumentContext(input, document) {
   if (input.documentTarget === undefined) return undefined;
-  const { id, generation, cursor } = input.documentTarget ?? {};
+  const { id, generation, cursor, selection } = input.documentTarget ?? {};
   if (id !== document.id || generation !== document.generation) {
     throw badInput('The document has changed. Try submitting your prompt again.');
   }
@@ -23,7 +23,12 @@ export function readDocumentContext(input, document) {
       || cursor.paragraph.length > 100_000)) {
     throw badInput('Invalid document cursor.');
   }
-  return { id, generation, cursor };
+  if (selection !== undefined && (typeof selection?.blockId !== 'string' || !selection.blockId || selection.blockId.length > 200
+      || !Number.isSafeInteger(selection.start) || !Number.isSafeInteger(selection.end)
+      || selection.start < 0 || selection.end <= selection.start || cursor !== undefined)) {
+    throw badInput('Invalid document selection.');
+  }
+  return { id, generation, cursor, selection };
 }
 
 function imageThumbnail(value) {

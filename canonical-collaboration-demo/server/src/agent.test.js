@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { createDocumentAgent } from './agent.js';
 import { createReferenceToolkit } from './reference-integration/reference-document.js';
 import { createRunProgress, toolFailed } from './reference-integration/agent/agent-run-progress.js';
+import { explicitlyReadOnly, isRelativePassageEdit } from './agent-turn-policy.js';
 
 function harness(responses, { client: responsesClient, model = 'gpt-5-mini' } = {}) {
   const requests = [];
@@ -43,6 +44,95 @@ function harness(responses, { client: responsesClient, model = 'gpt-5-mini' } = 
   return { agent, document, requests, dispatches };
 }
 let id = 0;
+
+test('read-only and relative edit guards respect complete instructions and compound requests', () => {
+  for (const prompt of [
+    'Remember this clause for later.',
+    'In chat only, give me a possible rewrite.',
+    'Check whether the gate clause is bold.',
+    'What did you remember about the clause, including its formatting?',
+  ]) assert.equal(explicitlyReadOnly(prompt), true, prompt);
+  for (const prompt of [
+    'Remember this clause for later and delete it.',
+    'Check whether it is bold and fix it if needed.',
+    'Write a paragraph containing “in chat only”.',
+    'Insert this sentence: “Do not edit the document.”',
+  ]) assert.equal(explicitlyReadOnly(prompt), false, prompt);
+  for (const prompt of ['Make it bold.', 'Delete it.', 'Rewrite that clause to “The gate opens at dawn.”']) {
+    assert.equal(isRelativePassageEdit(prompt), true, prompt);
+  }
+  for (const prompt of ['Make every mention bold.', 'Make it bold and add a table.', 'Should we make it bold?']) {
+    assert.equal(isRelativePassageEdit(prompt), false, prompt);
+  }
+});
+
+test('a read-only chat request blocks streamed edits and any native batch containing a write', async () => {
+  const h = harness([
+    (request) => {
+      assert.ok(!request.tools.some(({ function: { name } }) => name === 'superdoc_stream_text' || name === 'superdoc_perform_action'));
+      return call('superdoc_api_call', { calls: [
+        { operationId: 'doc.getText', args: {} },
+        { operationId: 'doc.delete', args: {} },
+      ] });
+    },
+    call('superdoc_stream_text', { mode: 'append', anchor: null, story: null, text: 'Unrequested edit' }),
+    { content: 'Here is a possible rewrite for your review.' },
+  ]);
+  h.document.createTextStream = () => assert.fail('Read-only turns must not create a writer.');
+  const answer = await h.agent.run(h.document, 'In chat only, give me a possible rewrite.', [], false, new AbortController().signal);
+  assert.equal(answer, 'Here is a possible rewrite for your review.');
+  assert.deepEqual(h.dispatches, []);
+});
+
+test('saved passages stay private to a chat and reset when the document is replaced', async () => {
+  const save = call('document_memory', { operation: 'save', name: 'Payment', quote: null, placement: null });
+  const recall = call('document_memory', { operation: 'recall', name: null, quote: null, placement: null });
+  const checkRecall = (names) => (request) => {
+    const result = JSON.parse(request.messages.at(-1).content);
+    assert.deepEqual(result.saved.map(({ name }) => name), names);
+    return { content: names.length ? 'I saved Payment.' : 'Nothing has been saved.' };
+  };
+  const h = harness([
+    save, { content: 'Saved Payment.' },
+    recall, checkRecall([]),
+    recall, checkRecall(['Payment']),
+    recall, checkRecall([]),
+  ]);
+  h.document.generation = 1;
+  h.document.findAgentPassage = async (text, selection) => {
+    assert.equal(text, 'Pay at dusk.');
+    assert.deepEqual(selection, { blockId: 'block', start: 0, end: 12 });
+    return { text };
+  };
+  h.document.readAgentPassage = async ({ text }) => ({ text, inline: { bold: true }, mixed: [] });
+  const first = [];
+  const second = [];
+  const signal = new AbortController().signal;
+  await h.agent.run(h.document, 'Remember this clause for later.', first, false, signal, {
+    selectedText: 'Pay at dusk.',
+    documentTarget: { selection: { blockId: 'block', start: 0, end: 12 } },
+  });
+  await h.agent.run(h.document, 'What did you remember?', second, false, signal);
+  await h.agent.run(h.document, 'What did you remember?', first, false, signal);
+  h.document.generation++;
+  await h.agent.run(h.document, 'What did you remember?', first, false, signal);
+  assert.deepEqual(h.dispatches, []);
+});
+
+test('a relative revision stays in chat after a chat-only draft', async () => {
+  const h = harness([(request) => {
+    assert.match(request.messages[0].content, /Apply this follow-up to that draft in chat/);
+    assert.ok(!request.tools.some(({ function: { name } }) => name === 'superdoc_stream_text'));
+    return { content: '**Pay at dusk.**' };
+  }]);
+  const history = [
+    { role: 'user', content: 'In chat only, write a payment clause.' },
+    { role: 'assistant', content: 'Pay at dusk.' },
+  ];
+  const answer = await h.agent.run(h.document, 'Make it bold.', history, false, new AbortController().signal);
+  assert.equal(answer, '**Pay at dusk.**');
+  assert.deepEqual(h.dispatches, []);
+});
 
 test('GPT-5.5 uses medium reasoning with image input and preserves reasoning across streamed document tool calls', async () => {
   const requests = [];

@@ -1,4 +1,5 @@
 import { streamTextInput } from '../tools/stream-text-tool.js';
+import { passageHint } from './agent-passage.js';
 
 function checked(result) {
   const receipt = result?.receipt ?? result;
@@ -77,7 +78,9 @@ export function createTextStream(handle, { changeMode, signal }) {
       await update(args);
       signal?.throwIfAborted();
       if (!used) throw new Error('The generated document text was empty.');
-      return { success: true, streamed: true, characters: lastText.length, receipt: result?.receipt ?? result };
+      const address = args.story && block ? { ...block, story: args.story } : block;
+      return { success: true, streamed: true, characters: lastText.length, receipt: result?.receipt ?? result,
+        passage: passageHint(lastText, address, expectedStart) };
     },
   };
 }

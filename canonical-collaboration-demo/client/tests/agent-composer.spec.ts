@@ -431,7 +431,91 @@ test('a selected-text prompt still edits the highlighted text', async ({ page })
   });
   expect(payload.selectedText).toBe('LEFT');
   expect(payload.documentTarget.cursor).toBeUndefined();
+  expect(payload.documentTarget.selection).toMatchObject({ start: 0, end: 4 });
   await expect(editor).toContainText('SELECTEDRIGHT');
+});
+
+test('a follow-up formats only the inserted clause and remembers its current formatting', async ({ page }) => {
+  const { room, editor } = await openAtCaret(page);
+  const clause = 'The gate shall remain closed until sunrise.';
+  await page.keyboard.press('Home');
+  await page.keyboard.insertText(`${clause} | `);
+  await page.keyboard.press('End');
+  for (let index = 0; index < 'RIGHT'.length; index++) await page.keyboard.press('ArrowLeft');
+  await submit(page, room, {
+    prompt: `Insert this clause here: “${clause}”`,
+    steps: [{ tool: insertText(clause) }],
+    answer: 'Inserted the clause at the caret.',
+  });
+  await expect(editor).toContainText(`LEFT${clause}RIGHT`);
+  await submit(page, room, {
+    prompt: 'Make it bold.',
+    checkInput(input) {
+      assert.ok(String(input.messages[0].content).includes(clause));
+      assert.ok(!input.tools.some(({ function: fn }) => fn.name === 'superdoc_perform_action'));
+    },
+    steps: [{ tool: { name: 'recent_document_passage', args: { operation: 'format', index: null, text: null, inline: { bold: true } } } }],
+    answer: 'Made the inserted clause bold.',
+  });
+  const { xml: styled } = await exportDocument(room);
+  const clauseRuns = [...styled.matchAll(/<w:r(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/g)].map((match) => match[1]).filter((run) => run.includes(clause));
+  expect(clauseRuns).toHaveLength(2);
+  expect(clauseRuns[0]).not.toMatch(/<w:b(?:\s|\/|>)/);
+  expect(clauseRuns[1]).toMatch(/<w:b(?:\s|\/|>)/);
+  await submit(page, room, {
+    prompt: 'Remember this clause for later.',
+    steps: [{
+      tool: { name: 'document_memory', args: { operation: 'save', name: 'Gate clause', quote: clause, placement: null } },
+      checkResult(content) {
+        assert.equal(JSON.parse(content).saved.text, clause);
+        assert.equal(JSON.parse(content).saved.inline.bold, true);
+      },
+    }],
+    answer: 'Saved the gate clause and its formatting for this chat.',
+  });
+  expect((await exportDocument(room)).xml).toBe(styled);
+  await submit(page, room, {
+    prompt: 'Delete it.',
+    steps: [{ tool: { name: 'recent_document_passage', args: { operation: 'delete', index: null, text: null, inline: null } } }],
+    answer: 'Deleted the inserted clause.',
+  });
+  await expect(editor).toContainText(`${clause} | LEFTRIGHT`);
+  await submit(page, room, {
+    prompt: 'What did you remember about the clause?',
+    steps: [{
+      tool: { name: 'document_memory', args: { operation: 'recall', name: 'Gate clause', quote: null, placement: null } },
+      checkResult(content) {
+        assert.equal(JSON.parse(content).saved.text, clause);
+        assert.equal(JSON.parse(content).saved.inline.bold, true);
+      },
+    }],
+    answer: 'The saved gate clause is bold.',
+  });
+});
+
+test('choosing a proposed rewrite updates the discussed selection after it is cleared', async ({ page }) => {
+  const { room, editor } = await openAtCaret(page);
+  await page.keyboard.press('Shift+Home');
+  const before = (await exportDocument(room)).xml;
+  await submit(page, room, {
+    prompt: 'Give me two alternative wordings.',
+    steps: [],
+    answer: 'The first wording is LEFTWARD. The second is PORT.',
+  });
+  expect((await exportDocument(room)).xml).toBe(before);
+  await page.getByRole('region', { name: 'Selected text' }).getByRole('button', { name: 'Clear' }).click();
+  await submit(page, room, {
+    prompt: 'Use the second one.',
+    checkInput(input) {
+      assert.match(String(input.messages[0].content), /Most recent selected passage discussed without editing.*LEFT/);
+      assert.ok(!input.tools.some(({ function: fn }) => fn.name === 'superdoc_stream_text'));
+    },
+    steps: [{ tool: { name: 'recent_document_passage', args: {
+      operation: 'replace', source: 'discussion', index: null, text: 'PORT', inline: null,
+    } } }],
+    answer: 'Used the second wording.',
+  });
+  await expect(editor).toContainText('PORTRIGHT');
 });
 
 async function openPreviewTable(page: Page) {

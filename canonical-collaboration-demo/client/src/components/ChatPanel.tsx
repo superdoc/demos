@@ -338,6 +338,18 @@ export function ChatPanel({ roomId, disabled, unavailableReason, width, onWidthC
 
   async function captureDocumentTarget(): Promise<PromptDocumentTarget | undefined> {
     if (!documentTarget) return;
+    const selected = selection?.selectionTarget;
+    if (selected) {
+      const { start, end } = selected;
+      if (selected.coordinateSpace !== 'tracked' && start.kind === 'text' && end.kind === 'text'
+        && start.blockId === end.blockId && start.offset < end.offset) {
+        const story = start.story ?? end.story ?? selected.story;
+        if (!story || story.storyType === 'body') {
+          return { ...documentTarget, selection: { blockId: start.blockId, start: start.offset, end: end.offset } };
+        }
+      }
+      return documentTarget;
+    }
     const doc = superdoc?.activeEditor?.doc;
     if (!doc) return documentTarget;
     try {
