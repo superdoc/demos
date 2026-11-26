@@ -22,6 +22,8 @@
 	box-sizing: border-box;
 }
 body {
+	display: flex;
+	flex-direction: column;
 	font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
 	height: 100vh;
 	overflow: hidden;
@@ -30,12 +32,13 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 #root {
-	height: 100vh;
+	flex: 1;
+	min-height: 0;
 }
 
 /* ── Layout ── */
 .app {
-	height: 100vh;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 }
@@ -72,6 +75,7 @@ body {
 	font-weight: 600;
 }
 .topbar-by {
+	font-size: 14px;
 	font-weight: 500;
 	color: var(--text-3);
 }
@@ -81,6 +85,27 @@ body {
 }
 .topbar-by a:hover {
 	text-decoration: underline;
+}
+
+.topbar-links {
+	display: flex;
+	gap: 12px;
+	margin-left: auto;
+	font-size: 12px;
+}
+.topbar-links a {
+	color: var(--text-2);
+}
+.discovery-intro {
+	padding: 24px;
+	max-width: 680px;
+	line-height: 1.6;
+}
+.discovery-intro h2 {
+	font-size: 20px;
+}
+.discovery-intro p {
+	margin-top: 12px;
 }
 
 .main {

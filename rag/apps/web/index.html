@@ -4,6 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DocRAG — Document Q&A with Citations</title>
+  <meta name="description" content="Get cited answers from paragraphs, comments, and tracked changes. Click a citation to see the source." />
+  <link rel="canonical" href="https://demos.superdoc.dev/docrag/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="DocRAG — Document Q&amp;A with Citations" />
+  <meta property="og:url" content="https://demos.superdoc.dev/docrag/" />
+  <meta property="og:description" content="Get cited answers from paragraphs, comments, and tracked changes. Click a citation to see the source." />
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "DocRAG — Document Q&A with Citations",
+      "url": "https://demos.superdoc.dev/docrag/",
+      "description": "Get cited answers from paragraphs, comments, and tracked changes. Click a citation to see the source.",
+      "isPartOf": { "@type": "WebSite", "name": "SuperDoc Demos", "url": "https://demos.superdoc.dev/" },
+      "publisher": { "@type": "Organization", "name": "SuperDoc", "url": "https://superdoc.dev" }
+    }
+  </script>
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png" />
@@ -11,7 +28,24 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div id="root"></div>
+  <header class="topbar">
+    <div class="topbar-logo">
+      <div class="topbar-mark">D</div>
+      <h1 class="topbar-name">DocRAG</h1>
+      <span class="topbar-by">by <a href="https://superdoc.dev" target="_blank" rel="noopener noreferrer">SuperDoc</a></span>
+    </div>
+    <nav class="topbar-links" aria-label="DocRAG resources">
+      <a href="https://github.com/superdoc/demos/tree/main/rag">Source</a>
+      <a href="https://docs.superdoc.dev">Docs</a>
+    </nav>
+  </header>
+  <div id="root">
+    <main class="discovery-intro">
+      <h2>Ask your documents. Get cited answers.</h2>
+      <p>Get cited answers from paragraphs, comments, and tracked changes. Click a citation to see the source.</p>
+      <noscript><p>Enable JavaScript to open the document viewer and chat.</p></noscript>
+    </main>
+  </div>
   <script type="module" src="./App.tsx"></script>
 </body>
 </html>

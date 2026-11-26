@@ -43,24 +43,6 @@ function App() {
 
 	return (
 		<div className="app">
-			<header className="topbar">
-				<div className="topbar-logo">
-					<div className="topbar-mark">D</div>
-					<span className="topbar-name">
-						DocRAG{" "}
-						<span className="topbar-by">
-							by{" "}
-							<a
-								href="https://superdoc.dev"
-								target="_blank"
-								rel="noopener noreferrer"
-							>
-								SuperDoc
-							</a>
-						</span>
-					</span>
-				</div>
-			</header>
 			<main className="main">
 				<FileSidebar
 					activeDocId={activeDocId}
