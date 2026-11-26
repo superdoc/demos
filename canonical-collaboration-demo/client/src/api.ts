@@ -1,10 +1,12 @@
-import type { ChatMessage, Job, Room, RoomStatus } from './types';
+import type { AgentPresence, ChatMessage, Job, PromptAttachment, PromptDocumentTarget, Room, RoomStatus } from './types';
 import type { BrowserDocumentApi, TextTarget } from 'superdoc/ui';
 import type { BibliographyStyle, CitationSource, CitationInsertResult } from './references';
 
 type ResponseParser<T> = (response: Response) => Promise<T>;
 
 export class ApiClient {
+  private agentToken?: string;
+
   constructor(private readonly baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000') {}
 
   private roomPath(roomId: string): string {
@@ -37,6 +39,45 @@ export class ApiClient {
     return parse ? parse(response) : response.json() as Promise<T>;
   }
 
+  private agentHeaders(): Record<string, string> {
+    if (!this.agentToken) {
+      try {
+        const key = 'demo-private-agent-session';
+        this.agentToken = sessionStorage.getItem(key) || crypto.randomUUID();
+        sessionStorage.setItem(key, this.agentToken);
+      } catch {
+        this.agentToken ??= crypto.randomUUID();
+      }
+    }
+    return { Authorization: `Bearer ${this.agentToken}` };
+  }
+
+  private async readAgentEvents<T>(path: string, onData: (data: T) => void, signal: AbortSignal) {
+    await this.request(path, { headers: this.agentHeaders(), signal }, async (response) => {
+      if (!response.body) throw new Error('Agent connection did not open.');
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          const frames = (buffer + value).split('\n\n');
+          buffer = frames.pop() ?? '';
+          for (const frame of frames) {
+            if (frame.startsWith('data: ')) onData(JSON.parse(frame.slice(6)) as T);
+          }
+        }
+      } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
+      }
+    });
+  }
+
+  watchAgentPresence(roomId: string, active: boolean, onPresence: (presence: AgentPresence) => void, signal: AbortSignal) {
+    return this.readAgentEvents(`${this.roomPath(roomId)}/agent-presence?active=${active ? 1 : 0}`, onPresence, signal);
+  }
+
   subscribeDocumentChanges(roomId: string, onChanged: () => void): () => void {
     const events = new EventSource(`${this.baseUrl}${this.roomPath(roomId)}/document-events`);
     events.onmessage = onChanged;
@@ -61,10 +102,6 @@ export class ApiClient {
 
   createBlankDocument(roomId: string): Promise<Room> {
     return this.documentRequest(roomId, 'POST');
-  }
-
-  deleteDocument(roomId: string): Promise<void> {
-    return this.documentRequest(roomId, 'DELETE');
   }
 
   documentDownloadUrl(roomId: string): string {
@@ -92,30 +129,47 @@ export class ApiClient {
     });
   }
 
-  createJob(roomId: string, prompt: string, isSuggesting: boolean, selectedText?: string): Promise<Job> {
+  createJob(roomId: string, prompt: string, isSuggesting: boolean, selectedText?: string,
+    documentTarget?: PromptDocumentTarget, attachment?: PromptAttachment, reusablePrompt?: boolean): Promise<Job> {
     return this.request(`${this.roomPath(roomId)}/jobs`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, isSuggesting, selectedText }),
+      headers: { ...this.agentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, isSuggesting, selectedText, documentTarget, attachment, reusablePrompt }),
     });
   }
 
-  getJob(roomId: string, jobId: string): Promise<Job> {
-    return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`);
+  transcribePrompt(roomId: string, audio: Blob, signal: AbortSignal): Promise<{ text: string }> {
+    const body = new FormData();
+    body.append('audio', audio, 'prompt-audio');
+    return this.request(`${this.roomPath(roomId)}/transcriptions`, { method: 'POST', headers: this.agentHeaders(), body, signal });
   }
 
-  jobEventsUrl(roomId: string, jobId: string): string {
-    return `${this.baseUrl}${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}/events`;
+  synthesizeReply(roomId: string, jobId: string, text: string, signal: AbortSignal): Promise<ArrayBuffer> {
+    return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}/speech`, {
+      method: 'POST',
+      headers: { ...this.agentHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal,
+    }, (response) => response.arrayBuffer());
+  }
+
+  getJob(roomId: string, jobId: string, signal?: AbortSignal): Promise<Job> {
+    return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`, { headers: this.agentHeaders(), signal });
+  }
+
+  watchJob(roomId: string, jobId: string, onJob: (record: Job) => void, signal: AbortSignal) {
+    return this.readAgentEvents(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}/events`, onJob, signal);
   }
 
   cancelJob(roomId: string, jobId: string): Promise<Job> {
     return this.request(`${this.roomPath(roomId)}/jobs/${encodeURIComponent(jobId)}`, {
       method: 'DELETE',
+      headers: this.agentHeaders(),
     });
   }
 
-  async getChatHistory(roomId: string): Promise<ChatMessage[]> {
-    const history = await this.request<{ messages: ChatMessage[] }>(`${this.roomPath(roomId)}/chat`);
+  async getChatHistory(roomId: string, signal?: AbortSignal): Promise<ChatMessage[]> {
+    const history = await this.request<{ messages: ChatMessage[] }>(`${this.roomPath(roomId)}/chat`, { headers: this.agentHeaders(), signal });
     return history.messages;
   }
 

@@ -29,5 +29,6 @@ if [[ -z "${OPENAI_API_KEY:-}" ]]; then
 fi
 
 touch .env
+# Open the same room URL in another browser session to try a second private agent chat.
 make dev
 SUPERDOC_QUICKSTART

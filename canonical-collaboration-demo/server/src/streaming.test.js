@@ -27,20 +27,33 @@ function fixture(chunks, controller = new AbortController()) {
 }
 
 test('argument decoding handles every split point, escaped quotes, backslashes and Unicode', () => {
-  const input = { mode: 'replace', anchor: 'Original "quote"', text: 'Café "quoted" \\ path 😀 and more' };
+  const input = { mode: 'replace', anchor: 'Original "quote"', story: { kind: 'story', storyType: 'headerFooterPart', refId: 'part-}\"-example' }, text: 'Café "quoted" \\ path 😀 and more' };
   const json = JSON.stringify(input);
   for (let split = 0; split <= json.length; split++) {
     const partial = partialTextArguments(json.slice(0, split));
     if (partial) {
       assert.equal(partial.mode, input.mode);
       assert.equal(partial.anchor, input.anchor);
+      assert.deepEqual(partial.story, input.story);
       assert.ok(input.text.startsWith(partial.text));
       assert.doesNotMatch(partial.text, /[\uD800-\uDBFF]$/);
     }
   }
   assert.deepEqual(partialTextArguments(json), input);
   assert.equal(partialTextArguments('{"text":"untrusted prefix"'), undefined);
+  assert.equal(partialTextArguments(JSON.stringify({ mode: input.mode, anchor: input.anchor, text: input.text, story: input.story })), undefined);
   assert.equal(partialTextArguments('{"mode":"replace","other":true,"text":"x'), undefined);
+});
+
+test('a scope arriving after the text waits for final dispatch', async () => {
+  const story = { kind: 'story', storyType: 'headerFooterPart', refId: 'footer' };
+  const json = JSON.stringify({ mode: 'append', anchor: null, text: 'Footer only', story });
+  const split = json.indexOf(',"story"');
+  const h = fixture([tool(json.slice(0, split), true), tool(json.slice(split)), chunk({}, 'tool_calls')]);
+  const result = await streamCompletion(h.client, {}, h.options);
+  assert.deepEqual(h.updates, []);
+  assert.equal(result.writers.size, 0);
+  assert.deepEqual(JSON.parse(result.choice.tool_calls[0].function.arguments).story, story);
 });
 
 test('OpenAI text deltas reach the response callback immediately', async () => {
@@ -53,35 +66,61 @@ test('OpenAI text deltas reach the response callback immediately', async () => {
 });
 
 test('document text streams before tool completion, and fragmented arguments reconstruct exactly', async () => {
-  const json = JSON.stringify({ mode: 'append', anchor: null, text: 'A long streamed paragraph that arrives in several chunks and ends with "quotes".' });
+  const json = JSON.stringify({ mode: 'append', anchor: null, story: null, text: 'A long streamed paragraph that arrives in several chunks and ends with "quotes".' });
   const events = [...json].map((letter, index) => tool(letter, index === 0));
   events.push(chunk({}, 'tool_calls'));
   const h = fixture(events);
   const result = await streamCompletion(h.client, {}, h.options);
   assert.ok(h.updates.length >= 2, 'Document must receive intermediate updates');
   assert.ok(h.updates[0].text.length < JSON.parse(json).text.length);
+  assert.equal(h.updates.at(-1).text, JSON.parse(json).text);
+  assert.ok(h.updates.every((update, index) => Array.from(update.text).length - Array.from(h.updates[index - 1]?.text ?? '').length <= 5));
   assert.equal(result.choice.tool_calls[0].function.arguments, json);
   assert.equal(result.writers.get('call_stream'), h.writer);
   assert.equal(h.statuses.length, 1);
   assert.equal(h.statuses[0].status, 'generating');
 });
 
+test('model chunks keep arriving while document writes are in progress', async () => {
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let consumed = false;
+  const h = fixture([]);
+  h.client.chat.completions.create = async () => (async function* () {
+    yield tool('{"mode":"append","anchor":null,"story":null,"text":"Hello', true);
+    yield tool(' world"}');
+    consumed = true;
+    yield chunk({}, 'tool_calls');
+  })();
+  h.writer.update = async (args) => {
+    h.updates.push(args.text);
+    if (h.updates.length === 1) await blocked;
+  };
+  const result = streamCompletion(h.client, {}, h.options);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(consumed, true);
+  assert.deepEqual(h.updates, ['Hello']);
+  release();
+  await result;
+  assert.equal(h.updates.at(-1), 'Hello world');
+});
+
 test('interrupted and cancelled streams do not commit or silently report success', async () => {
   for (const finish of [undefined, 'length', 'content_filter']) {
-    const events = [tool('{"mode":"append","anchor":null,"text":"Partial text', true)];
+    const events = [tool('{"mode":"append","anchor":null,"story":null,"text":"Partial text', true)];
     if (finish) events.push(chunk({}, finish));
     const h = fixture(events);
     await assert.rejects(streamCompletion(h.client, {}, h.options), /stream ended before completion.*already streamed/);
-    assert.equal(h.updates[0].text, 'Partial text');
+    assert.equal(h.updates[0].text, 'Parti');
   }
   const controller = new AbortController();
-  const h = fixture([tool('{"mode":"append","anchor":null,"text":"Partial text', true), chunk({}, 'tool_calls')], controller);
+  const h = fixture([tool('{"mode":"append","anchor":null,"story":null,"text":"Partial text', true), chunk({}, 'tool_calls')], controller);
   h.writer.update = async () => controller.abort(new Error('Stopped by user'));
   await assert.rejects(streamCompletion(h.client, {}, h.options), /Stopped by user/);
 });
 
 test('bibliography policy prevents early streaming mutations before tool dispatch', async () => {
-  const h = fixture([tool('{"mode":"append","anchor":null,"text":"Fake bibliography"}', true), chunk({}, 'tool_calls')]);
+  const h = fixture([tool('{"mode":"append","anchor":null,"story":null,"text":"Fake bibliography"}', true), chunk({}, 'tool_calls')]);
   await streamCompletion(h.client, {}, { ...h.options, streamTextEnabled: false });
   assert.deepEqual(h.updates, []);
 });

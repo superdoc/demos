@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { NativeReferenceSources, nativeSourceFields, requireSourceSuccess } from './native/reference-sources.js';
 import { readBibliographies } from './workarounds/bibliography-read.js';
 import fs from 'node:fs/promises';
@@ -17,10 +18,12 @@ import { insertCitationInSnapshot } from './workarounds/citation-insert.js';
 import { resolveReferenceAnchor, verifyInsertedReference } from './workarounds/reference-anchors.js';
 import { streamTextTool } from './tools/stream-text-tool.js';
 import { createTextStream } from './native/stream-text.js';
+import { captureAgentPassage, findAgentPassage, passageHint, passageRange, readAgentPassageFormatting, resolveAgentPassage, snapshotAgentPassageFormatting } from './native/agent-passage.js';
 import { streamingTools, streamingInstructions } from './agent/streaming-policy.js';
 
 export class ReferenceDocument {
-  #handle;
+  #documentHandle;
+  #agentHandle = new AsyncLocalStorage();
   #logEvent;
   #toolkit;
   #onClose;
@@ -38,7 +41,7 @@ export class ReferenceDocument {
     this.filename = filename;
     this.path = documentPath;
     this.generation = 1;
-    this.#handle = handle;
+    this.#documentHandle = handle;
     this.#toolkit = toolkit;
     this.#onClose = onClose;
     this.#sources = new NativeReferenceSources(this.#handle, importedCitations);
@@ -68,6 +71,14 @@ export class ReferenceDocument {
         await this.#applyReferenceStyle(style);
       },
     });
+  }
+
+  get #handle() {
+    return this.#agentHandle.getStore() ?? this.#documentHandle;
+  }
+
+  withAgentHandle(handle, run) {
+    return this.#agentHandle.run(handle, run);
   }
 
   get referenceBusy() { return this.#referencePending > 0; }
@@ -103,7 +114,7 @@ export class ReferenceDocument {
     this.#requireOpen();
     if (tool === streamTextTool.function.name) return this.#streamText(args);
     return this.#sources.ready().then(() => tool === 'superdoc_api_call'
-      ? this.#dispatchApi(args, options) : this.#toolkit.dispatch(this.#handle, tool, args, options));
+      ? this.#dispatchApi(args, options, this.#handle) : this.#toolkit.dispatch(this.#handle, tool, args, options));
   }
 
   createTextStream(options) {
@@ -114,6 +125,120 @@ export class ReferenceDocument {
   async #streamText(args) {
     const stream = this.createTextStream({ tag: 'document-text', changeMode: args.changeMode });
     return stream.commit(args);
+  }
+
+  async inspectAgentCursor(cursor) {
+    this.#requireOpen();
+    if (!cursor) throw new Error('Place the caret in the document body and submit again.');
+    const { revision } = await this.#handle.blocks.list({ limit: 1 });
+    if (typeof revision !== 'string' || revision === 'unknown') throw new Error('Could not verify the current document revision.');
+    const { address, node } = await this.#handle.getNodeById({ id: cursor.blockId });
+    const paragraph = node.paragraph ?? node.heading;
+    if (!paragraph || JSON.stringify(paragraph.inlines) !== cursor.paragraph) {
+      throw new Error('The paragraph at the caret changed. Place the caret again and retry.');
+    }
+    const point = { kind: 'text', blockId: cursor.blockId, offset: cursor.offset };
+    return {
+      success: true, revision, paragraph, address,
+      target: { kind: 'selection', start: point, end: point, coordinateSpace: 'visible' },
+    };
+  }
+
+  async insertAgentText(text, cursor, changeMode, placement = 'cursor') {
+    this.#requireOpen();
+    if (placement === 'documentEnd') {
+      const result = await this.#handle.create.paragraph({ text, at: { kind: 'documentEnd' }, changeMode }, { changeMode });
+      return { ...result, passage: passageHint(text, result.paragraph, 0) };
+    }
+    const { target, revision, address } = await this.inspectAgentCursor(cursor);
+    const result = await this.#handle.insert({ target, type: 'text', value: text, changeMode, expectedRevision: revision }, { changeMode });
+    return { ...(result.receipt ?? result), passage: passageHint(text, address, cursor.offset) };
+  }
+
+  captureAgentPassage(hint) {
+    this.#requireOpen();
+    return captureAgentPassage(this.#handle, hint);
+  }
+
+  findAgentPassage(text, selection) {
+    this.#requireOpen();
+    return findAgentPassage(this.#handle, text, selection);
+  }
+
+  async readAgentPassage(focus, { snapshotFormatting = false } = {}) {
+    this.#requireOpen();
+    const { target, revision } = await resolveAgentPassage(this.#handle, focus);
+    const formatting = snapshotFormatting
+      ? await snapshotAgentPassageFormatting(this.#handle, target, revision, focus.text)
+      : await readAgentPassageFormatting(this.#handle, target, revision);
+    return { text: focus.text, ...formatting };
+  }
+
+  async editAgentPassage(focus, operation, { inline, text, changeMode, range }) {
+    this.#requireOpen();
+    const { target: resolved, revision, hint } = await resolveAgentPassage(this.#handle, focus);
+    const target = range ? passageRange(resolved, range.start, range.end) : resolved;
+    const args = { target, changeMode, expectedRevision: revision };
+    const options = { changeMode, expectedRevision: revision };
+    if (operation === 'delete') {
+      const result = await this.#handle.delete(args, options);
+      return { ...(result.receipt ?? result), removedPassage: true };
+    }
+    if (operation === 'replace') {
+      if (hint.text === text) return { success: true, unchanged: true };
+      const result = await this.#handle.replace({ ...args, text }, options);
+      return { ...(result.receipt ?? result), passage: passageHint(text, hint.block, hint.offset) };
+    }
+    const current = await readAgentPassageFormatting(this.#handle, target, revision);
+    const changes = Object.fromEntries(Object.entries(inline).filter(([key, value]) =>
+      JSON.stringify(value) !== JSON.stringify(current.inline[key])));
+    if (!Object.keys(changes).length) return { success: true, unchanged: true };
+    const result = await this.#handle.format.apply({ ...args, inline: changes }, options);
+    return result.receipt ?? result;
+  }
+
+  async listAgentTables() {
+    this.#requireOpen();
+    const snapshot = await this.#handle.blocks.list({ nodeTypes: ['table'], limit: 100 });
+    return snapshot.total === snapshot.blocks.length ? snapshot : undefined;
+  }
+
+  async workWithAgentTable(target, operation, count, changeMode) {
+    this.#requireOpen();
+    if (!target) throw new Error('There is no recent table. Ask the user to identify the table they mean.');
+    const { revision } = await this.#handle.blocks.list({ limit: 1 });
+    if (typeof revision !== 'string' || revision === 'unknown') throw new Error('The current document revision is unavailable.');
+    const table = await this.#handle.tables.get({ target }).catch(() => {
+      throw new Error('The recent table could not be located. Ask the user to identify it again.');
+    });
+    if (operation === 'read') return { success: true, table };
+    const args = { target, changeMode, expectedRevision: revision };
+    const options = { changeMode, expectedRevision: revision };
+    if (operation === 'delete') {
+      const result = await this.#handle.tables.delete(args, options);
+      return { ...(result.receipt ?? result), removedTable: true };
+    }
+    if (operation !== 'addRows' || !Number.isInteger(count) || count < 1 || count > 20 || !table.rows) {
+      throw new Error('Choose between one and twenty rows to append.');
+    }
+    const result = await this.#handle.tables.insertRow({ ...args, rowIndex: table.rows - 1, position: 'below', count }, options);
+    return result.receipt ?? result;
+  }
+
+  async insertAgentImage(src, alt, placement, cursor, changeMode) {
+    this.#requireOpen();
+    let at;
+    let expectedRevision;
+    if (placement === 'cursor') {
+      const { address, revision } = await this.inspectAgentCursor(cursor);
+      at = { kind: 'inParagraph', target: address, offset: cursor.offset };
+      expectedRevision = revision;
+    } else if (placement === 'documentStart' || placement === 'documentEnd') {
+      at = { kind: placement };
+    } else {
+      throw new Error('Choose cursor, documentStart, or documentEnd.');
+    }
+    return this.#handle.create.image({ src, alt, at, changeMode, expectedRevision }, { changeMode });
   }
 
   async citationSources() {

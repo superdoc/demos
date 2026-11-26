@@ -92,7 +92,7 @@ const adapter = await createReferenceAgentAdapter({
 });
 ```
 
-The adapter does not call a model or own chat history. Bind its outputs to the existing
+The host owns model calls, conversation history, and cursor presence. The demo gives each browser session a private conversation and a named purple cursor while sharing document edits across the room. An integration can use its own authenticated user and collaboration session. Use the adapter’s outputs in the existing
 agent framework:
 
 | Adapter output | Host wiring |
@@ -122,7 +122,7 @@ not be retried as though it failed. Reject cancelled runs in the host before dis
 Create a new adapter for every prompt so source context and receipt/retry state are
 fresh. Enforce per-document job exclusivity through the app's existing coordination.
 Mode enforcement starts inside `execute` and is enforced again at native dispatch,
-overriding model-supplied modes for document edits. Source metadata CRUD is direct. Full API calls in Reviewing mode carry the SDK's tracked-mode enforcement through dispatch, including batches. Prose insertion and replacement still use the streaming tool; direct API calls cannot bypass that policy. If supplying a custom dispatch callback to execute, forward its third options argument to document.dispatch(tool, args, options). Incomplete API batches are failures, even when earlier entries succeeded.
+overriding model-supplied modes for document edits. Source metadata CRUD is direct. Full API calls in Reviewing mode carry the SDK's tracked-mode enforcement through dispatch, including batches. Ordinary prose insertion and replacement use the streaming tool. Send `story: null` for the body or the resolved `headerFooterPart` story for an existing header or footer, before the `text` argument. Reviewing tracks changes inside an existing part. Use Editing to create and link a missing part before streaming into it. If supplying a custom dispatch callback to execute, forward its third options argument to document.dispatch(tool, args, options). Incomplete API batches are failures, even when earlier entries succeeded.
 Bibliography mutation requires direct mode; the SDK rejects it in Reviewing mode. The optional `editingModeHint` adapts
 that error's UI guidance to the target application; never silently switch user mode.
 

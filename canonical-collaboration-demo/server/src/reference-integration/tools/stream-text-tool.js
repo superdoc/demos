@@ -2,25 +2,49 @@ export const streamTextTool = {
   type: 'function',
   function: {
     name: 'superdoc_stream_text',
-    description: 'The required tool for writing document prose and heading wording. Streams one paragraph as it is generated, without the user needing to request streaming. Use replace for an exact unique existing passage within ONE paragraph (including headings), before/after for inline text beside an exact unique passage, paragraphBefore/paragraphAfter to create a NEW paragraph beside an existing passage, or append for a NEW paragraph at document end. To create a heading, stream the paragraph then apply_style with headingLevel. To style new prose, stream first then format_text. Text must not contain newlines: make a separate call per paragraph. Inspect before editing. Supply mode and anchor BEFORE text, and text LAST. Use dedicated tools for native lists, tables, citations, footnotes and bibliographies.',
+    description: 'Streams one paragraph of plain text as it is generated. Use this for body prose, heading wording, and text in existing headers and footers. Use replace for an exact unique existing passage within one paragraph, before/after for inline text beside an exact passage, paragraphBefore/paragraphAfter for a new paragraph beside an existing passage, or append for a new paragraph at the end of the selected story. Inspect before editing. Supply mode, anchor and story before text, and text last. Use dedicated tools for lists, tables, citations, footnotes and bibliographies.',
     strict: true,
     parameters: {
       type: 'object', additionalProperties: false,
       properties: {
         mode: { type: 'string', enum: ['replace', 'before', 'after', 'append', 'paragraphBefore', 'paragraphAfter'] },
-        anchor: { type: ['string', 'null'], description: 'Exact unique current document text; null only for append.' },
-        text: { type: 'string', description: 'New plain text for one paragraph, without newlines. Emit this property last.' },
+        anchor: { type: ['string', 'null'], description: 'Exact current text unique within the selected story. Use null for append.' },
+        story: {
+          description: 'Use null for the body. For a header or footer, use its resolved part reference.',
+          anyOf: [
+            { type: 'null' },
+            { type: 'object', additionalProperties: false,
+              properties: {
+                kind: { type: 'string', enum: ['story'] },
+                storyType: { type: 'string', enum: ['headerFooterPart'] },
+                refId: { type: 'string' },
+              },
+              required: ['kind', 'storyType', 'refId'],
+            },
+          ],
+        },
+        text: { type: 'string', pattern: '^[^\\r\\n]*$', description: 'New plain text for one paragraph, without newlines. Emit this property last.' },
       },
-      required: ['mode', 'anchor', 'text'],
+      required: ['mode', 'anchor', 'story', 'text'],
     },
   },
 };
 
 export function streamTextInput(args) {
   if (!args || !['replace', 'before', 'after', 'append', 'paragraphBefore', 'paragraphAfter'].includes(args.mode)
-    || typeof args.text !== 'string' || /[\r\n]/.test(args.text) || Object.keys(args).some((key) => !['mode', 'anchor', 'text', 'changeMode'].includes(key))
-    || (args.mode === 'append' ? args.anchor !== null : typeof args.anchor !== 'string' || !args.anchor.trim())) {
-    throw new Error('Supply mode, an exact unique anchor (null for append), and plain text.');
+    || Object.keys(args).some((key) => !['mode', 'anchor', 'story', 'text', 'changeMode'].includes(key))) {
+    throw new Error('Supply a valid streaming mode with anchor, story and text.');
+  }
+  if (args.mode === 'append' ? args.anchor !== null : typeof args.anchor !== 'string' || !args.anchor.trim()) {
+    throw new Error('Use a null anchor for append or supply an exact, nonempty anchor for the other modes.');
+  }
+  if (typeof args.text !== 'string' || /[\r\n]/.test(args.text)) {
+    throw new Error('Supply plain text for one paragraph without line breaks.');
+  }
+  const { story } = args;
+  if (story != null && (story.kind !== 'story' || story.storyType !== 'headerFooterPart'
+    || typeof story.refId !== 'string' || !story.refId.trim() || Object.keys(story).length !== 3)) {
+    throw new Error('Use null for the body or supply a resolved headerFooterPart story with its refId.');
   }
   return args;
 }

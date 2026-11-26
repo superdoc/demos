@@ -160,7 +160,9 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-        run: npx -y @railway/cli@latest up --service "$RAILWAY_SERVICE_ID" --environment production --detach --yes
+        run: |
+          npx -y @railway/cli@latest variable set COLLABORATION_AGENT=on COLLABORATION_AGENT_PRESENCE=on --service "$RAILWAY_SERVICE_ID" --environment production --skip-deploys
+          npx -y @railway/cli@latest up --service "$RAILWAY_SERVICE_ID" --environment production --detach --yes
 
       - name: Verify Canonical Collaboration API
         if: ${{ inputs.dry_run == false && inputs.environment == 'production' }}
@@ -168,12 +170,12 @@ jobs:
           COLLAB_API_URL: ${{ vars.COLLAB_API_URL || 'https://canonical-collab-demo-backend-production.up.railway.app' }}
         run: |
           for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error "$COLLAB_API_URL/api/health"; then
+            if curl --fail --silent --show-error "$COLLAB_API_URL/api/health" | node -e 'let body=""; process.stdin.on("data", chunk => body += chunk); process.stdin.on("end", () => { try { const health = JSON.parse(body); if (health.status !== "ok" || health.components?.agent !== "on" || health.components?.agentPresence !== "on") process.exitCode = 1; } catch { process.exitCode = 1; } });'; then
               exit 0
             fi
             sleep 10
           done
-          echo "Collaboration API did not become healthy." >&2
+          echo "Collaboration API did not become healthy with agent presence enabled." >&2
           exit 1
 
       - name: Deploy Version History backend

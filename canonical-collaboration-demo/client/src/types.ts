@@ -1,9 +1,13 @@
+export type AgentPresence = { agents: number; name: string };
+
 export type Room = {
   room_id: string;
   document_id: string;
   generation: number;
   filename: string;
   field_codes?: boolean;
+  private_agent_chats?: boolean;
+  agent_model?: string;
   last_activity_at: string;
   collaboration_url: string;
 };
@@ -25,6 +29,7 @@ export type Job = {
   answer?: string;
   error?: string;
   toolCalls?: ToolCall[];
+  attachmentPreview?: AttachmentPreview;
 };
 
 export type ToolCall = {
@@ -42,4 +47,12 @@ export type ChatMessage = {
   content: string;
   selectedText?: string;
   toolCalls?: ToolCall[];
+  attachmentPreview?: AttachmentPreview;
 };
+
+
+export type AttachmentPreview = { name: string; kind: 'image' | 'file'; thumbnail?: string };
+export type PromptAttachment = AttachmentPreview & { base64: string };
+export type PromptCursor = { blockId: string; offset: number; paragraph: string };
+export type PromptSelection = { blockId: string; start: number; end: number };
+export type PromptDocumentTarget = { id: string; generation: number; cursor?: PromptCursor; selection?: PromptSelection };
