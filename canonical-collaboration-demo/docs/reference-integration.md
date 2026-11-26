@@ -16,7 +16,7 @@ The model receives exactly five functions:
 | Full preset | `superdoc_perform_action` | Native actions, including `insert_footnote`; ordinary prose actions are filtered for streaming |
 | Full preset | `superdoc_api_search` | Discover native operations and parameter schemas |
 | Full preset | `superdoc_api_call` | Native reads, mutations, and ordered batches, including sources, citations and bibliographies |
-| Custom | `superdoc_stream_text` | Incremental prose through the native streaming writer |
+| Custom | `superdoc_stream_text` | Incremental prose in the body or a resolved header or footer part through the native streaming writer |
 
 There are no separate agent tools for source CRUD, citation insertion, footnote insertion, or bibliography management. Source creation/update/removal uses `doc.citations.sources.*`. Bibliographies use `doc.citations.bibliography.insert/get/configure/rebuild/remove`.
 
@@ -26,7 +26,7 @@ There are no separate agent tools for source CRUD, citation insertion, footnote 
 
 The UI reads the native source catalog. `/document-events` sends document-scoped invalidations from the collaboration server, including metadata-only edits from other clients. The app debounces these notifications and refreshes on reconnect, room/document changes, and existing toolbar/agent completion touchpoints. It does not maintain a separate reference store.
 
-Native citation insertion remains direct-only in SDK 2.29.0-next.14; native footnote insertion supports direct and tracked modes. Existing import/export, toolbar insertion, rendering, deletion, and browser compatibility fixes remain independent of the model tool list.
+SDK 2.34.0 advertises tracked citation and bibliography insertion. The host still refuses these insertions in Reviewing mode until the app's formatting and export pipeline is verified to preserve their revisions. Native footnote insertion supports direct and tracked modes. Existing import/export, toolbar insertion, rendering, deletion, and browser compatibility fixes remain independent of the model tool list.
 
 ## Compatibility and placement workarounds
 
