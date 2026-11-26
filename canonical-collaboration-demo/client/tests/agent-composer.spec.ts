@@ -43,7 +43,7 @@ async function handleModelRequest(request: IncomingMessage, response: ServerResp
     assert.match(request.headers['content-type'] ?? '', /^multipart\/form-data;/);
     assert.ok(body.includes('name="file"; filename="prompt.webm"'));
     assert.ok(body.includes(Buffer.from([0x1a, 0x45, 0xdf, 0xa3])), 'Request includes a WebM recording');
-    assert.ok(body.includes('gpt-4o-mini-transcribe'));
+    assert.ok(body.includes('gpt-transcribe'));
     transcriptions++;
     response.setHeader('Content-Type', 'application/json');
     response.end(JSON.stringify({ text: transcript }));

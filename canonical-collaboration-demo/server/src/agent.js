@@ -63,7 +63,7 @@ export function createDocumentAgent(documents, { client = new OpenAI(), model = 
     async transcribe(bytes, filename) {
       const result = await client.audio.transcriptions.create({
         file: await toFile(bytes, filename),
-        model: 'gpt-4o-mini-transcribe',
+        model: 'gpt-transcribe',
       });
       return result.text.trim();
     },
