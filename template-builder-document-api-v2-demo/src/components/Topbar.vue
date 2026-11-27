@@ -50,8 +50,8 @@ const chooseFileAction = (event: Event) => {
   <header class="topbar">
     <div class="ribbon-tabs-row">
       <div class="file-title">
-        <h1 class="file-name">
-          {{ documentName }}
+        <h1 class="file-name" :title="documentName">
+          <span class="document-name-text">{{ documentName }}</span>
           <span v-if="variablesRendered" class="rendered-label">(rendered)</span>
         </h1>
       </div>
@@ -122,7 +122,8 @@ const chooseFileAction = (event: Event) => {
 .topbar {
   z-index: 12;
   display: grid;
-  grid-template-rows: 50px 72px;
+  flex-shrink: 0;
+  grid-template-rows: auto 72px;
   background: #f8f8f8;
   border-bottom: 1px solid #cfd5dd;
   box-shadow: 0 1px 5px #11182712;
@@ -130,25 +131,28 @@ const chooseFileAction = (event: Event) => {
 
 .ribbon-tabs-row {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas: "file more title build mode explorer";
+  gap: 8px;
   align-items: center;
+  min-height: 50px;
   padding: 0 10px;
   border-bottom: 1px solid #e1e5ea;
 }
 
 .file-title {
-  position: absolute;
-  left: 50%;
+  grid-area: title;
   display: flex;
-  min-width: 260px;
-  transform: translateX(-50%);
+  min-width: 0;
   text-align: center;
 }
 
 .file-name {
   font-weight: inherit;
   line-height: inherit;
-  max-width: 520px;
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -161,17 +165,22 @@ const chooseFileAction = (event: Event) => {
   border-radius: 6px;
   font-size: 16px;
   white-space: nowrap;
+}
+
+.document-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .rendered-label {
+  flex-shrink: 0;
   color: #2563eb;
   font-size: 12px;
   font-weight: 700;
 }
 
 .file-menu {
+  grid-area: file;
   min-width: 112px;
   height: 34px;
   padding: 5px 28px 5px 10px;
@@ -184,10 +193,11 @@ const chooseFileAction = (event: Event) => {
 }
 
 .more-demos-button {
+  grid-area: more;
   display: inline-flex;
   height: 34px;
   align-items: center;
-  margin-left: 8px;
+  justify-content: center;
   padding: 0 13px;
   color: #fff;
   background: #2563eb;
@@ -210,15 +220,15 @@ const chooseFileAction = (event: Event) => {
 }
 
 .build-this-slot {
+  grid-area: build;
   display: flex;
   align-items: center;
-  margin-left: auto;
 }
 
 .mode-select {
+  grid-area: mode;
   display: flex;
   align-items: center;
-  margin-left: 8px;
 }
 
 .mode-select select {
@@ -234,7 +244,7 @@ const chooseFileAction = (event: Event) => {
 }
 
 .field-explorer-toggle {
-  margin-left: 8px;
+  grid-area: explorer;
   padding: 8px 11px;
   color: #245fae;
   background: #fff;
@@ -336,5 +346,37 @@ const chooseFileAction = (event: Event) => {
   background: #f8f8f8 !important;
   border: 0 !important;
   box-shadow: none !important;
+}
+
+@media (max-width: 900px) {
+  .ribbon-tabs-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "title title title"
+      "file more build"
+      "mode explorer explorer";
+    padding: 8px 10px;
+  }
+
+  .file-name { font-size: 14px; }
+
+  .file-menu,
+  .mode-select select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .build-this-slot :deep(.build-this-button) {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .ribbon-controls-row {
+    justify-content: flex-start;
+  }
+
+  .default-toolbar {
+    flex-shrink: 0;
+  }
 }
 </style>
