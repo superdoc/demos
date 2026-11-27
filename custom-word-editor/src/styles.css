@@ -17,7 +17,7 @@ button { cursor: pointer; }
 }
 .ribbon-tabs-row { position: relative; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #e1e5ea; }
 .file-title { position: absolute; left: 50%; display: flex; flex-direction: column; min-width: 260px; transform: translateX(-50%); text-align: center; }
-.file-title strong { font-size: 12px; }
+.file-title h1 { margin: 0; font-size: 12px; font-weight: 700; line-height: inherit; }
 .file-title span { color: #818795; font-size: 9px; margin-top: 1px; }
 .build-this-slot { display: flex; align-items: center; margin-left: auto; }
 .mode-select { display: flex; align-items: center; }

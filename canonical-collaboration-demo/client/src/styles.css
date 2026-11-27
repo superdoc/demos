@@ -34,7 +34,7 @@ h2, p { margin-top: 0; }
 .file-action { min-height: 34px; padding: 5px 10px; color: #303640; background: #fff; border: 1px solid #cfd4db; border-radius: 7px; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .file-action:hover:not(:disabled) { background: #e8edf5; }
 .file-title { display: flex; flex: 1 1 0; min-width: 0; overflow: hidden; text-align: center; }
-.file-name { max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
+.file-name { font-weight: inherit; line-height: inherit; max-width: 520px; margin: auto; padding: 4px 9px; overflow: hidden; color: #20242c; font-size: 16px; white-space: nowrap; text-overflow: ellipsis; }
 .build-app-button { display: inline-flex; flex: 0 0 auto; align-items: center; margin-left: auto; min-height: 34px; padding: 6px 12px; border: 0; border-radius: 7px; color: #fff; background: #2563eb; font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; cursor: pointer; }
 .build-app-button:hover { background: #1d4ed8; }
 .more-demos-button { margin-left: 0; }

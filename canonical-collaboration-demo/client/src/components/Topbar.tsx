@@ -80,7 +80,7 @@ export function Topbar({
         </div>
 
         <div className="file-title">
-          <div className="file-name">{room?.filename ?? 'No document'}</div>
+          <h1 className="file-name">{room?.filename ?? 'No document'}</h1>
         </div>
 
         <button type="button" className="build-app-button" onClick={() => buildDialog.current?.showModal()}>

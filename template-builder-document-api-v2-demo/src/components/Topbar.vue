@@ -50,10 +50,10 @@ const chooseFileAction = (event: Event) => {
   <header class="topbar">
     <div class="ribbon-tabs-row">
       <div class="file-title">
-        <div class="file-name">
+        <h1 class="file-name">
           {{ documentName }}
           <span v-if="variablesRendered" class="rendered-label">(rendered)</span>
-        </div>
+        </h1>
       </div>
 
       <input
@@ -146,6 +146,8 @@ const chooseFileAction = (event: Event) => {
 }
 
 .file-name {
+  font-weight: inherit;
+  line-height: inherit;
   max-width: 520px;
   display: flex;
   align-items: center;
