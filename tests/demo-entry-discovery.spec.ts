@@ -28,7 +28,9 @@ test('entry remains useful without JavaScript at phone and desktop widths', asyn
       await page.setViewportSize({ width, height: 900 });
       await page.goto(baseURL!);
       await expect(page.getByRole('heading', { level: 1, name: entry.title, exact: true })).toBeVisible();
-      await expect(page.getByText('Enable JavaScript to use the interactive demo.', { exact: false })).toBeVisible();
+      await expect(page.getByText('Loading the interactive demo…', { exact: false })).toBeVisible();
+      // Playwright disables script execution but not the parser's scripting flag, so <noscript> stays unrendered here.
+      expect(await page.locator('noscript').textContent()).toContain('Enable JavaScript to use the interactive demo.');
       await expect(page.getByRole('link', { name: 'Source and setup instructions' })).toHaveAttribute('href', entry.source);
       await expect(page.getByRole('link', { name: 'SuperDoc documentation' })).toHaveAttribute('href', 'https://docs.superdoc.dev/');
       await expect(page.getByRole('link', { name: 'More SuperDoc demos' })).toHaveAttribute('href', '/');
@@ -38,6 +40,16 @@ test('entry remains useful without JavaScript at phone and desktop widths', asyn
   } finally {
     await context.close();
   }
+});
+
+test('a visitor with JavaScript sees a loading notice, not a request to enable JavaScript', async ({ page }, testInfo) => {
+  const entry = entries[testInfo.project.name];
+  test.skip(!entry, 'The remaining three entry pages own this contract');
+  await page.route('**/assets/*.js', route => route.abort());
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1, name: entry.title, exact: true })).toBeVisible();
+  await expect(page.getByText('Loading the interactive demo…', { exact: false })).toBeVisible();
+  await expect(page.getByText('Enable JavaScript', { exact: false })).toBeHidden();
 });
 
 test('mount replaces fallback while retaining the document heading and interactive controls', async ({ page }, testInfo) => {

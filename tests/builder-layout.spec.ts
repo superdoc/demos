@@ -3,8 +3,9 @@ import { expect, test } from "@playwright/test";
 for (const viewport of [
 	{ width: 1440, height: 1000 },
 	{ width: 390, height: 844 },
+	{ width: 844, height: 390 },
 ]) {
-	test.describe(`builder controls at ${viewport.width}px`, () => {
+	test.describe(`builder controls at ${viewport.width}x${viewport.height}`, () => {
 		test.use({ viewport, isMobile: viewport.width < 900, hasTouch: viewport.width < 900 });
 
 		test("document and controls remain usable", async ({ page }, testInfo) => {
@@ -42,11 +43,13 @@ for (const viewport of [
 			const sidebar = await page.locator(".sidebar").boundingBox();
 			expect(editor).not.toBeNull();
 			expect(sidebar).not.toBeNull();
-			if (viewport.width < 900) {
+			if (viewport.width < 900 && viewport.height > viewport.width) {
 				expect(editor!.width).toBeGreaterThanOrEqual(viewport.width - 32);
 				expect(editor!.height).toBeGreaterThan(200);
 				expect(sidebar!.y).toBeGreaterThanOrEqual(editor!.y + editor!.height - 1);
 			} else {
+				// A landscape phone keeps the document beside the explorer instead of a short stacked strip.
+				expect(editor!.height).toBeGreaterThan(viewport.height / 2);
 				expect(sidebar!.x).toBeGreaterThanOrEqual(editor!.x + editor!.width - 1);
 			}
 			await page.getByRole("button", { name: "Hide field explorer", exact: true }).click();

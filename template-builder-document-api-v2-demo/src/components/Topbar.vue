@@ -348,7 +348,7 @@ const chooseFileAction = (event: Event) => {
   box-shadow: none !important;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px) and (orientation: portrait), (max-width: 640px) {
   .ribbon-tabs-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-areas:

@@ -19,13 +19,17 @@ for (const [id, file, mount, component] of entries) {
     const description = html.match(/<meta name="description" content="([^"]+)"/)[1];
     assert.ok(description.length > 30);
     const fallback = html.match(new RegExp(`<div id="${mount}">([\\s\\S]*?)</main>\\s*</div>`))[1];
-    assert.equal((fallback.match(/<h1\b/g) ?? []).length, 1);
-    assert.doesNotMatch(fallback, /<noscript|\bhidden\b|display:\s*none/);
+    const noscripts = [...fallback.matchAll(/<noscript>([\s\S]*?)<\/noscript>/g)].map(match => match[1]);
+    assert.equal(noscripts.length, 1, 'Only the JavaScript notice is limited to visitors without JavaScript');
+    assert.match(noscripts[0], /Enable JavaScript/);
+    const visible = fallback.replace(/<noscript>[\s\S]*?<\/noscript>/g, '');
+    assert.equal((visible.match(/<h1\b/g) ?? []).length, 1);
+    assert.doesNotMatch(visible, /<noscript|\bhidden\b|display:\s*none|Enable JavaScript/);
     for (const link of [demo.sourceUri, 'https://docs.superdoc.dev/', '/']) {
-      assert.ok(fallback.includes(`href="${link}"`), `Missing usable link: ${link}`);
+      assert.ok(visible.includes(`href="${link}"`), `Missing usable link: ${link}`);
     }
-    assert.ok(fallback.includes(description));
-    assert.match(fallback, /JavaScript/);
+    assert.ok(visible.includes(description));
+    assert.match(visible, /Loading the interactive demo/);
     assert.ok(html.includes(`<meta property="og:url" content="${canonical}"`));
     const schemas = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
     assert.equal(schemas.length, 1);

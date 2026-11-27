@@ -17,10 +17,19 @@ test("DocRAG heading, purpose and resources are usable without JavaScript", asyn
 		await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://demos.superdoc.dev/docrag/");
 		await expect(page.getByRole("link", { name: "Source", exact: true })).toHaveAttribute("href", "https://github.com/superdoc/demos/tree/main/rag");
 		await expect(page.getByRole("link", { name: "Docs", exact: true })).toHaveAttribute("href", "https://docs.superdoc.dev");
-		await expect(page.getByText("Enable JavaScript to open the document viewer and chat.")).toBeVisible();
+		await expect(page.getByText("Loading the document viewer and chat…")).toBeVisible();
+		// Playwright disables script execution but not the parser's scripting flag, so <noscript> stays unrendered here.
+		expect(await page.locator("noscript").textContent()).toContain("Enable JavaScript to open the document viewer and chat.");
 	} finally {
 		await context.close();
 	}
+});
+
+test("DocRAG shows a loading notice, not a request to enable JavaScript, while the app loads", async ({ page }) => {
+	await page.route("**/assets/*.js", route => route.abort());
+	await page.goto("/");
+	await expect(page.getByText("Loading the document viewer and chat…")).toBeVisible();
+	await expect(page.getByText("Enable JavaScript", { exact: false })).toBeHidden();
 });
 
 test("DocRAG keeps the same heading and resource links after the React app mounts", async ({ page }) => {

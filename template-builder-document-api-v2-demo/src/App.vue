@@ -1177,7 +1177,7 @@ onBeforeUnmount(() => {
   padding: 24px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 900px) and (orientation: portrait) {
   .main {
     flex-direction: column;
   }
@@ -1197,6 +1197,16 @@ onBeforeUnmount(() => {
     min-height: 0;
     border-left: 0;
     border-top: 1px solid #e0e0e0;
+  }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+  .editor-container {
+    padding: 8px;
+  }
+
+  .sidebar {
+    width: min(520px, 40vw);
   }
 }
 </style>
