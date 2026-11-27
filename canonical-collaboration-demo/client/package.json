@@ -9,12 +9,12 @@
     "test:browser": "npm --prefix ../server ci && playwright install chromium && playwright test"
   },
   "dependencies": {
-    "@superdoc/react": "2.30.0",
+    "@superdoc/react": "2.31.0",
     "jszip": "3.10.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-markdown": "^10.1.0",
-    "superdoc": "2.35.0"
+    "superdoc": "2.36.0"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
