@@ -12,10 +12,15 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://demos.superdoc.dev/custom-word-editor/" />
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"SuperDoc custom review UI","url":"https://demos.superdoc.dev/custom-word-editor/","description":"A standalone React demo showing comments in a dedicated rail and tracked-change review controls inline with the document, built with the SuperDoc custom UI API.","publisher":{"@type":"Organization","name":"SuperDoc","url":"https://superdoc.dev/"}}</script>
+    <style>
+      body:has(> #root > .demo-introduction) { min-width: 0; }
+      .demo-introduction { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; overflow-wrap: anywhere; line-height: 1.5; }
+      .demo-introduction nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+    </style>
   </head>
   <body>
     <div id="root">
-      <main aria-label="SuperDoc demo introduction">
+      <main class="demo-introduction" aria-label="SuperDoc demo introduction">
         <h1>SuperDoc custom review UI</h1>
         <p>A standalone React demo showing comments in a dedicated rail and tracked-change review controls inline with the document, built with the SuperDoc custom UI API.</p>
         <p>Enable JavaScript to use the interactive demo. If it does not load, use the source and setup instructions below.</p>

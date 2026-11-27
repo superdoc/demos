@@ -11,10 +11,15 @@
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://demos.superdoc.dev/collab/" />
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"SuperDoc collaboration demo","url":"https://demos.superdoc.dev/collab/","description":"A reference application for collaborative editing in SuperDoc.","publisher":{"@type":"Organization","name":"SuperDoc","url":"https://superdoc.dev/"}}</script>
+    <style>
+      body:has(> #root > .demo-introduction) { min-width: 0; }
+      .demo-introduction { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; overflow-wrap: anywhere; line-height: 1.5; }
+      .demo-introduction nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+    </style>
   </head>
   <body>
     <div id="root">
-      <main aria-label="SuperDoc demo introduction">
+      <main class="demo-introduction" aria-label="SuperDoc demo introduction">
         <h1>SuperDoc collaboration demo</h1>
         <p>A reference application for collaborative editing in SuperDoc.</p>
         <p>Enable JavaScript to use the interactive demo. If it does not load, use the source and setup instructions below.</p>
