@@ -62,24 +62,6 @@ bun run dev
 
 See each demo's directory for specific setup instructions.
 
-## Readable demo entry pages
-
-Template Builder, Agentic Collaboration and Custom Word Editor keep a useful
-introduction, source/setup link, documentation link and gallery link in their
-entry HTML. JavaScript replaces that fallback with the existing interactive app.
-The app's document title remains a semantic heading without changing its file,
-mode, presence or Build this controls. Canonical and WebPage metadata identify
-the existing gallery route, not a new article or another resource.
-
-Keep the public description, canonical URL and manifest identity aligned when
-editing these entries. Run `node --test scripts/demo-entry-discovery.test.mjs`
-and the existing Validate Demos workflow. Its browser matrix also checks the
-fallback without JavaScript at phone/desktop widths, replacement after mounting,
-and the original controls. Preserve the broader document-operation tests.
-After normal merge/deployment, verify the actual public entry HTML and mounted
-app before calling discovery fixed. Source tests or a successful deployment do
-not establish indexing, assistant citations, analytics ingestion or acquisition.
-
 ## Build this commands
 
 Inline Revisions, Template Builder, and Agentic Collaboration have **Build this**

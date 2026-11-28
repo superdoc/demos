@@ -14,12 +14,6 @@ Upload `.docx` files, ask questions in natural language, and get answers with ci
 6. **Answer** — Claude generates a response with `[cite:ID]` references
 7. **Navigate** — click a citation to scroll to the source in the SuperDoc viewer
 
-## Page discovery and recovery
-
-The public demo is https://demos.superdoc.dev/docrag/. Its HTML keeps the DocRAG heading, existing introduction, canonical URL, publisher identity and source/docs links available before JavaScript runs. The header remains outside the React mount so these links and the same heading stay usable after the app opens. Keep this server content consistent with the app and the existing `docrag` resource in `demos.json`; preserve the shared analytics and consent adapter.
-
-Run `node --test scripts/docrag-discovery.test.mjs` from the repository root for the static contract. The existing DocRAG browser job also checks built HTML without JavaScript, the React mount and narrow-screen header links. Build, release and live/readback checks remain required before calling a change published.
-
 ## Architecture
 
 ```
