@@ -4,9 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Template Builder API v2 - Vue Demo</title>
+    <meta name="description" content="Vue reference app for building a template-field workflow with SuperDoc v2." />
+    <link rel="canonical" href="https://demos.superdoc.dev/builder/" />
+    <meta property="og:title" content="Template Builder API v2 - Vue Demo" />
+    <meta property="og:description" content="Vue reference app for building a template-field workflow with SuperDoc v2." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://demos.superdoc.dev/builder/" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Template Builder API v2 - Vue Demo","url":"https://demos.superdoc.dev/builder/","description":"Vue reference app for building a template-field workflow with SuperDoc v2.","publisher":{"@type":"Organization","name":"SuperDoc","url":"https://superdoc.dev/"}}</script>
+    <style>
+      body:has(> #app > .demo-introduction) { min-width: 0; }
+      .demo-introduction { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; overflow-wrap: anywhere; line-height: 1.5; }
+      .demo-introduction nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main class="demo-introduction" aria-label="SuperDoc demo introduction">
+        <h1>Template Builder API v2 - Vue Demo</h1>
+        <p>Vue reference app for building a template-field workflow with SuperDoc v2.</p>
+        <p>Loading the interactive demo… If it does not load, use the source and setup instructions below.</p>
+        <noscript><p>Enable JavaScript to use the interactive demo.</p></noscript>
+        <nav aria-label="Demo resources">
+          <a href="https://github.com/superdoc/demos/tree/main/template-builder-document-api-v2-demo">Source and setup instructions</a>
+          <a href="https://docs.superdoc.dev/">SuperDoc documentation</a>
+          <a href="/">More SuperDoc demos</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

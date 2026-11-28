@@ -113,7 +113,7 @@ export function Topbar({ viewControls, onDocumentReplaced }: { viewControls?: Re
     <header className="topbar">
       <div className="ribbon-tabs-row">
         <div className="file-title">
-          <strong>Mutual NDA — review copy</strong>
+          <h1>Mutual NDA — review copy</h1>
           <span>{document.ready ? (document.dirty ? 'Unsaved changes' : 'Saved locally') : 'Opening document…'}</span>
         </div>
         <input

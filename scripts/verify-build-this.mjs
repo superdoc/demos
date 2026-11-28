@@ -39,6 +39,15 @@ function run(command, args, options = {}) {
   return result;
 }
 
+export async function verifyBrowserBuild(html, directory) {
+  assert.match(html, /<div id="root">/, 'Quickstart must produce the browser app mount');
+  const entry = html.match(/<script type="module"[^>]*\bsrc="(\.\/assets\/[^"?#]+\.js)"[^>]*><\/script>/)?.[1];
+  assert.ok(entry, 'Quickstart must reference its bundled browser entry');
+  const bundle = path.resolve(directory, entry);
+  assert.ok(bundle.startsWith(`${path.resolve(directory)}${path.sep}assets${path.sep}`), 'Browser entry must stay inside build assets');
+  assert.ok((await readFile(bundle)).length > 0, 'Quickstart browser entry must not be empty');
+}
+
 export async function runBuildCommand(command, sourceRoot = root, demoId = 'agentic-collaboration') {
   const demos = JSON.parse(await readFile(path.join(sourceRoot, 'demos.json'), 'utf8'));
   const demo = demos.find((entry) => entry.id === demoId);
@@ -91,7 +100,7 @@ exec "$SUPERDOC_TEST_GIT" "$@"
       run('bash', [], { cwd: work, env, input: command, stdio: ['pipe', 'inherit', 'inherit'], timeout: 15 * 60_000 });
       const app = path.join(work, 'demos', demo.packageDirectory);
       const html = await readFile(path.join(app, 'dist/index.html'), 'utf8');
-      assert.match(html, /<div id="root"><\/div>/, 'Quickstart must produce the browser app');
+      await verifyBrowserBuild(html, path.join(app, 'dist'));
       for (const component of ['client', 'server']) {
         const relativeLock = path.join(sourceDirectory, component, 'package-lock.json');
         assert.equal(await readFile(path.join(work, 'demos', relativeLock), 'utf8'), await readFile(path.join(repository, relativeLock), 'utf8'), 'Build must preserve lockfiles');

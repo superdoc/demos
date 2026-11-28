@@ -4,9 +4,33 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SuperDoc collaboration demo</title>
+    <meta name="description" content="A reference application for collaborative editing in SuperDoc." />
+    <link rel="canonical" href="https://demos.superdoc.dev/collab/" />
+    <meta property="og:title" content="SuperDoc collaboration demo" />
+    <meta property="og:description" content="A reference application for collaborative editing in SuperDoc." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://demos.superdoc.dev/collab/" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"SuperDoc collaboration demo","url":"https://demos.superdoc.dev/collab/","description":"A reference application for collaborative editing in SuperDoc.","publisher":{"@type":"Organization","name":"SuperDoc","url":"https://superdoc.dev/"}}</script>
+    <style>
+      body:has(> #root > .demo-introduction) { min-width: 0; }
+      .demo-introduction { max-width: 48rem; margin: 2rem auto; padding: 0 1rem; overflow-wrap: anywhere; line-height: 1.5; }
+      .demo-introduction nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="demo-introduction" aria-label="SuperDoc demo introduction">
+        <h1>SuperDoc collaboration demo</h1>
+        <p>A reference application for collaborative editing in SuperDoc.</p>
+        <p>Loading the interactive demo… If it does not load, use the source and setup instructions below.</p>
+        <noscript><p>Enable JavaScript to use the interactive demo.</p></noscript>
+        <nav aria-label="Demo resources">
+          <a href="https://github.com/superdoc/demos/tree/main/canonical-collaboration-demo">Source and setup instructions</a>
+          <a href="https://docs.superdoc.dev/">SuperDoc documentation</a>
+          <a href="/">More SuperDoc demos</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
